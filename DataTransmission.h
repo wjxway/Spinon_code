@@ -342,10 +342,38 @@ public:
      */
     uint32_t robot_id_list[Max_robots_simultaneous]={0};
 
-    // /**
-    //  * @brief Construct a new RMT_RX_prep object.
-    //  */
-    // RMT_RX_prep() {}
+    /**
+     * @brief Try to fetch the data coming from a single robot.
+     * 
+     * @param robot_id robot's id.
+     * @param data_ptr will write the start pointer of data array, data_ptr, to this address
+     * @param data_len will write data's length to this address
+     * @return bool which represent whether the robot exists and the operation is successful.
+     */
+    bool Get_data(uint32_t robot_id, uint8_t** data_ptr, uint32_t* data_len);
+
+    /**
+     * @brief Try to fetch the timing data coming from a single robot.
+     * 
+     * @param robot_id robot's id.
+     * @param data_ptr will write the start pointer of timing array, data_ptr, to this address
+     * @return bool which represent whether the robot exists and the operation is successful.
+     */
+    bool Get_time(uint32_t robot_id, uint8_t** time_ptr);
+
+    /**
+     * @brief Count the number of active neighbors
+     * 
+     * @return uint32_t the number of active neighbors.
+     */
+    uint32_t Count_neighbors();
+
+    /**
+     * @brief Write the IDs of active neighbors
+     * 
+     * @return std::vector<uint32_t> neighbors' ID.
+     */
+    std::vector<uint32_t> Get_neighbors_ID();
 
     /**
      * @brief Parse rmt item to usable data and add it to data pool for additional processing.
@@ -362,7 +390,7 @@ public:
     void Delete_obsolete();
 };
 
-class RMT_RX_TX
+class RMT_RX_TX final
 {
 public:
     /**
@@ -391,6 +419,10 @@ public:
      * @brief TX
      */
     static RMT_TX_prep TX_prep;
+
+    // This is a utility class, so there shouldn't be a constructor.
+    // Functions and values should be called directly via RMT_RX_TX::func() or RMT_RX_TX::val
+    RMT_RX_TX() = delete;
 };
 
 #endif
