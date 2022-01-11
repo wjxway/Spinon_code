@@ -22,7 +22,7 @@ uint32_t Temp_data[64] = {0};
 
 /**
  * @brief The amount of data, in bits, that's transmitted in each RMT transmission.
- *
+ * 
  * @note RMT length should be kept below 63 for convenience of processing (leaving some space for init code and probably ECC.)
  * When RMT length is larger than 63, it will occupy at least two RMT memory register block. That's inconvenient and requires much more processing.
  * I would suggest using rmt length from 16 to 32. dUsing rmt length >32 then you will need to modify the code here and there, changing uint32_t to uint64_t.

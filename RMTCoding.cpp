@@ -174,7 +174,7 @@ bool Parse_RMT_item(volatile rmt_item32_t *pointer, uint32_t *dataptr)
                 }
                 bug_pos = i;
                 Temp_data_ready = true;
-
+                
                 return false;
             }
         }
