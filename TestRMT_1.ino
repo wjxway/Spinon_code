@@ -109,7 +109,6 @@ void IRAM_ATTR rmt_isr_handler(void *arg)
             clrbit(LED_PIN_1);
 
         trig_time = micros();
-
         // add element to the pool if parsing is successful
         pool.Add_element(Trans_info{raw, intr_st_1, rec_time});
 
@@ -370,55 +369,98 @@ void loop()
         setbit(LED_PIN_2);
     }
 
-    // on or off
-    static bool time_on = false;
+    // timing blink
 
-    // starting to receive time
-    if (pool.Time_valid_q())
+    // State of blinking
+    // 0: already triggered
+    // 1: awaiting emission
+    // 2: emitting
+    static byte time_blink_state = 0;
+
+    // timing data
+    static uint64_t avg_time = 0, t_distance = 0;
+
+    // wait for new data when triggered
+    if (time_blink_state)
     {
-        // clrbit(LED_PIN_3);
-
-        // green and then red, red 27
-        uint64_t avg_time = 0.5 * (pool.first_message_time[0] + pool.first_message_time[1]);
-        // uint64_t t_distance = abs(50000.0 / (0.01 + sin(2 * PI * 0.000001 * (pool.first_message_time[1] - pool.first_message_time[0]))));
-
-        uint64_t t_distance = 8 * my_diff(pool.first_message_time[1], pool.first_message_time[0]);
-
-        // turn on the light after a while of receiving the first signal
-        if (t_now >= avg_time + t_delay && t_now <= avg_time + t_delay + t_distance)
+        if (pool.Time_valid_q())
         {
-            time_on = true;
-            clrbit(LED_PIN_3);
+            // green and then red, red 27
+            avg_time = 0.5 * (pool.first_message_time[0] + pool.first_message_time[1]);
+            // uint64_t t_distance = abs(50000.0 / (0.01 + sin(2 * PI * 0.000001 * (pool.first_message_time[1] - pool.first_message_time[0]))));
+
+            t_distance = 8 * my_diff(pool.first_message_time[1], pool.first_message_time[0]);
+
+            time_blink_state = 1;
         }
-        // and turn it off after a while (timing proportional to the distance)
-        else if (time_on)
+    }
+    else if (time_blink_state == 1)
+    {
+        if (t_now >= avg_time + t_delay)
         {
-            time_on = false;
+            clrbit(LED_PIN_3);
+
+            time_blink_state = 2;
+        }
+    }
+    else if (time_blink_state == 2)
+    {
+        if (t_now >= avg_time + t_delay + t_distance)
+        {
             setbit(LED_PIN_3);
 
             // reset the pool
             pool = RX_data_fragments_pool{};
+
+            time_blink_state = 0;
         }
     }
-    // else
-    //     setbit(LED_PIN_3);
 
-    // on or off
-    static bool finish_on = false;
-    // data finished time
-    if (t_now >= rec_finish_time + t_delay_1 && t_now <= rec_finish_time + t_on + t_delay_1)
+    // data valid blink
+
+    // State of blinking
+    // 0: already triggered
+    // 1: awaiting emission
+    // 2: emitting
+    static byte data_blink_state = 0;
+
+    // timing data
+    static uint64_t rec_finish_time_1 = 0;
+
+    // wait for new data when triggered
+    if (data_blink_state)
     {
-        finish_on = true;
-        clrbit(LED_PIN_1);
-        clrbit(LED_PIN_2);
-        clrbit(LED_PIN_3);
+        if (rec_finish_time != 0)
+        {
+            // buffer the data
+            rec_finish_time_1 = rec_finish_time;
+
+            data_blink_state = 1;
+        }
     }
-    else if (finish_on)
+    else if (data_blink_state == 1)
     {
-        rec_finish_time = 0;
-        finish_on = false;
-        setbit(LED_PIN_1);
-        setbit(LED_PIN_2);
-        setbit(LED_PIN_3);
+        if (t_now >= rec_finish_time_1 + t_delay_1)
+        {
+            clrbit(LED_PIN_1);
+            clrbit(LED_PIN_2);
+            clrbit(LED_PIN_3);
+
+            data_blink_state = 2;
+        }
+    }
+    else if (data_blink_state == 2)
+    {
+        if (t_now >= rec_finish_time_1 + t_delay_1 + t_on)
+        {
+            setbit(LED_PIN_1);
+            setbit(LED_PIN_2);
+            setbit(LED_PIN_3);
+
+            // reset the time
+            rec_finish_time = 0;
+
+            data_blink_state = 0;
+        }
     }
 }
