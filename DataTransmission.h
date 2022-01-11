@@ -77,12 +77,12 @@ const uint8_t RMT_TX_length = RMT_data_length + 2;
  * @brief Fragments pool's timing data's decay time. If nothing is added to the pool for this amount of time (in us),
  *        then the timing info should be discarded.
  */
-constexpr uint64_t Timing_expire_time = 500000;
+constexpr uint64_t Timing_expire_time = 100000;
 
 /**
  * @brief maximum number of robots that can communicate with a single robot in the same period of time.
  */
-constexpr uint32_t Max_robots_simultaneous = 20;
+constexpr uint32_t Max_robots_simultaneous = 5;
 
 /**
  * @brief Fragments pool itself's decay time. If nothing is added to the pool for this amount of time (in us),
@@ -206,6 +206,17 @@ public:
 };
 
 /**
+ * @brief a struct packed with data / receiver state / time of reception, which is all information contained in a transmission.
+ *
+ */
+typedef struct Trans_info
+{
+    uint32_t data;
+    uint32_t receiver;
+    uint64_t time;
+};
+
+/**
  * @brief A class for storing and processing data fragments received by RMT RX.
  */
 class RX_data_fragments_pool
@@ -232,10 +243,9 @@ public:
      * @param data Input data.
      * @param receiver receviers' id. from LSB to MSB, 0 to N_RECEIVERS-1 bits, if the corresponding bit is 1 then means this receiver received the data as well.
      * @param time Time the data arrives.
-     * @return true The whole data stream has been completed.
-     * @return false Still need more data.
+     * @return bool Whether the whole data stream has been completed.
      */
-    bool Add_element(uint32_t data, uint32_t receiver, uint64_t time);
+    bool Add_element(Trans_info info);
 
     /**
      * @brief check if time data is valid.
@@ -261,7 +271,7 @@ public:
     /**
      * @brief Get the Msg_max object
      *
-     * @return uint32_t Msg_max which is the max number of messages.
+     * @return uint32_t Msg_max that is the max number of messages.
      *         Msg_max * Msg_content_bytes is the actual size of the pool.
      */
     uint32_t get_Msg_max();
@@ -309,13 +319,13 @@ private:
      * @param receiver recevier's id. from 0 to N_RECEIVERS-1
      * @param time Time the data arrives.
      */
-    void reset_pool(uint32_t data, uint32_t receiver, uint64_t time);
+    void reset_pool(Trans_info info);
 
     /**
      * @brief Reset the whole pool to its initial state.
      *        used by RMT_RX_prep when a pool is obsolete.
      */
-    void Reset_all();
+    void reset_pool();
 
     // RMT_RX_prep is its friend and can acess Reset_all
     friend class RMT_RX_prep;
@@ -330,47 +340,46 @@ class RMT_RX_prep
 public:
     /**
      * @brief All pools storing data fragments sent by different robots.
-     *        Stored in a unordered map for faster fetch based on Robot_ID
      */
     RX_data_fragments_pool pools[Max_robots_simultaneous] = {};
 
     /**
-     * @brief list of robot ids.
-     * 
+     * @brief List of robot IDs.
+     *
      * @note For simplicity, here we will assume robots all have id>0, so id==0 means there's nothing.
      *       We can always change that later, but for now, it's a neat trick.
      */
-    uint32_t robot_id_list[Max_robots_simultaneous]={0};
+    uint32_t robot_id_list[Max_robots_simultaneous] = {0};
 
     /**
      * @brief Try to fetch the data coming from a single robot.
-     * 
+     *
      * @param robot_id robot's id.
      * @param data_ptr will write the start pointer of data array, data_ptr, to this address
      * @param data_len will write data's length to this address
-     * @return bool which represent whether the robot exists and the operation is successful.
+     * @return bool that represent whether the robot exists and the operation is successful.
      */
-    bool Get_data(uint32_t robot_id, uint8_t** data_ptr, uint32_t* data_len);
+    bool Get_data(uint32_t robot_id, uint8_t **data_ptr, uint32_t *data_len);
 
     /**
      * @brief Try to fetch the timing data coming from a single robot.
-     * 
+     *
      * @param robot_id robot's id.
      * @param data_ptr will write the start pointer of timing array, data_ptr, to this address
-     * @return bool which represent whether the robot exists and the operation is successful.
+     * @return bool that represent whether the robot exists and the operation is successful.
      */
-    bool Get_time(uint32_t robot_id, uint8_t** time_ptr);
+    bool Get_time(uint32_t robot_id, uint8_t **time_ptr);
 
     /**
      * @brief Count the number of active neighbors
-     * 
+     *
      * @return uint32_t the number of active neighbors.
      */
     uint32_t Count_neighbors();
 
     /**
      * @brief Write the IDs of active neighbors
-     * 
+     *
      * @return std::vector<uint32_t> neighbors' ID.
      */
     std::vector<uint32_t> Get_neighbors_ID();
@@ -379,10 +388,10 @@ public:
      * @brief Parse rmt item to usable data and add it to data pool for additional processing.
      *
      * @param pointer Pointer to raw rmt item storage.
-     * @return true Successful!
-     * @return false Data invalid!
+     * @return true The corresponding pool has been completed!
+     * @return false More data is needed.
      */
-    bool Parse_RX(volatile rmt_item32_t *pointer);
+    bool Parse_RX(Trans_info info);
 
     /**
      * @brief Delete obsolete pools.
@@ -395,8 +404,8 @@ class RMT_RX_TX final
 public:
     /**
      * @brief initialization of RMT peripheral
-     * 
-     * @return bool indicating whether the initialization is successful 
+     *
+     * @return bool indicating whether the initialization is successful
      */
     static bool RMT_Init();
 

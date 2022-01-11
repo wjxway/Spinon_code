@@ -97,17 +97,23 @@ void IRAM_ATTR rmt_isr_handler(void *arg)
 
     // parsing output buffer
     uint32_t raw;
+
+    // whether this transmission is valid
+    bool this_valid = false;
+
     // parse RMT item into a uint32_t
     if ((intr_st_1 & 2) && Parse_RMT_item(item_2, &raw))
     {
         clrbit(LED_PIN_2);
-        if(intr_st_1 & 1)
+        if (intr_st_1 & 1)
             clrbit(LED_PIN_1);
 
         trig_time = micros();
 
         // add element to the pool if parsing is successful
-        pool.Add_element(raw, intr_st_1, rec_time);
+        pool.Add_element(Trans_info{raw, intr_st_1, rec_time});
+
+        this_valid = true;
     }
     else if ((intr_st_1 & 1) && Parse_RMT_item(item_1, &raw))
     {
@@ -115,11 +121,13 @@ void IRAM_ATTR rmt_isr_handler(void *arg)
 
         trig_time = micros();
         // add element to the pool if parsing is successful
-        pool.Add_element(raw, intr_st_1, rec_time);
+        pool.Add_element(Trans_info{raw, intr_st_1, rec_time});
+
+        this_valid = true;
     }
 
     // print & reset when data complete
-    if (pool.Data_valid_q() && !rec_finish_time)
+    if (this_valid && pool.Data_valid_q() && !rec_finish_time)
     {
 #if _DEBUG_PRINT_
         std::string str;
@@ -185,6 +193,25 @@ void IRAM_ATTR RMT_TX_trigger()
     rmt_ll_tx_start(&RMT, RMT_TX_CHANNEL);
 }
 
+// Blink the LED
+void blink_led(int n)
+{
+    for (int i = 0; i < n; i++)
+    {
+        clrbit(LED_PIN_1);
+        clrbit(LED_PIN_2);
+        clrbit(LED_PIN_3);
+
+        delay(30);
+
+        setbit(LED_PIN_1);
+        setbit(LED_PIN_2);
+        setbit(LED_PIN_3);
+
+        delay(30);
+    }
+}
+
 void setup()
 {
     Serial.begin(115200);
@@ -199,9 +226,7 @@ void setup()
     pinMode(LED_PIN_2, OUTPUT);
     pinMode(LED_PIN_3, OUTPUT);
 
-    setbit(LED_PIN_1);
-    setbit(LED_PIN_2);
-    setbit(LED_PIN_3);
+    blink_led(3);
 
     Serial.println("Init end...");
 
@@ -335,7 +360,7 @@ void loop()
 {
     FeedTheDog();
 
-    static uint64_t t_delay = 100000, t_delay_1 = 50000, t_on = 20000, t_LED_off = 750;
+    static uint64_t t_delay = 60000, t_delay_1 = 50000, t_on = 5000, t_LED_off = 750;
     uint64_t t_now = micros();
 
     // turn off led
@@ -351,16 +376,16 @@ void loop()
     // starting to receive time
     if (pool.Time_valid_q())
     {
-        //clrbit(LED_PIN_3);
+        // clrbit(LED_PIN_3);
 
         // green and then red, red 27
         uint64_t avg_time = 0.5 * (pool.first_message_time[0] + pool.first_message_time[1]);
         // uint64_t t_distance = abs(50000.0 / (0.01 + sin(2 * PI * 0.000001 * (pool.first_message_time[1] - pool.first_message_time[0]))));
 
-        uint64_t t_distance = 15 * my_diff(pool.first_message_time[1],pool.first_message_time[0]);
+        uint64_t t_distance = 8 * my_diff(pool.first_message_time[1], pool.first_message_time[0]);
 
         // turn on the light after a while of receiving the first signal
-        if (t_now >= avg_time + t_delay && t_now < avg_time + t_delay + t_distance)
+        if (t_now >= avg_time + t_delay && t_now <= avg_time + t_delay + t_distance)
         {
             time_on = true;
             clrbit(LED_PIN_3);
@@ -370,6 +395,9 @@ void loop()
         {
             time_on = false;
             setbit(LED_PIN_3);
+
+            // reset the pool
+            pool = RX_data_fragments_pool{};
         }
     }
     // else
@@ -392,7 +420,5 @@ void loop()
         setbit(LED_PIN_1);
         setbit(LED_PIN_2);
         setbit(LED_PIN_3);
-
-        //pool = RX_data_fragments_pool{};
     }
 }

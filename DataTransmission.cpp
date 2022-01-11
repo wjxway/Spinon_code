@@ -81,29 +81,29 @@ bool RMT_TX_prep::TX_load(std::vector<uint8_t> raw)
     return true;
 }
 
-void RX_data_fragments_pool::reset_pool(uint32_t data, uint32_t receiver, uint64_t time)
+void RX_data_fragments_pool::reset_pool(Trans_info info)
 {
     // convert the raw message to Msg_t type
     Msg_t msg;
-    msg.raw = data;
+    msg.raw = info.data;
 
     // reset filling status
     filling_status = 0;
 
     // reset first message time only when it's a time out reset
-    if ((time - last_message_time) > Timing_expire_time)
+    if ((info.time - last_message_time) > Timing_expire_time)
     {
         for (uint8_t i = 0; i < N_RECEIVERS; i++)
         {
-            if ((receiver >> i) & 1)
-                first_message_time[i] = time;
+            if ((info.receiver >> i) & 1)
+                first_message_time[i] = info.time;
             else
                 first_message_time[i] = 0;
         }
-        time_ready_status = receiver;
+        time_ready_status = info.receiver;
     }
 
-    last_message_time = time;
+    last_message_time = info.time;
     Msg_ID_init = msg.Msg_ID_init;
     data_valid_flag = false;
 
@@ -120,7 +120,7 @@ void RX_data_fragments_pool::reset_pool(uint32_t data, uint32_t receiver, uint64
     else
     {
         Msg_header_t msg_hd;
-        msg_hd.raw = data;
+        msg_hd.raw = info.data;
 
         Msg_count = 0;
         Msg_max = msg_hd.Msg_ID_len;
@@ -128,11 +128,11 @@ void RX_data_fragments_pool::reset_pool(uint32_t data, uint32_t receiver, uint64
     }
 }
 
-bool RX_data_fragments_pool::Add_element(uint32_t data, uint32_t receiver, uint64_t time)
+bool RX_data_fragments_pool::Add_element(Trans_info info)
 {
     // convert the raw message to Msg_t type
     Msg_t msg;
-    msg.raw = data;
+    msg.raw = info.data;
 
     // some helper criteria
     bool prev_filled = false, header_invalid = false;
@@ -144,7 +144,7 @@ bool RX_data_fragments_pool::Add_element(uint32_t data, uint32_t receiver, uint6
     else
     {
         Msg_header_t msg_hd;
-        msg_hd.raw = data;
+        msg_hd.raw = info.data;
 
         // 1. Msg_max inconsistent or CRC inconsistent
         // 2. previous data's Msg_ID > Msg_ID_len
@@ -180,7 +180,7 @@ bool RX_data_fragments_pool::Add_element(uint32_t data, uint32_t receiver, uint6
     // 3. Msg_ID too big
     if ((!Msg_count && !Msg_max)                                                                            // 0. no data
         || msg.Msg_ID_init != Msg_ID_init                                                                   // 1. Msg_ID_init not the same
-        || (time - last_message_time) > Timing_expire_time                                                  // 2. data has expired
+        || (info.time - last_message_time) > Timing_expire_time                                             // 2. data has expired
         || (Msg_max && msg.Msg_ID > Msg_max)                                                                // 3. Msg_ID too big
         || (prev_filled && (Construct_content(pool + (msg.Msg_ID - 1) * Msg_content_bytes) != msg.content)) // 4. data inconsistent
         || header_invalid)                                                                                  // 5. header invalid
@@ -208,23 +208,23 @@ bool RX_data_fragments_pool::Add_element(uint32_t data, uint32_t receiver, uint6
         // delayhigh100ns(18);
         // clrbit(18);
 
-        reset_pool(data, receiver, time);
+        reset_pool(info);
     }
     // valid data
     else
     {
         // if this is the first message from a receiver, record the time.
         // we could just input RMT.int_st.val, but then it would be hard to change the RMT channels without changing the library.
-        uint32_t temp = (receiver & (~time_ready_status));
+        uint32_t temp = (info.receiver & (~time_ready_status));
         for (uint8_t i = 0; i < N_RECEIVERS; i++)
             if ((temp >> i) & 1)
-                first_message_time[i] = time;
+                first_message_time[i] = info.time;
 
         // update time_ready_status
-        time_ready_status = time_ready_status | receiver;
+        time_ready_status = time_ready_status | info.receiver;
 
         // update last_message_time
-        last_message_time = time;
+        last_message_time = info.time;
 
         // new message?
         if (msg.Msg_ID && !prev_filled)
@@ -251,12 +251,12 @@ bool RX_data_fragments_pool::Add_element(uint32_t data, uint32_t receiver, uint6
 #if _DEBUG_PRINT_
                 Serial.println("CRC mismatch reset");
 #endif
-                reset_pool(data, receiver, time);
+                reset_pool(info);
             }
         }
     }
 
-    return 0;
+    return false;
 }
 
 bool RX_data_fragments_pool::Time_valid_q()
@@ -279,7 +279,7 @@ uint32_t RX_data_fragments_pool::size()
     return Msg_max * Msg_content_bytes;
 }
 
-void RX_data_fragments_pool::Reset_all()
+void RX_data_fragments_pool::reset_pool()
 {
     filling_status = 0;
     time_ready_status = 0;
@@ -291,12 +291,53 @@ void RX_data_fragments_pool::Reset_all()
     Msg_ID_init = 0;
 }
 
-bool RMT_RX_prep::Parse_RX(volatile rmt_item32_t *pointer)
+bool RMT_RX_prep::Parse_RX(Trans_info info)
 {
-    return true;
+    // mask for robot ID field.
+    static const uint32_t ID_mask = (Msg_t{{((1 << Robot_ID_bits) - 1), 0, 0, 0}}).raw;
+
+    // robot's ID
+    uint32_t robot_id = (ID_mask & info.data);
+
+    // search for the corresponding pool
+    uint32_t data_pos = 0, first_zero = Max_robots_simultaneous;
+    for (data_pos = 0; data_pos < Max_robots_simultaneous; data_pos++)
+    {
+        // record first empty position
+        if (!robot_id_list[data_pos] && first_zero == Max_robots_simultaneous)
+            first_zero = data_pos;
+        // check if robot's id exists in the list
+        else if (robot_id_list[data_pos] == robot_id)
+        {
+            data_pos = data_pos;
+            break;
+        }
+    }
+
+    // if it's a new robot
+    if (data_pos == Max_robots_simultaneous)
+    {
+        // setup robot id
+        robot_id_list[first_zero]=robot_id;
+        // setup pool
+        // cleaning up should be Delete_obsolete's job, which shouldn't be done inside an interrupt.
+        // please make sure that the pool is cleared as well when robot_id_list is cleared.
+        return pools[first_zero].Add_element(info);
+    }
+    // if it's a already existing one, just update the corresponding pool.
+    else
+        return pools[data_pos].Add_element(info);
 }
 
 void RMT_RX_prep::Delete_obsolete()
 {
-
+    for (uint32_t pos = 0; pos < Max_robots_simultaneous; pos++)
+    {
+        //if data has expired, reset the id list as well as the pool itself.
+        if(micros()-pools[pos].last_message_time>=Data_expire_time)
+        {
+            robot_id_list[pos]=0;
+            pools[pos].reset_pool();
+        }
+    }
 }
