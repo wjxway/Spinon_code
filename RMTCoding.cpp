@@ -168,11 +168,13 @@ bool Parse_RMT_item(volatile rmt_item32_t *pointer, uint32_t *dataptr)
             }
             else
             {
-                // for(int j=i-2;j<=i+2;j++)
-                // {
-                //     Serial.println(pointer[j].val,BIN);
-                // }
-                // Serial.println("END");
+                for (int j = 0; j <= 64; j++)
+                {
+                    Temp_data[j] = pointer[j].val;
+                }
+                bug_pos = i;
+                Temp_data_ready = true;
+
                 return false;
             }
         }

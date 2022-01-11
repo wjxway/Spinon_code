@@ -9,6 +9,10 @@
 
 #include "FastIO.h"
 
+bool Temp_data_ready = false;
+uint32_t bug_pos = 0;
+uint32_t Temp_data[64] = {0};
+
 // Because I implemented a HPF in the filter to deal with change in environmental light and irrelavent blinks,
 // The data we are sending must have half low level and half high level, evenly distributed.
 // A natural idea would be to use 01 to represent 0 and 10 to represent one. (This is also a commonly used IR protocol)
@@ -18,7 +22,7 @@
 
 /**
  * @brief The amount of data, in bits, that's transmitted in each RMT transmission.
- * 
+ *
  * @note RMT length should be kept below 63 for convenience of processing (leaving some space for init code and probably ECC.)
  * When RMT length is larger than 63, it will occupy at least two RMT memory register block. That's inconvenient and requires much more processing.
  * I would suggest using rmt length from 16 to 32. dUsing rmt length >32 then you will need to modify the code here and there, changing uint32_t to uint64_t.
