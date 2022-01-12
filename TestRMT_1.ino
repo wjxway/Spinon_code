@@ -359,15 +359,8 @@ void loop()
 {
     FeedTheDog();
 
-    static uint64_t t_delay = 60000, t_delay_1 = 50000, t_on = 5000, t_LED_off = 750;
+    static uint64_t t_delay = 70000, t_delay_1 = 60000, t_on = 5000, t_LED_off = 750;
     uint64_t t_now = micros();
-
-    // turn off led
-    if (t_now - trig_time > t_LED_off)
-    {
-        setbit(LED_PIN_1);
-        setbit(LED_PIN_2);
-    }
 
     // timing blink
 
@@ -381,7 +374,7 @@ void loop()
     static uint64_t avg_time = 0, t_distance = 0;
 
     // wait for new data when triggered
-    if (time_blink_state)
+    if (!time_blink_state)
     {
         if (pool.Time_valid_q())
         {
@@ -389,7 +382,7 @@ void loop()
             avg_time = 0.5 * (pool.first_message_time[0] + pool.first_message_time[1]);
             // uint64_t t_distance = abs(50000.0 / (0.01 + sin(2 * PI * 0.000001 * (pool.first_message_time[1] - pool.first_message_time[0]))));
 
-            t_distance = 8 * my_diff(pool.first_message_time[1], pool.first_message_time[0]);
+            t_distance = 10 * my_diff(pool.first_message_time[1], pool.first_message_time[0]);
 
             time_blink_state = 1;
         }
@@ -428,7 +421,7 @@ void loop()
     static uint64_t rec_finish_time_1 = 0;
 
     // wait for new data when triggered
-    if (data_blink_state)
+    if (!data_blink_state)
     {
         if (rec_finish_time != 0)
         {
@@ -462,5 +455,12 @@ void loop()
 
             data_blink_state = 0;
         }
+    }
+
+    // turn off led
+    if (t_now - trig_time > t_LED_off && data_blink_state != 2)
+    {
+        setbit(LED_PIN_1);
+        setbit(LED_PIN_2);
     }
 }

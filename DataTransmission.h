@@ -209,7 +209,7 @@ public:
  * @brief a struct packed with data / receiver state / time of reception, which is all information contained in a transmission.
  *
  */
-typedef struct Trans_info
+struct Trans_info
 {
     uint32_t data;
     uint32_t receiver;
