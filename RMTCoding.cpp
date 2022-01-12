@@ -2,6 +2,10 @@
 
 extern const uint8_t RMT_data_length;
 
+bool Temp_data_ready = false;
+uint32_t bug_pos = 0;
+uint32_t Temp_data[64] = {0};
+
 bool Generate_RMT_item(rmt_item32_t *pointer, uint32_t data)
 {
     // pulse that represent 0 and 1.
@@ -140,7 +144,16 @@ bool Parse_RMT_item(volatile rmt_item32_t *pointer, uint32_t *dataptr)
                 return false;
         }
         else
+        {
+            // for (int j = 0; j < 64; j++)
+            // {
+            //     Temp_data[j] = pointer[j].val;
+            // }
+            // bug_pos = i;
+            // Temp_data_ready = true;
+
             return false;
+        }
 
         // low period
         // check termination
@@ -168,13 +181,19 @@ bool Parse_RMT_item(volatile rmt_item32_t *pointer, uint32_t *dataptr)
             }
             else
             {
-                for (int j = 0; j <= 64; j++)
+                if (pointer[i].level0 == 0)
                 {
-                    Temp_data[j] = pointer[j].val;
+                    delayhigh1us(21);
+                    clrbit(21);
+
+                    for (int j = 0; j < 64; j++)
+                    {
+                        Temp_data[j] = pointer[j].val;
+                    }
+                    bug_pos = i;
+                    Temp_data_ready = true;
                 }
-                bug_pos = i;
-                Temp_data_ready = true;
-                
+
                 return false;
             }
         }

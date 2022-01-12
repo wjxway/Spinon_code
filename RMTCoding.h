@@ -9,9 +9,9 @@
 
 #include "FastIO.h"
 
-bool Temp_data_ready = false;
-uint32_t bug_pos = 0;
-uint32_t Temp_data[64] = {0};
+extern bool Temp_data_ready;
+extern uint32_t bug_pos;
+extern uint32_t Temp_data[64];
 
 // Because I implemented a HPF in the filter to deal with change in environmental light and irrelavent blinks,
 // The data we are sending must have half low level and half high level, evenly distributed.

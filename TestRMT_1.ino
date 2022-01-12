@@ -14,6 +14,7 @@
 
 // test signal
 #define TEST_PIN 18
+#define TEST_PIN_2 21
 
 #define LED_PIN_1 16
 #define LED_PIN_2 17
@@ -104,10 +105,6 @@ void IRAM_ATTR rmt_isr_handler(void *arg)
     // parse RMT item into a uint32_t
     if ((intr_st_1 & 2) && Parse_RMT_item(item_2, &raw))
     {
-        clrbit(LED_PIN_2);
-        if (intr_st_1 & 1)
-            clrbit(LED_PIN_1);
-
         trig_time = micros();
         // add element to the pool if parsing is successful
         pool.Add_element(Trans_info{raw, intr_st_1, rec_time});
@@ -116,8 +113,6 @@ void IRAM_ATTR rmt_isr_handler(void *arg)
     }
     else if ((intr_st_1 & 1) && Parse_RMT_item(item_1, &raw))
     {
-        clrbit(LED_PIN_1);
-
         trig_time = micros();
         // add element to the pool if parsing is successful
         pool.Add_element(Trans_info{raw, intr_st_1, rec_time});
@@ -221,6 +216,7 @@ void setup()
     pinMode(RMT_IN_2, INPUT);
     // test output
     pinMode(TEST_PIN, OUTPUT);
+    pinMode(TEST_PIN_2,OUTPUT);
     pinMode(LED_PIN_1, OUTPUT);
     pinMode(LED_PIN_2, OUTPUT);
     pinMode(LED_PIN_3, OUTPUT);
@@ -358,7 +354,7 @@ uint64_t my_diff(uint64_t x, uint64_t y)
 void loop()
 {
     FeedTheDog();
-    if(Temp_data_ready)
+    if (Temp_data_ready)
     {
         RMT.conf_ch[RMT_RX_CHANNEL_1].conf1.rx_en = 0;
         RMT.conf_ch[RMT_RX_CHANNEL_2].conf1.rx_en = 0;
@@ -368,12 +364,16 @@ void loop()
         Serial.print("BUG @ ");
         Serial.println(bug_pos);
 
-        for(int i=0;i<64;i++)
+        for (int i = 0; i < 64; i++)
+        {
+            Serial.print(i);
+            Serial.print(" : ");
             Serial.println(Temp_data[i]);
-        
+        }
+
         Serial.println("--END--");
 
-        Temp_data_ready=false;
+        Temp_data_ready = false;
 
         RMT.conf_ch[RMT_RX_CHANNEL_1].conf1.mem_wr_rst = 1;
         RMT.conf_ch[RMT_RX_CHANNEL_2].conf1.mem_wr_rst = 1;
