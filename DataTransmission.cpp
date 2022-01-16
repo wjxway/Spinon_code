@@ -1,6 +1,8 @@
 #include "DataTransmission.h"
 
-const uint8_t RMT_data_length = Robot_ID_bits + Msg_ID_bits + Msg_content_bits;
+using namespace detail;
+
+const uint8_t detail::RMT_data_length = Robot_ID_bits + Msg_ID_bits + Msg_content_bits;
 
 uint8_t crc8_maxim(uint8_t *data, uint16_t length)
 {
@@ -20,6 +22,12 @@ uint8_t crc8_maxim(uint8_t *data, uint16_t length)
     return crc;
 }
 
+/**
+ * @brief convert a small uint8_t array to uint32_t.
+ *
+ * @param pointer start pointer for data.
+ * @return uint32_t content field.
+ */
 inline uint32_t Construct_content(uint8_t *pointer)
 {
     uint32_t res = 0;
@@ -28,6 +36,12 @@ inline uint32_t Construct_content(uint8_t *pointer)
     return res;
 }
 
+/**
+ * @brief convert a uint32_t to a small uint8_t array.
+ *
+ * @param data input uint32_t data.
+ * @param pointer fill data starting from this pointer.
+ */
 inline void Deconstruct_content(uint32_t data, uint8_t *pointer)
 {
     for (uint32_t i = 0; i < Msg_content_bytes; i++)
@@ -308,17 +322,14 @@ bool RMT_RX_prep::Parse_RX(Trans_info info)
             first_zero = data_pos;
         // check if robot's id exists in the list
         else if (robot_id_list[data_pos] == robot_id)
-        {
-            data_pos = data_pos;
             break;
-        }
     }
 
     // if it's a new robot
     if (data_pos == Max_robots_simultaneous)
     {
         // setup robot id
-        robot_id_list[first_zero]=robot_id;
+        robot_id_list[first_zero] = robot_id;
         // setup pool
         // cleaning up should be Delete_obsolete's job, which shouldn't be done inside an interrupt.
         // please make sure that the pool is cleared as well when robot_id_list is cleared.
@@ -329,15 +340,177 @@ bool RMT_RX_prep::Parse_RX(Trans_info info)
         return pools[data_pos].Add_element(info);
 }
 
+RX_data_fragments_pool *RMT_RX_prep::Get_pool(uint32_t robot_id)
+{
+    // search for the corresponding pool
+    uint32_t data_pos = 0;
+    for (data_pos = 0; data_pos < Max_robots_simultaneous; data_pos++)
+        // check if robot's id exists in the list
+        if (robot_id_list[data_pos] == robot_id)
+            break;
+
+    // if it's never there
+    if (data_pos == Max_robots_simultaneous)
+        return nullptr;
+    else
+        return pools + data_pos;
+}
+
+uint32_t RMT_RX_prep::Count_neighbors()
+{
+    // search for the corresponding pool
+    uint32_t data_count = 0;
+    for (uint32_t data_pos = 0; data_pos < Max_robots_simultaneous; data_pos++)
+        // check if robot's id exists in the list
+        if (robot_id_list[data_pos])
+            data_count++;
+
+    return data_count;
+}
+
+std::vector<uint32_t> RMT_RX_prep::Get_neighbors_ID()
+{
+    std::vector<uint32_t> temp = {};
+    temp.reserve(Max_robots_simultaneous);
+
+    for (uint32_t data_pos = 0; data_pos < Max_robots_simultaneous; data_pos++)
+        // check if robot's id exists in the list
+        if (robot_id_list[data_pos])
+            temp.push_back(robot_id_list[data_pos]);
+
+    return temp;
+}
+
 void RMT_RX_prep::Delete_obsolete()
 {
     for (uint32_t pos = 0; pos < Max_robots_simultaneous; pos++)
     {
-        //if data has expired, reset the id list as well as the pool itself.
-        if(micros()-pools[pos].last_message_time>=Data_expire_time)
+        // if data has expired, reset the id list as well as the pool itself.
+        if (micros() - pools[pos].last_message_time >= Data_expire_time)
         {
-            robot_id_list[pos]=0;
+            robot_id_list[pos] = 0;
             pools[pos].reset_pool();
         }
     }
+}
+
+bool RMT_RX_TX::RMT_Init()
+{
+    // config TX
+    rmt_config_t rmt_tx;
+    rmt_tx.channel = RMT_TX_CHANNEL;
+    rmt_tx.gpio_num = (gpio_num_t)RMT_OUT;
+    rmt_tx.clk_div = RMT_clock_div;
+    rmt_tx.mem_block_num = 2;
+    rmt_tx.rmt_mode = RMT_MODE_TX;
+    rmt_tx.tx_config.loop_en = false;
+    // We modulate our own signal, instead of using carrier!
+    rmt_tx.tx_config.carrier_level = RMT_CARRIER_LEVEL_HIGH;
+    rmt_tx.tx_config.carrier_en = 0;
+    rmt_tx.tx_config.idle_level = RMT_IDLE_LEVEL_LOW;
+    rmt_tx.tx_config.idle_output_en = 1;
+    rmt_tx.tx_config.loop_en = 0;
+    // initialization of RMT
+    if (rmt_config(&rmt_tx) != ESP_OK)
+        Serial.println("RMT TX init failed!");
+
+    // disable interrupt
+    rmt_set_tx_intr_en(RMT_TX_CHANNEL, false);
+    rmt_set_tx_thr_intr_en(RMT_TX_CHANNEL, false, 1);
+
+    Serial.println("RMT TX init successful!");
+
+    // config RMT_TX_prep
+    // here we set robot's id to 5
+    TX_prep = new RMT_TX_prep{THIS_ROBOT_ID};
+    // set raw data to contain 12 bytes
+    // and process raw data
+    std::vector<uint8_t> raw_input = {0, 0};
+    if (TX_prep->TX_load(raw_input))
+    {
+        Serial.println("RMT TX data prep successful!");
+        Serial.print("TX data size = ");
+        Serial.println(TX_prep->output.size());
+    }
+    else
+        Serial.println("RMT TX data prep failed!");
+
+    // config timer to start TX
+    // timer ticks 1MHz
+    RMT_TX_trigger_timer = timerBegin(3, 80, true);
+    // add timer interrupt
+    timerAttachInterrupt(RMT_TX_trigger_timer, &RMT_TX_trigger, true);
+    // trigger interrupt every 500us
+    timerAlarmWrite(RMT_TX_trigger_timer, 500, true);
+    timerAlarmEnable(RMT_TX_trigger_timer);
+
+    Serial.println("RMT TX timer interrupt successful!");
+
+    // // start emission
+    // rmt_ll_write_memory(&RMTMEM, RMT_TX_CHANNEL, emit_patt, emit_patt_length, 0);
+    // rmt_ll_tx_reset_pointer(&RMT, RMT_TX_CHANNEL);
+    // rmt_ll_tx_start(&RMT, RMT_TX_CHANNEL);
+
+    Serial.println("RMT Emission successful!");
+
+    // config RX_1
+    rmt_config_t rmt_rx_1;
+    rmt_rx_1.channel = RMT_RX_CHANNEL_1;
+    rmt_rx_1.gpio_num = (gpio_num_t)RMT_IN_1;
+    rmt_rx_1.clk_div = RMT_clock_div;
+    rmt_rx_1.mem_block_num = 2;
+    rmt_rx_1.rmt_mode = RMT_MODE_RX;
+    // use 2 as filter to filter out pulses with less than 250ns
+    rmt_rx_1.rx_config.filter_en = 1;
+    rmt_rx_1.rx_config.filter_ticks_thresh = 2;
+    // stop when idle for 4us could be reduced to 3us when necessary, but should be longer than 2us.
+    rmt_rx_1.rx_config.idle_threshold = 3 * RMT_ticks_num;
+
+    if (rmt_config(&rmt_rx_1) != ESP_OK)
+        Serial.println("RMT RX_1 init failed!");
+    // set up filter again...
+    else if (rmt_set_rx_filter(rmt_rx_1.channel, true, RMT_clock_div * RMT_ticks_num / 2) != ESP_OK)
+        Serial.println("RMT RX_1 set filter failed!");
+    // initialization of RMT RX interrupt
+    else if (rmt_set_rx_intr_en(rmt_rx_1.channel, true) != ESP_OK)
+        Serial.println("RMT RX_1 interrupt not started!");
+    // else if (rmt_isr_register(rmt_isr_handler, NULL, ESP_INTR_FLAG_LEVEL3, &xHandler) != ESP_OK)
+    //     Serial.println("RMT RX_1 interrupt register failed!");
+    // enable RMT_RX_1
+
+    // config RX_2
+    rmt_config_t rmt_rx_2;
+    rmt_rx_2.channel = RMT_RX_CHANNEL_2;
+    rmt_rx_2.gpio_num = (gpio_num_t)RMT_IN_2;
+    rmt_rx_2.clk_div = RMT_clock_div;
+    rmt_rx_2.mem_block_num = 2;
+    rmt_rx_2.rmt_mode = RMT_MODE_RX;
+    // use 2 as filter to filter out pulses with less than 250ns
+    rmt_rx_2.rx_config.filter_en = 1;
+    rmt_rx_2.rx_config.filter_ticks_thresh = 2;
+    // stop when idle for 4us could be reduced to 3us when necessary, but should be longer than 2us.
+    rmt_rx_2.rx_config.idle_threshold = 3 * RMT_ticks_num;
+
+    if (rmt_config(&rmt_rx_2) != ESP_OK)
+        Serial.println("RMT RX_2 init failed!");
+    // set up filter again...
+    else if (rmt_set_rx_filter(rmt_rx_2.channel, true, RMT_clock_div * RMT_ticks_num / 2) != ESP_OK)
+        Serial.println("RMT RX_2 set filter failed!");
+    // initialization of RMT RX interrupt
+    else if (rmt_set_rx_intr_en(rmt_rx_2.channel, true) != ESP_OK)
+        Serial.println("RMT RX_2 interrupt not started!");
+
+    // setup ISR
+    else if (rmt_isr_register(rmt_isr_handler, NULL, ESP_INTR_FLAG_LEVEL3, &xHandler) != ESP_OK)
+        Serial.println("RMT RX interrupt register failed!");
+
+    // enable RMT_RX
+    else if (rmt_rx_start(rmt_rx_1.channel, 1) != ESP_OK)
+        Serial.println("RMT RX_1 start failed!");
+    else if (rmt_rx_start(rmt_rx_2.channel, 1) != ESP_OK)
+        Serial.println("RMT RX_2 start failed!");
+    else
+        Serial.println("RMT RX setup finished!");
+
+    return true;
 }

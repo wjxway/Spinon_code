@@ -1,5 +1,7 @@
 #include "RMTCoding.h"
 
+using namespace detail;
+
 extern const uint8_t RMT_data_length;
 
 bool Generate_RMT_item(rmt_item32_t *pointer, uint32_t data)
@@ -10,11 +12,11 @@ bool Generate_RMT_item(rmt_item32_t *pointer, uint32_t data)
 
     pointer[0] = item0;
 
-    for (uint16_t i = 0; i < RMT_data_length; i++)
+    for (uint16_t i = 0; i < detail::RMT_data_length; i++)
         pointer[i + 1] = ((data >> i) & 1) ? item1 : item0;
 
     // termination indicator
-    pointer[RMT_data_length + 1] = {0};
+    pointer[detail::RMT_data_length + 1] = {0};
 
     return true;
 }
@@ -117,7 +119,7 @@ bool Parse_RMT_item(volatile rmt_item32_t *pointer, uint32_t *dataptr)
 
     int8_t val = 0, bit_pos = 0;
     uint32_t temp = 0;
-    for (int i = 0; i <= RMT_data_length; i++)
+    for (int i = 0; i <= detail::RMT_data_length; i++)
     {
         // high period
         temp = pointer[i].duration0;
@@ -182,7 +184,7 @@ bool Parse_RMT_item(volatile rmt_item32_t *pointer, uint32_t *dataptr)
     }
 
     // check message length
-    if (bit_pos == RMT_data_length)
+    if (bit_pos == detail::RMT_data_length)
         return true;
     else
         return false;

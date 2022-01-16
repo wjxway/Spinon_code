@@ -1,9 +1,10 @@
 // Encoding & decoding of RMT signal
 #ifndef _DATATRANSMISSION_
 #define _DATATRANSMISSION_
-
 #pragma once
+
 #include "Arduino.h"
+#include "FastIO.h"
 #include "RMTCoding.h"
 #include <vector>
 
@@ -21,79 +22,87 @@
 //
 // Note that this header file is for messages <=32 bits, if you want to use larger messages, change uint32_t to uint64_t.
 
-/**
- * @brief number of bits for robot's id.
- */
-constexpr uint8_t Robot_ID_bits = 4;
+namespace detail
+{
+    /**
+     * @brief number of bits for robot's id.
+     */
+    constexpr uint8_t Robot_ID_bits = 4;
 
-/**
- * @brief number of bits for message's id.
- * @note message ID on messages for the same data should have same initial bit,
- *       so that we can distinguish from different data groups sent by the same robot at different time.
- *       If the robot received a message with the other intial bit, it should discard all previous incomplete messages
- *       With the previous initial bit, because the data they contains are already obsolete.
- *       Should set to <=7, for two reasons.
- *          1. With Msg_ID_bits <= 7 we can use a uint64_t to indicate whether we received all the data. Save space & time.
- *          2. The full data should be transmitted in <30 deg time, and with 0.5 deg / message, this means 2^6 messages. Adding up with the header bit, it's 7 bits.
- */
-constexpr uint8_t Msg_ID_bits = 7;
+    /**
+     * @brief number of bits for message's id.
+     * @note message ID on messages for the same data should have same initial bit,
+     *       so that we can distinguish from different data groups sent by the same robot at different time.
+     *       If the robot received a message with the other intial bit, it should discard all previous incomplete messages
+     *       With the previous initial bit, because the data they contains are already obsolete.
+     *       Should set to <=7, for two reasons.
+     *          1. With Msg_ID_bits <= 7 we can use a uint64_t to indicate whether we received all the data. Save space & time.
+     *          2. The full data should be transmitted in <30 deg time, and with 0.5 deg / message, this means 2^6 messages. Adding up with the header bit, it's 7 bits.
+     */
+    constexpr uint8_t Msg_ID_bits = 7;
 
-/**
- * @brief number of BYTES for message's content.
- */
-constexpr uint8_t Msg_content_bytes = 2;
+    /**
+     * @brief number of BYTES for message's content.
+     */
+    constexpr uint8_t Msg_content_bytes = 2;
 
-/**
- * @brief maximum memory size for data pool.
- */
-constexpr uint32_t Msg_memory_size = ((1 << (Msg_ID_bits - 1)) - 1) * Msg_content_bytes;
+    /**
+     * @brief maximum memory size for data pool.
+     */
+    constexpr uint32_t Msg_memory_size = ((1 << (Msg_ID_bits - 1)) - 1) * Msg_content_bytes;
 
-/**
- * @brief number of bits for message's content.
- *
- * @note please make sure that this is a multiplier of 8 for easy conversion.
- *       If not, you will have to write your own function to convert an arbitrary data into a array of that many bits.
- *       And you will have to write your own ECC as well.
- */
-constexpr uint8_t Msg_content_bits = Msg_content_bytes * 8;
+    /**
+     * @brief number of bits for message's content.
+     *
+     * @note please make sure that this is a multiplier of 8 for easy conversion.
+     *       If not, you will have to write your own function to convert an arbitrary data into a array of that many bits.
+     *       And you will have to write your own ECC as well.
+     */
+    constexpr uint8_t Msg_content_bits = Msg_content_bytes * 8;
 
-/**
- * @brief The amount of data, in bits, that's transmitted in each RMT transmission.
- *
- * @note RMT length should be kept below 63 for convenience of processing (leaving some space for init code and probably ECC.)
- * When RMT length is larger than 63, it will occupy at least two RMT memory register block. That's inconvenient and requires much more processing.
- * I would suggest using rmt length from 16 to 32. dUsing rmt length >32 then you will need to modify the code here and there, changing uint32_t to uint64_t.
- */
-extern const uint8_t RMT_data_length;
+    /**
+     * @brief The amount of data, in bits, that's transmitted in each RMT transmission.
+     *
+     * @note RMT length should be kept below 63 for convenience of processing (leaving some space for init code and probably ECC.)
+     * When RMT length is larger than 63, it will occupy at least two RMT memory register block. That's inconvenient and requires much more processing.
+     * I would suggest using rmt length from 16 to 32. dUsing rmt length >32 then you will need to modify the code here and there, changing uint32_t to uint64_t.
+     */
+    extern const uint8_t RMT_data_length;
 
-/**
- * @brief RMT TX sequnce length.
- *
- * @note RMT_TX_length = RMT_data_length + 2 because there will be a '0' header and a ending block
- */
-const uint8_t RMT_TX_length = RMT_data_length + 2;
+    /**
+     * @brief RMT TX sequnce length.
+     *
+     * @note RMT_TX_length = RMT_data_length + 2 because there will be a '0' header and a ending block
+     */
+    const uint8_t RMT_TX_length = RMT_data_length + 2;
 
-/**
- * @brief Fragments pool's timing data's decay time. If nothing is added to the pool for this amount of time (in us),
- *        then the timing info should be discarded.
- */
-constexpr uint64_t Timing_expire_time = 100000;
+    /**
+     * @brief Fragments pool's timing data's decay time. If nothing is added to the pool for this amount of time (in us),
+     *        then the timing info should be discarded.
+     */
+    constexpr uint64_t Timing_expire_time = 100000;
 
-/**
- * @brief maximum number of robots that can communicate with a single robot in the same period of time.
- */
-constexpr uint32_t Max_robots_simultaneous = 5;
+    /**
+     * @brief maximum number of robots that can communicate with a single robot in the same period of time.
+     */
+    constexpr uint32_t Max_robots_simultaneous = 5;
 
-/**
- * @brief Fragments pool itself's decay time. If nothing is added to the pool for this amount of time (in us),
- *        then this robot has probably leaved the communication range and this pool should be re-purposed.
- */
-constexpr uint64_t Data_expire_time = 2000000;
+    /**
+     * @brief Fragments pool itself's decay time. If nothing is added to the pool for this amount of time (in us),
+     *        then this robot has probably leaved the communication range and this pool should be re-purposed.
+     */
+    constexpr uint64_t Data_expire_time = 2000000;
 
-/**
- * @brief number of receivers
- */
-#define N_RECEIVERS 2
+    // RMT channels def
+    constexpr rmt_channel_t RMT_TX_CHANNEL = RMT_CHANNEL_0;
+    constexpr rmt_channel_t RMT_RX_CHANNEL_1 = RMT_CHANNEL_2;
+#if N_RECEIVERS >= 2
+    constexpr rmt_channel_t RMT_RX_CHANNEL_2 = RMT_CHANNEL_4;
+#endif
+#if N_RECEIVERS == 3
+    constexpr rmt_channel_t RMT_RX_CHANNEL_3 = RMT_CHANNEL_6;
+#endif
+}
 
 /**
  * @brief general structure of messages with <=32 bits.
@@ -102,10 +111,10 @@ typedef union
 {
     struct
     {
-        uint32_t Robot_ID : Robot_ID_bits;
+        uint32_t Robot_ID : detail::Robot_ID_bits;
         uint32_t Msg_ID_init : 1;
-        uint32_t Msg_ID : Msg_ID_bits - 1;
-        uint32_t content : Msg_content_bits;
+        uint32_t Msg_ID : detail::Msg_ID_bits - 1;
+        uint32_t content : detail::Msg_content_bits;
     };
     uint32_t raw;
 } Msg_t;
@@ -117,11 +126,11 @@ typedef union
 {
     struct
     {
-        uint32_t Robot_ID : Robot_ID_bits;
+        uint32_t Robot_ID : detail::Robot_ID_bits;
         uint32_t Msg_ID_init : 1;
-        uint32_t Msg_ID : Msg_ID_bits - 1;
-        uint32_t Msg_ID_len : Msg_ID_bits - 1; // Msg_ID will be from 0 (the header) to Msg_ID_len.
-        uint32_t CRC : Msg_content_bits - Msg_ID_bits + 1;
+        uint32_t Msg_ID : detail::Msg_ID_bits - 1;
+        uint32_t Msg_ID_len : detail::Msg_ID_bits - 1; // Msg_ID will be from 0 (the header) to Msg_ID_len.
+        uint32_t CRC : detail::Msg_content_bits - detail::Msg_ID_bits + 1;
     };
     uint32_t raw;
 } Msg_header_t;
@@ -137,22 +146,6 @@ typedef union
  *       could change to other crc functions for less collision chance when the message is longer.
  */
 uint8_t crc8_maxim(uint8_t *data, uint16_t length);
-
-/**
- * @brief convert a small uint8_t array to uint32_t.
- *
- * @param pointer start pointer for data.
- * @return uint32_t content field.
- */
-inline uint32_t Construct_content(uint8_t *pointer);
-
-/**
- * @brief convert a uint32_t to a small uint8_t array.
- *
- * @param data input uint32_t data.
- * @param pointer fill data starting from this pointer.
- */
-inline void Deconstruct_content(uint32_t data, uint8_t *pointer);
 
 /**
  * @brief RMT TX preperation class. Used to process signal emissions from a single robot ID.
@@ -225,7 +218,7 @@ public:
     /**
      * @brief Pool of data fragments.
      */
-    uint8_t pool[Msg_memory_size] = {0};
+    uint8_t pool[detail::Msg_memory_size] = {0};
 
     /**
      * @brief When each receiver received its first message from this robot.
@@ -341,34 +334,25 @@ public:
     /**
      * @brief All pools storing data fragments sent by different robots.
      */
-    RX_data_fragments_pool pools[Max_robots_simultaneous] = {};
+    RX_data_fragments_pool pools[detail::Max_robots_simultaneous] = {};
 
     /**
-     * @brief List of robot IDs.
+     * @brief Parse rmt item to usable data and add it to data pool for additional processing.
      *
-     * @note For simplicity, here we will assume robots all have id>0, so id==0 means there's nothing.
-     *       We can always change that later, but for now, it's a neat trick.
+     * @param pointer Pointer to raw rmt item storage.
+     * @return true The corresponding pool has been completed!
+     * @return false More data is needed.
      */
-    uint32_t robot_id_list[Max_robots_simultaneous] = {0};
+    bool Parse_RX(Trans_info info);
 
     /**
-     * @brief Try to fetch the data coming from a single robot.
+     * @brief Get the pointer to a single pool with certain ID. if it's not there, then return NULL
      *
-     * @param robot_id robot's id.
-     * @param data_ptr will write the start pointer of data array, data_ptr, to this address
-     * @param data_len will write data's length to this address
-     * @return bool that represent whether the robot exists and the operation is successful.
-     */
-    bool Get_data(uint32_t robot_id, uint8_t **data_ptr, uint32_t *data_len);
-
-    /**
-     * @brief Try to fetch the timing data coming from a single robot.
+     * @param robot_id The ID of the robot you want to know about
      *
-     * @param robot_id robot's id.
-     * @param data_ptr will write the start pointer of timing array, data_ptr, to this address
-     * @return bool that represent whether the robot exists and the operation is successful.
+     * @return a pointer to the corresponding RX_data_fragments_pool object, or NULL.
      */
-    bool Get_time(uint32_t robot_id, uint8_t **time_ptr);
+    RX_data_fragments_pool *Get_pool(uint32_t robot_id);
 
     /**
      * @brief Count the number of active neighbors
@@ -385,19 +369,24 @@ public:
     std::vector<uint32_t> Get_neighbors_ID();
 
     /**
-     * @brief Parse rmt item to usable data and add it to data pool for additional processing.
-     *
-     * @param pointer Pointer to raw rmt item storage.
-     * @return true The corresponding pool has been completed!
-     * @return false More data is needed.
-     */
-    bool Parse_RX(Trans_info info);
-
-    /**
      * @brief Delete obsolete pools.
      */
     void Delete_obsolete();
+
+private:
+    /**
+     * @brief List of robot IDs.
+     *
+     * @note For simplicity, here we will assume robots all have id>0, so id==0 means there's nothing.
+     *       We can always change that later, but for now, it's a neat trick.
+     */
+    uint32_t robot_id_list[detail::Max_robots_simultaneous] = {0};
 };
+
+/**
+ * @brief whether to enable printing upon RMT_RX_TX class initialization
+ */
+#define INITIALIZATION_PRINT_ENABLE 1
 
 class RMT_RX_TX final
 {
@@ -420,18 +409,29 @@ public:
     static void IRAM_ATTR rmt_isr_handler(void *arg);
 
     /**
-     * @brief RX
+     * @brief RX trigger timer pointer
      */
-    static RMT_RX_prep RX_prep;
+    static hw_timer_t *RMT_TX_trigger_timer;
 
     /**
-     * @brief TX
+     * @brief RX pointer
      */
-    static RMT_TX_prep TX_prep;
+    static RMT_RX_prep *RX_prep;
+
+    /**
+     * @brief TX pointer
+     */
+    static RMT_TX_prep *TX_prep;
 
     // This is a utility class, so there shouldn't be a constructor.
     // Functions and values should be called directly via RMT_RX_TX::func() or RMT_RX_TX::val
     RMT_RX_TX() = delete;
+
+private:
+    /**
+     * @brief nothing but a handler used to clean up the ISR later
+     */
+    static rmt_isr_handle_t xHandler;
 };
 
 #endif
