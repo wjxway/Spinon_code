@@ -1,13 +1,11 @@
 #ifndef _ROBOTDEFS_
 #define _ROBOTDEFS_
 #pragma once
-
 #include "Arduino.h"
-#include "driver/rmt.h"
 
 // number of receivers
-#define N_RECEIVERS 3
-// whether to enable the emitter
+#define RMT_RX_CHANNEL_COUNT 3
+// whether to enable the emitter, set to 0 or comment this line to disable.
 #define EMITTER_ENABLED 1
 // Robot's ID
 constexpr uint32_t THIS_ROBOT_ID = 5;
@@ -19,10 +17,10 @@ constexpr uint32_t THIS_ROBOT_ID = 5;
 // RMT pins def
 #define RMT_OUT 25
 #define RMT_IN_1 26
-#if N_RECEIVERS >= 2
+#if RMT_RX_CHANNEL_COUNT >= 2
 #define RMT_IN_2 27
 #endif
-#if N_RECEIVERS == 3
+#if RMT_RX_CHANNEL_COUNT == 3
 #define RMT_IN_3 32
 #endif
 

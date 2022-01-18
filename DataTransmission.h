@@ -4,12 +4,8 @@
 #pragma once
 
 #include "Arduino.h"
-#include "FastIO.h"
 #include "RMTCoding.h"
 #include <vector>
-
-// // print debug content or not
-// #define _DEBUG_PRINT_ 1
 
 // Each raw message is in the following form:
 // | ---Robot_ID--- | ---Msg_ID--- | ---Data--- | (---ECC--- |)
@@ -93,15 +89,36 @@ namespace detail
      */
     constexpr uint64_t Data_expire_time = 2000000;
 
-    // RMT channels def
+    /**
+     * @brief RMT TX channel num
+     */
     constexpr rmt_channel_t RMT_TX_CHANNEL = RMT_CHANNEL_0;
+    /**
+     * @brief First RMT RX channel num (Highest priority)
+     */
     constexpr rmt_channel_t RMT_RX_CHANNEL_1 = RMT_CHANNEL_2;
-#if N_RECEIVERS >= 2
+#if RMT_RX_CHANNEL_COUNT >= 2
+    /**
+     * @brief Second RMT RX channel num
+     */
     constexpr rmt_channel_t RMT_RX_CHANNEL_2 = RMT_CHANNEL_4;
 #endif
-#if N_RECEIVERS == 3
+#if RMT_RX_CHANNEL_COUNT == 3
+    /**
+     * @brief Third RMT RX channel num (Lowest priority)
+     */
     constexpr rmt_channel_t RMT_RX_CHANNEL_3 = RMT_CHANNEL_6;
 #endif
+
+    /**
+     * @brief Timer channel used for RMT TX trigger
+     */
+    constexpr uint8_t RMT_TX_TRIGGER_TIMER_CHANNEL = 3;
+
+    /**
+     * @brief RMT TX Trigger period in us
+     */
+    constexpr uint64_t RMT_TX_TRIGGER_PERIOD = 500;
 }
 
 /**
@@ -163,16 +180,18 @@ public:
     // output data position pointer
     uint32_t output_pos = 0;
     // output ready flag
-    // 1 for ready, 0 for not ready. skip an emission cycle when output is not ready.
-    // use spin-lock mechanism to prevent simultaneous access of output.
-    bool output_ready_flag = 1;
+    // 0 for all set, 1 for updating the header, 2 for updating the content.
+    volatile uint16_t output_ready_flag = 0;
+    volatile uint16_t reader_count_flag = 0;
 
     /**
      * @brief Construct a new RMT_TX_prep object.
      *
      * @param rid Robot's ID, please make sure it's smaller than 2^Robot_ID_bits, I will not check.
      */
-    RMT_TX_prep(uint32_t rid) : robot_ID(rid) {}
+    RMT_TX_prep(uint32_t rid) : robot_ID(rid)
+    {
+    }
 
     /**
      * @brief Load raw data and convert them into rmt_item32_t objects.
@@ -191,9 +210,6 @@ public:
      * @brief Get start pointer for TX. should transmit exactly RMT_TX_length items.
      *
      * @return rmt_item32_t* the start pointer.
-     *
-     * @note Should check output_ready_flag before calling this function.
-     *       output_pos will automatically change every time you call this function.
      */
     rmt_item32_t *Get_TX_pointer();
 };
@@ -223,7 +239,7 @@ public:
     /**
      * @brief When each receiver received its first message from this robot.
      */
-    uint64_t first_message_time[N_RECEIVERS] = {0};
+    uint64_t first_message_time[RMT_RX_CHANNEL_COUNT] = {0};
 
     /**
      * @brief When the last message in this pool is received.
@@ -234,7 +250,7 @@ public:
      * @brief Add element to the pool, do sanity checks, reset the pool when necessary.
      *
      * @param data Input data.
-     * @param receiver receviers' id. from LSB to MSB, 0 to N_RECEIVERS-1 bits, if the corresponding bit is 1 then means this receiver received the data as well.
+     * @param receiver receviers' id. from LSB to MSB, 0 to RMT_RX_CHANNEL_COUNT-1 bits, if the corresponding bit is 1 then means this receiver received the data as well.
      * @param time Time the data arrives.
      * @return bool Whether the whole data stream has been completed.
      */
@@ -286,7 +302,7 @@ private:
     uint64_t filling_status = 0;
 
     /**
-     * @brief Which of the first_message_time list is filled. If time_ready_flag == (1<<N_RECEIVERS)-1, then timing data is ready.
+     * @brief Which of the first_message_time list is filled. If time_ready_flag == (1<<RMT_RX_CHANNEL_COUNT)-1, then timing data is ready.
      */
     uint32_t time_ready_status = 0;
 
@@ -309,7 +325,7 @@ private:
      * @brief reset the whole pool. Then setup the first data.
      *
      * @param data Input data.
-     * @param receiver recevier's id. from 0 to N_RECEIVERS-1
+     * @param receiver recevier's id. from 0 to RMT_RX_CHANNEL_COUNT-1
      * @param time Time the data arrives.
      */
     void reset_pool(Trans_info info);
@@ -383,11 +399,6 @@ private:
     uint32_t robot_id_list[detail::Max_robots_simultaneous] = {0};
 };
 
-/**
- * @brief whether to enable printing upon RMT_RX_TX class initialization
- */
-#define INITIALIZATION_PRINT_ENABLE 1
-
 class RMT_RX_TX final
 {
 public:
@@ -406,7 +417,7 @@ public:
     /**
      * @brief RX interrupt handler
      */
-    static void IRAM_ATTR rmt_isr_handler(void *arg);
+    static void IRAM_ATTR RMT_RX_ISR_handler(void *arg);
 
     /**
      * @brief RX trigger timer pointer
@@ -423,8 +434,10 @@ public:
      */
     static RMT_TX_prep *TX_prep;
 
-    // This is a utility class, so there shouldn't be a constructor.
-    // Functions and values should be called directly via RMT_RX_TX::func() or RMT_RX_TX::val
+    /**
+     * @brief This is a utility class, so there shouldn't be a constructor.
+     *        Functions and values should be called directly via RMT_RX_TX::func() or RMT_RX_TX::val
+     */
     RMT_RX_TX() = delete;
 
 private:

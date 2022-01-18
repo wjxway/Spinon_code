@@ -4,9 +4,8 @@
 #pragma once
 
 #include "Arduino.h"
-#include "driver/rmt.h"
-
 #include "RobotDefs.h"
+#include "driver/rmt.h"
 
 // Because I implemented a HPF in the filter to deal with change in environmental light and irrelavent blinks,
 // The data we are sending must have half low level and half high level, evenly distributed.
@@ -50,7 +49,7 @@ namespace detail
  *
  * @note For rmt length >32, change uint32_t to uint64_t or larger
  *
- * @param pointer Pointer to a pre-defined space of rmt item storage.
+ * @param pointer Pointer to a pre-defined space of rmt item storage. The elements inside the array are volatile.
  * @param data Input data in an integer form.
  *
  * @return true Successful!
@@ -63,7 +62,7 @@ bool Generate_RMT_item(rmt_item32_t *pointer, uint32_t data);
  *
  * @note For rmt length >32, change uint32_t to uint64_t or larger
  *
- * @param pointer Pointer to raw rmt item storage.
+ * @param pointer1 Pointer to raw rmt item storage. The elements inside the array are volatile.
  * @param dataptr Pointer to the output space, the output is an integer.
  *
  * @return true Successful!
