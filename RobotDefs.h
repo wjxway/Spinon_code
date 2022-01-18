@@ -3,8 +3,11 @@
 #pragma once
 #include "Arduino.h"
 
+// whether to enable debug led & digital output
+#define DEBUG_LED_ENABLED 1
+
 // number of receivers
-#define RMT_RX_CHANNEL_COUNT 3
+#define RMT_RX_CHANNEL_COUNT 2
 // whether to enable the emitter, set to 0 or comment this line to disable.
 #define EMITTER_ENABLED 1
 // Robot's ID

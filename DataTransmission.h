@@ -18,6 +18,7 @@
 //
 // Note that this header file is for messages <=32 bits, if you want to use larger messages, change uint32_t to uint64_t.
 
+// Implementation details are hide in this namespace to keep global clean
 namespace detail
 {
     /**
@@ -119,53 +120,54 @@ namespace detail
      * @brief RMT TX Trigger period in us
      */
     constexpr uint64_t RMT_TX_TRIGGER_PERIOD = 500;
+
+    /**
+     * @brief general structure of messages with <=32 bits.
+     */
+    typedef union
+    {
+        struct
+        {
+            uint32_t Robot_ID : detail::Robot_ID_bits;
+            uint32_t Msg_ID_init : 1;
+            uint32_t Msg_ID : detail::Msg_ID_bits - 1;
+            uint32_t content : detail::Msg_content_bits;
+        };
+        uint32_t raw;
+    } Msg_t;
+
+    /**
+     * @brief general structure of message headers with <=32 bits.
+     */
+    typedef union
+    {
+        struct
+        {
+            uint32_t Robot_ID : detail::Robot_ID_bits;
+            uint32_t Msg_ID_init : 1;
+            uint32_t Msg_ID : detail::Msg_ID_bits - 1;
+            uint32_t Msg_ID_len : detail::Msg_ID_bits - 1; // Msg_ID will be from 0 (the header) to Msg_ID_len.
+            uint32_t CRC : detail::Msg_content_bits - detail::Msg_ID_bits + 1;
+        };
+        uint32_t raw;
+    } Msg_header_t;
+
+    /**
+     * @brief a struct packed with data / receiver state / time of reception, which is all information contained in a transmission.
+     *
+     */
+    struct Trans_info
+    {
+        uint32_t data;
+        uint32_t receiver;
+        uint64_t time;
+    };
 }
 
 /**
- * @brief general structure of messages with <=32 bits.
- */
-typedef union
-{
-    struct
-    {
-        uint32_t Robot_ID : detail::Robot_ID_bits;
-        uint32_t Msg_ID_init : 1;
-        uint32_t Msg_ID : detail::Msg_ID_bits - 1;
-        uint32_t content : detail::Msg_content_bits;
-    };
-    uint32_t raw;
-} Msg_t;
-
-/**
- * @brief general structure of message headers with <=32 bits.
- */
-typedef union
-{
-    struct
-    {
-        uint32_t Robot_ID : detail::Robot_ID_bits;
-        uint32_t Msg_ID_init : 1;
-        uint32_t Msg_ID : detail::Msg_ID_bits - 1;
-        uint32_t Msg_ID_len : detail::Msg_ID_bits - 1; // Msg_ID will be from 0 (the header) to Msg_ID_len.
-        uint32_t CRC : detail::Msg_content_bits - detail::Msg_ID_bits + 1;
-    };
-    uint32_t raw;
-} Msg_header_t;
-
-/**
- * @brief CRC function using CRC-8/Maxim standard
- *
- * @param data input data pointer, should be in uint8_t form.
- * @param length input data length.
- * @return crc8 result as a int.
- *
- * @note copied from to https://github.com/whik/crc-lib-c
- *       could change to other crc functions for less collision chance when the message is longer.
- */
-uint8_t crc8_maxim(uint8_t *data, uint16_t length);
-
-/**
  * @brief RMT TX preperation class. Used to process signal emissions from a single robot ID.
+ *
+ * @note This class is thread-safe for output data acessing
  */
 class RMT_TX_prep
 {
@@ -174,15 +176,6 @@ public:
     uint32_t robot_ID = 0;
     // msg id initial
     uint32_t msg_id_initial = 0;
-
-    // output data
-    std::vector<rmt_item32_t> output;
-    // output data position pointer
-    uint32_t output_pos = 0;
-    // output ready flag
-    // 0 for all set, 1 for updating the header, 2 for updating the content.
-    volatile uint16_t output_ready_flag = 0;
-    volatile uint16_t reader_count_flag = 0;
 
     /**
      * @brief Construct a new RMT_TX_prep object.
@@ -208,21 +201,35 @@ public:
 
     /**
      * @brief Get start pointer for TX. should transmit exactly RMT_TX_length items.
+     *        After calling this function and finished with the data transfer,
+     *        you should explicitly and externally reset the reader lock using Reset_reader_lock()
      *
      * @return rmt_item32_t* the start pointer.
      */
     rmt_item32_t *Get_TX_pointer();
-};
 
-/**
- * @brief a struct packed with data / receiver state / time of reception, which is all information contained in a transmission.
- *
- */
-struct Trans_info
-{
-    uint32_t data;
-    uint32_t receiver;
-    uint64_t time;
+    /**
+     * @brief reset the reader's lock once so data could be updated as normal.
+     *        This is just a semaphore theme, not a MUTEX, so be careful not to call it twice!
+     */
+    void Reset_reader_lock();
+
+private:
+    // output data
+    std::vector<rmt_item32_t> output;
+    // output data position pointer
+    uint32_t output_pos = 0;
+
+    // the implementation of the read-write lock
+
+    // output ready flag
+    // force it into the DRAM to ensure shorter reading time
+    // 0 for all set, 1 for updating the header, 2 for updating the content.
+    volatile uint16_t output_ready_flag = 0;
+    // number of readers
+    // force it into the DRAM to ensure shorter reading time
+    // should lock write operation when there's >=1 reader
+    volatile uint16_t reader_count_flag = 0;
 };
 
 /**
@@ -254,7 +261,7 @@ public:
      * @param time Time the data arrives.
      * @return bool Whether the whole data stream has been completed.
      */
-    bool Add_element(Trans_info info);
+    bool Add_element(detail::Trans_info info);
 
     /**
      * @brief check if time data is valid.
@@ -328,7 +335,7 @@ private:
      * @param receiver recevier's id. from 0 to RMT_RX_CHANNEL_COUNT-1
      * @param time Time the data arrives.
      */
-    void reset_pool(Trans_info info);
+    void reset_pool(detail::Trans_info info);
 
     /**
      * @brief Reset the whole pool to its initial state.
@@ -359,7 +366,7 @@ public:
      * @return true The corresponding pool has been completed!
      * @return false More data is needed.
      */
-    bool Parse_RX(Trans_info info);
+    bool Parse_RX(detail::Trans_info info);
 
     /**
      * @brief Get the pointer to a single pool with certain ID. if it's not there, then return NULL
@@ -403,7 +410,27 @@ class RMT_RX_TX final
 {
 public:
     /**
-     * @brief initialization of RMT peripheral
+     * @brief RX trigger timer pointer
+     */
+    static hw_timer_t *RMT_TX_trigger_timer;
+
+    /**
+     * @brief RX pointer
+     */
+    static RMT_RX_prep *RX_prep;
+
+    /**
+     * @brief TX pointer
+     */
+    static RMT_TX_prep *TX_prep;
+
+    /**
+     * @brief last time when a message is received
+     */
+    static uint64_t last_message_time;
+
+    /**
+     * @brief Initialization of RMT peripheral, should be called FIRST! Will automatically start RX & TX.
      *
      * @return bool indicating whether the initialization is successful
      */
@@ -420,19 +447,24 @@ public:
     static void IRAM_ATTR RMT_RX_ISR_handler(void *arg);
 
     /**
-     * @brief RX trigger timer pointer
+     * @brief Resume RMT_TX, note that this won't re-setup the timer.
      */
-    static hw_timer_t *RMT_TX_trigger_timer;
+    static bool RMT_TX_RESUME();
 
     /**
-     * @brief RX pointer
+     * @brief Pause RMT_TX, note that this won't stop or free the timer.
      */
-    static RMT_RX_prep *RX_prep;
+    static bool RMT_TX_PAUSE();
 
     /**
-     * @brief TX pointer
+     * @brief Resume RMT_TX, note that this won't re-setup the timer.
      */
-    static RMT_TX_prep *TX_prep;
+    static bool RMT_RX_RESUME();
+
+    /**
+     * @brief Pause RMT_TX, note that this won't stop or free the timer.
+     */
+    static bool RMT_RX_PAUSE();
 
     /**
      * @brief This is a utility class, so there shouldn't be a constructor.
