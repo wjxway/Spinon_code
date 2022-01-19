@@ -1,7 +1,22 @@
 #include "DataTransmission.h"
+#include "FastIO.h"
+#include "Prints.h"
+#include "hal/rmt_ll.h"
 
-const uint8_t RMT_data_length = Robot_ID_bits + Msg_ID_bits + Msg_content_bits;
+using namespace detail;
 
+const uint8_t detail::RMT_data_length = Robot_ID_bits + Msg_ID_bits + Msg_content_bits;
+
+/**
+ * @brief CRC function using CRC-8/Maxim standard
+ *
+ * @param data input data pointer, should be in uint8_t form.
+ * @param length input data length.
+ * @return crc8 result as a int.
+ *
+ * @note copied from to https://github.com/whik/crc-lib-c
+ *       could change to other crc functions for less collision chance when the message is longer.
+ */
 uint8_t crc8_maxim(uint8_t *data, uint16_t length)
 {
     uint8_t i;
@@ -20,6 +35,12 @@ uint8_t crc8_maxim(uint8_t *data, uint16_t length)
     return crc;
 }
 
+/**
+ * @brief convert a small uint8_t array to uint32_t.
+ *
+ * @param pointer start pointer for data.
+ * @return uint32_t content field.
+ */
 inline uint32_t Construct_content(uint8_t *pointer)
 {
     uint32_t res = 0;
@@ -28,6 +49,12 @@ inline uint32_t Construct_content(uint8_t *pointer)
     return res;
 }
 
+/**
+ * @brief convert a uint32_t to a small uint8_t array.
+ *
+ * @param data input uint32_t data.
+ * @param pointer fill data starting from this pointer.
+ */
 inline void Deconstruct_content(uint32_t data, uint8_t *pointer)
 {
     for (uint32_t i = 0; i < Msg_content_bytes; i++)
@@ -36,7 +63,28 @@ inline void Deconstruct_content(uint32_t data, uint8_t *pointer)
 
 rmt_item32_t *RMT_TX_prep::Get_TX_pointer()
 {
-    rmt_item32_t *temp = output.data() + output_pos;
+    // setup the lock
+    // you should reset this externally using Reset_reader_lock()
+    reader_count_flag++;
+
+    rmt_item32_t *temp;
+
+    // check the data update state
+    switch (edit_state_flag)
+    {
+    // no one is accessing the data.
+    case 0:
+        temp = output.data() + output_pos;
+        break;
+    // TX updating program is updating the header, so we output the first data.
+    case 1:
+        temp = output.data() + RMT_TX_length;
+        break;
+    // TX updating program is updating the data, so we output the header.
+    case 2:
+        temp = output.data();
+        break;
+    }
 
     // cycle output_pos
     output_pos += RMT_TX_length;
@@ -46,18 +94,16 @@ rmt_item32_t *RMT_TX_prep::Get_TX_pointer()
     return temp;
 }
 
+void RMT_TX_prep::Reset_reader_lock()
+{
+    reader_count_flag--;
+}
+
 bool RMT_TX_prep::TX_load(std::vector<uint8_t> raw)
 {
     // make sure that raw_length_1 is a multiplication of Msg_content_bytes
     if (raw.size() % Msg_content_bytes)
         return false;
-
-    // wait for spin lock
-    while (!output_ready_flag)
-    {
-    }
-    // set flag to false to stop all access of TX data
-    output_ready_flag = false;
 
     // number of all messages - 1 (excluding header message)
     uint32_t n_msg = raw.size() / Msg_content_bytes;
@@ -66,22 +112,35 @@ bool RMT_TX_prep::TX_load(std::vector<uint8_t> raw)
     // reset output pointer
     output_pos = 0;
 
+    // set flag to 1 to prevent acessing of header
+    edit_state_flag = 1;
+    // delay a bit while so no confict will occur
+    delay25ns;
+    // lock
+    while (reader_count_flag)
+    {
+    }
     // create header
-    Generate_RMT_item(output.data(), Msg_header_t{{robot_ID, msg_id_initial, 0, n_msg, crc8_maxim(raw.data(), raw.size())}}.raw);
+    Generate_RMT_item(output.data(), Msg_header_t{{robot_ID, msg_ID_init, 0, n_msg, crc8_maxim(raw.data(), raw.size())}}.raw);
+    // set flat to 2 to prevent acessing of data
+    edit_state_flag = 2;
+    delay25ns;
+    while (reader_count_flag)
+    {
+    }
     // cycle through data
     for (uint32_t msgid = 1; msgid <= n_msg; msgid++)
-        Generate_RMT_item(output.data() + msgid * RMT_TX_length, Msg_t{{robot_ID, msg_id_initial, msgid, Construct_content(raw.data() + (msgid - 1) * Msg_content_bytes)}}.raw);
+        Generate_RMT_item(output.data() + msgid * RMT_TX_length, Msg_t{{robot_ID, msg_ID_init, msgid, Construct_content(raw.data() + (msgid - 1) * Msg_content_bytes)}}.raw);
+    // reset flag to enable normal acessing of header & data
+    edit_state_flag = 0;
 
-    // change msg_id_initial for next data set
-    msg_id_initial = (msg_id_initial ? 0 : 1);
-
-    // reset spin lock
-    output_ready_flag = true;
+    // change msg_ID_init for next data set
+    msg_ID_init = (msg_ID_init ? 0 : 1);
 
     return true;
 }
 
-void RX_data_fragments_pool::reset_pool(Trans_info info)
+void RX_data_fragments_pool::Reset_pool_data(Trans_info info)
 {
     // convert the raw message to Msg_t type
     Msg_t msg;
@@ -90,10 +149,45 @@ void RX_data_fragments_pool::reset_pool(Trans_info info)
     // reset filling status
     filling_status = 0;
 
-    // reset first message time only when it's a time out reset
-    if ((info.time - last_message_time) > Timing_expire_time)
+    msg_ID_init = msg.msg_ID_init;
+    data_valid_flag = false;
+
+    // header
+    if (msg.msg_ID)
     {
-        for (uint8_t i = 0; i < N_RECEIVERS; i++)
+        msg_count = 1;
+        msg_ID_max = 0;
+        CRC = 0;
+
+        filling_status = (uint64_t(1) << (msg.msg_ID - 1));
+        Deconstruct_content(msg.content, pool + (msg.msg_ID - 1) * Msg_content_bytes);
+    }
+    else
+    {
+        Msg_header_t msg_hd;
+        msg_hd.raw = info.data;
+
+        msg_count = 0;
+        msg_ID_max = msg_hd.msg_ID_len;
+        CRC = msg_hd.CRC;
+    }
+}
+
+bool RX_data_fragments_pool::Add_element(Trans_info info)
+{
+    // Check timing validity and update timing information
+    // Timing information should be independent to data.
+    // Timing information and data information should be processed differently,
+    // because it is possible for data to be reset while timing info should be kept. (changed data halfway in a emission)
+    // and it is also possible for timing info to be reset while data should be kept. (another round)
+    
+    // Buffer the last_RX_time before resetting,
+    // so the preceding data processing could check if data has expired.
+    uint64_t last_RX_time_temp=last_RX_time;
+
+    if ((info.time - last_RX_time) > Timing_expire_time)
+    {
+        for (uint8_t i = 0; i < RMT_RX_CHANNEL_COUNT; i++)
         {
             if ((info.receiver >> i) & 1)
                 first_message_time[i] = info.time;
@@ -101,35 +195,27 @@ void RX_data_fragments_pool::reset_pool(Trans_info info)
                 first_message_time[i] = 0;
         }
         time_ready_status = info.receiver;
-    }
 
-    last_message_time = info.time;
-    Msg_ID_init = msg.Msg_ID_init;
-    data_valid_flag = false;
-
-    // header
-    if (msg.Msg_ID)
-    {
-        Msg_count = 1;
-        Msg_max = 0;
-        CRC = 0;
-
-        filling_status = (uint64_t(1) << (msg.Msg_ID - 1));
-        Deconstruct_content(msg.content, pool + (msg.Msg_ID - 1) * Msg_content_bytes);
+        last_RX_time = info.time;
     }
     else
     {
-        Msg_header_t msg_hd;
-        msg_hd.raw = info.data;
+        // if this is the first message from a receiver, record the time.
+        // we could just input RMT.int_st.val, but then it would be hard to change the RMT channels without changing the library.
+        uint32_t temp = (info.receiver & (~time_ready_status));
+        for (uint8_t i = 0; i < RMT_RX_CHANNEL_COUNT; i++)
+            if ((temp >> i) & 1)
+                first_message_time[i] = info.time;
 
-        Msg_count = 0;
-        Msg_max = msg_hd.Msg_ID_len;
-        CRC = msg_hd.CRC;
+        // update time_ready_status
+        time_ready_status = time_ready_status | info.receiver;
+
+        // update last_RX_time
+        last_RX_time = info.time;
     }
-}
 
-bool RX_data_fragments_pool::Add_element(Trans_info info)
-{
+    // Process the data first, here we only use timing information to check whether the data has expired.
+    // Timing information and data information should be processed differently.
     // convert the raw message to Msg_t type
     Msg_t msg;
     msg.raw = info.data;
@@ -138,9 +224,9 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
     bool prev_filled = false, header_invalid = false;
 
     // data or header?
-    if (msg.Msg_ID)
+    if (msg.msg_ID)
         // if is data and previously filled
-        prev_filled = (filling_status >> (msg.Msg_ID - 1)) & 1;
+        prev_filled = (filling_status >> (msg.msg_ID - 1)) & 1;
     else
     {
         Msg_header_t msg_hd;
@@ -148,17 +234,17 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
 
         // 1. Msg_max inconsistent or CRC inconsistent
         // 2. previous data's Msg_ID > Msg_ID_len
-        header_invalid = (Msg_max && (Msg_max != msg_hd.Msg_ID_len || CRC != msg_hd.CRC)) || (filling_status >= (uint64_t(1) << msg_hd.Msg_ID_len));
+        header_invalid = (msg_ID_max && (msg_ID_max != msg_hd.msg_ID_len || CRC != msg_hd.CRC)) || (filling_status >= (uint64_t(1) << msg_hd.msg_ID_len));
 
-#ifdef _DEBUG_PRINT_
+#ifdef _DEBUG_PRINT_ENABLE_
         if (header_invalid)
         {
-            if (Msg_max && (Msg_max != msg_hd.Msg_ID_len || CRC != msg_hd.CRC))
+            if (msg_ID_max && (msg_ID_max != msg_hd.msg_ID_len || CRC != msg_hd.CRC))
             {
 
                 Serial.println("Header inconsistent");
             }
-            else if (filling_status >= (uint64_t(1) << msg_hd.Msg_ID_len))
+            else if (filling_status >= (uint64_t(1) << msg_hd.msg_ID_len))
             {
                 Serial.println("Previous Msg_ID out of bounds");
             }
@@ -166,39 +252,39 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
 #endif
 
         // if new header and valid, set it up anyway.
-        if (!Msg_max && !header_invalid)
+        if (!msg_ID_max && !header_invalid)
         {
-            Msg_max = msg_hd.Msg_ID_len;
+            msg_ID_max = msg_hd.msg_ID_len;
             CRC = msg_hd.CRC;
         }
     }
 
     // If the data is invalid, then reset the pool and consider this data as the first.
     // 0. no data
-    // 1. Msg_ID_init not the same
+    // 1. msg_ID_init not the same
     // 2. data has expired
-    // 3. Msg_ID too big
-    if ((!Msg_count && !Msg_max)                                                                            // 0. no data
-        || msg.Msg_ID_init != Msg_ID_init                                                                   // 1. Msg_ID_init not the same
-        || (info.time - last_message_time) > Timing_expire_time                                             // 2. data has expired
-        || (Msg_max && msg.Msg_ID > Msg_max)                                                                // 3. Msg_ID too big
-        || (prev_filled && (Construct_content(pool + (msg.Msg_ID - 1) * Msg_content_bytes) != msg.content)) // 4. data inconsistent
+    // 3. msg_ID too big
+    if ((!msg_count && !msg_ID_max)                                                                            // 0. no data
+        || msg.msg_ID_init != msg_ID_init                                                                   // 1. msg_ID_init not the same
+        || (info.time - last_RX_time_temp) > Data_expire_time                                                    // 2. data has expired
+        || (msg_ID_max && msg.msg_ID > msg_ID_max)                                                                // 3. msg_ID too big
+        || (prev_filled && (Construct_content(pool + (msg.msg_ID - 1) * Msg_content_bytes) != msg.content)) // 4. data inconsistent
         || header_invalid)                                                                                  // 5. header invalid
     {
-#ifdef _DEBUG_PRINT_
-        if (!Msg_count && !Msg_max)
+#ifdef _DEBUG_PRINT_ENABLE_
+        if (!msg_count && !msg_ID_max)
             Serial.println("New pool reset");
-        else if (msg.Msg_ID_init != Msg_ID_init)
+        else if (msg.msg_ID_init != msg_ID_init)
             Serial.println("Inconsistent Msg_ID_init reset");
-        else if ((time - last_message_time) > fragments_pool_decay_time)
-            Serial.println("Pool decayed reset");
-        else if (Msg_max && msg.Msg_ID > Msg_max)
+        else if ((info.time - last_RX_time_temp) > Data_expire_time)
+            Serial.println("Pool data expire reset");
+        else if (msg_ID_max && msg.msg_ID > msg_ID_max)
             Serial.println("Msg_ID out of bounds reset");
-        else if (prev_filled && (Construct_content(pool + (msg.Msg_ID - 1) * Msg_content_bytes) != msg.content))
+        else if (prev_filled && (Construct_content(pool + (msg.msg_ID - 1) * Msg_content_bytes) != msg.content))
         {
             Serial.println("Msg content inconsistent reset");
             Serial.print("Old content: ");
-            Serial.println(Construct_content(pool + (msg.Msg_ID - 1) * Msg_content_bytes));
+            Serial.println(Construct_content(pool + (msg.msg_ID - 1) * Msg_content_bytes));
             Serial.print("New content: ");
             Serial.println(msg.content);
         }
@@ -208,50 +294,35 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
         // delayhigh100ns(18);
         // clrbit(18);
 
-        reset_pool(info);
+        Reset_pool_data(info);
     }
     // valid data
     else
     {
-        // if this is the first message from a receiver, record the time.
-        // we could just input RMT.int_st.val, but then it would be hard to change the RMT channels without changing the library.
-        uint32_t temp = (info.receiver & (~time_ready_status));
-        for (uint8_t i = 0; i < N_RECEIVERS; i++)
-            if ((temp >> i) & 1)
-                first_message_time[i] = info.time;
-
-        // update time_ready_status
-        time_ready_status = time_ready_status | info.receiver;
-
-        // update last_message_time
-        last_message_time = info.time;
-
         // new message?
-        if (msg.Msg_ID && !prev_filled)
+        if (msg.msg_ID && !prev_filled)
         {
-            Msg_count++;
+            msg_count++;
             // fill data
-            Deconstruct_content(msg.content, pool + (msg.Msg_ID - 1) * Msg_content_bytes);
+            Deconstruct_content(msg.content, pool + (msg.msg_ID - 1) * Msg_content_bytes);
             // set filling
-            filling_status += (uint64_t(1) << (msg.Msg_ID - 1));
+            filling_status += (uint64_t(1) << (msg.msg_ID - 1));
         }
 
         // if data is full, and haven't been check, check validity
-        if (!data_valid_flag && Msg_count == Msg_max)
+        if (!data_valid_flag && msg_count == msg_ID_max)
         {
             // if CRC valid, then data is complete
-            if (CRC == crc8_maxim(pool, Msg_max * Msg_content_bytes))
+            if (CRC == crc8_maxim(pool, msg_ID_max * Msg_content_bytes))
             {
                 data_valid_flag = true;
-                return 1;
+                return true;
             }
             // if not, then reset the pool
             else
             {
-#if _DEBUG_PRINT_
-                Serial.println("CRC mismatch reset");
-#endif
-                reset_pool(info);
+                DEBUG_println("CRC mismatch reset");
+                Reset_pool_data(info);
             }
         }
     }
@@ -261,7 +332,7 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
 
 bool RX_data_fragments_pool::Time_valid_q()
 {
-    return (time_ready_status == ((1 << N_RECEIVERS) - 1));
+    return (time_ready_status == ((1 << RMT_RX_CHANNEL_COUNT) - 1));
 }
 
 bool RX_data_fragments_pool::Data_valid_q()
@@ -271,24 +342,24 @@ bool RX_data_fragments_pool::Data_valid_q()
 
 uint32_t RX_data_fragments_pool::get_Msg_max()
 {
-    return Msg_max;
+    return msg_ID_max;
 }
 
 uint32_t RX_data_fragments_pool::size()
 {
-    return Msg_max * Msg_content_bytes;
+    return msg_ID_max * Msg_content_bytes;
 }
 
-void RX_data_fragments_pool::reset_pool()
+void RX_data_fragments_pool::Reset_pool_all()
 {
     filling_status = 0;
     time_ready_status = 0;
     data_valid_flag = false;
-    Msg_count = 0;
-    Msg_max = 0;
+    msg_count = 0;
+    msg_ID_max = 0;
     CRC = 0;
-    last_message_time = 0;
-    Msg_ID_init = 0;
+    last_RX_time = 0;
+    msg_ID_init = 0;
 }
 
 bool RMT_RX_prep::Parse_RX(Trans_info info)
@@ -308,17 +379,14 @@ bool RMT_RX_prep::Parse_RX(Trans_info info)
             first_zero = data_pos;
         // check if robot's id exists in the list
         else if (robot_id_list[data_pos] == robot_id)
-        {
-            data_pos = data_pos;
             break;
-        }
     }
 
     // if it's a new robot
     if (data_pos == Max_robots_simultaneous)
     {
         // setup robot id
-        robot_id_list[first_zero]=robot_id;
+        robot_id_list[first_zero] = robot_id;
         // setup pool
         // cleaning up should be Delete_obsolete's job, which shouldn't be done inside an interrupt.
         // please make sure that the pool is cleared as well when robot_id_list is cleared.
@@ -329,15 +397,542 @@ bool RMT_RX_prep::Parse_RX(Trans_info info)
         return pools[data_pos].Add_element(info);
 }
 
+RX_data_fragments_pool *RMT_RX_prep::Get_pool(uint32_t robot_id)
+{
+    // search for the corresponding pool
+    uint32_t data_pos = 0;
+    for (data_pos = 0; data_pos < Max_robots_simultaneous; data_pos++)
+        // check if robot's id exists in the list
+        if (robot_id_list[data_pos] == robot_id)
+            break;
+
+    // if it's never there
+    if (data_pos == Max_robots_simultaneous)
+        return nullptr;
+    else
+        return pools + data_pos;
+}
+
+uint32_t RMT_RX_prep::Count_neighbors()
+{
+    // search for the corresponding pool
+    uint32_t data_count = 0;
+    for (uint32_t data_pos = 0; data_pos < Max_robots_simultaneous; data_pos++)
+        // check if robot's id exists in the list
+        if (robot_id_list[data_pos])
+            data_count++;
+
+    return data_count;
+}
+
+std::vector<uint32_t> RMT_RX_prep::Get_neighbors_ID()
+{
+    std::vector<uint32_t> temp = {};
+    temp.reserve(Max_robots_simultaneous);
+
+    for (uint32_t data_pos = 0; data_pos < Max_robots_simultaneous; data_pos++)
+        // check if robot's id exists in the list
+        if (robot_id_list[data_pos])
+            temp.push_back(robot_id_list[data_pos]);
+
+    return temp;
+}
+
 void RMT_RX_prep::Delete_obsolete()
 {
     for (uint32_t pos = 0; pos < Max_robots_simultaneous; pos++)
     {
-        //if data has expired, reset the id list as well as the pool itself.
-        if(micros()-pools[pos].last_message_time>=Data_expire_time)
+        // if data has expired, reset the id list as well as the pool itself.
+        if (micros() - pools[pos].last_RX_time >= Data_expire_time)
         {
-            robot_id_list[pos]=0;
-            pools[pos].reset_pool();
+            robot_id_list[pos] = 0;
+            pools[pos].Reset_pool_all();
         }
     }
+}
+
+// initial definitions
+rmt_isr_handle_t RMT_RX_TX::xHandler = nullptr;
+hw_timer_t *RMT_RX_TX::RMT_TX_trigger_timer = nullptr;
+RMT_RX_prep *RMT_RX_TX::RX_prep = nullptr;
+RMT_TX_prep *RMT_RX_TX::TX_prep = nullptr;
+volatile uint64_t RMT_RX_TX::last_RX_time = 0;
+
+bool RMT_RX_TX::RMT_init()
+{
+// RMT output and input
+#if EMITTER_ENABLED
+    pinMode(RMT_OUT, OUTPUT);
+#endif
+#if RMT_RX_CHANNEL_COUNT >= 1
+    pinMode(RMT_IN_1, INPUT);
+#endif
+#if RMT_RX_CHANNEL_COUNT >= 2
+    pinMode(RMT_IN_1, INPUT);
+#endif
+#if RMT_RX_CHANNEL_COUNT == 3
+    pinMode(RMT_IN_1, INPUT);
+#endif
+
+#if EMITTER_ENABLED
+    // config TX
+    rmt_config_t rmt_tx;
+    rmt_tx.channel = RMT_TX_channel;
+    rmt_tx.gpio_num = (gpio_num_t)RMT_OUT;
+    rmt_tx.clk_div = RMT_clock_div;
+    // I set all mem_block_num to 2 because I can!
+    // Might help prevent overflow errors.
+    // Theoretically, this could be reduced to 1.
+    rmt_tx.mem_block_num = 2;
+    rmt_tx.rmt_mode = RMT_MODE_TX;
+    rmt_tx.tx_config.loop_en = false;
+    // We modulate our own signal, instead of using carrier!
+    rmt_tx.tx_config.carrier_level = RMT_CARRIER_LEVEL_HIGH;
+    rmt_tx.tx_config.carrier_en = 0;
+    rmt_tx.tx_config.idle_level = RMT_IDLE_LEVEL_LOW;
+    rmt_tx.tx_config.idle_output_en = 1;
+    rmt_tx.tx_config.loop_en = 0;
+    // initialization of RMT
+    if (rmt_config(&rmt_tx) != ESP_OK)
+    {
+        INIT_println("RMT TX init failed!");
+        return false;
+    }
+
+    // disable interrupt
+    rmt_set_tx_intr_en(RMT_TX_channel, false);
+    rmt_set_tx_thr_intr_en(RMT_TX_channel, false, 1);
+
+    INIT_println("RMT TX init successful!");
+
+    // config RMT_TX_prep
+    TX_prep = new RMT_TX_prep{THIS_ROBOT_ID};
+    // set raw data to contain 2 bytes of 0.
+    std::vector<uint8_t> raw_input = {0, 0};
+    if (!(TX_prep->TX_load(raw_input)))
+    {
+        INIT_println("RMT TX data prep failed!");
+        return false;
+    }
+    else
+    {
+        INIT_println("RMT TX data prep successful!");
+    }
+
+    // config timer to transmit TX once in a while
+    // we are using timer 3 to prevent confiction
+    // timer ticks 1MHz
+    RMT_TX_trigger_timer = timerBegin(RMT_TX_trigger_timer_channel, 80, true);
+    // add timer interrupt
+    timerAttachInterrupt(RMT_TX_trigger_timer, &RMT_TX_trigger, true);
+    // trigger interrupt every RMT_TX_trigger_period us.
+    timerAlarmWrite(RMT_TX_trigger_timer, RMT_TX_trigger_period, true);
+    timerAlarmEnable(RMT_TX_trigger_timer);
+
+    INIT_println("RMT TX timer interrupt successful!");
+
+    // // start emission
+    // rmt_ll_write_memory(&RMTMEM, RMT_TX_channel, emit_patt, emit_patt_length, 0);
+    // rmt_ll_tx_reset_pointer(&RMT, RMT_TX_channel);
+    // rmt_ll_tx_start(&RMT, RMT_TX_channel);
+    // Serial.println("RMT Emission successful!");
+#endif
+
+#if RMT_RX_CHANNEL_COUNT >= 1
+    // RX is enabled
+    RX_prep = new RMT_RX_prep{};
+
+    // config RX_1
+    rmt_config_t rmt_rx_1;
+    rmt_rx_1.channel = RMT_RX_channel_1;
+    rmt_rx_1.gpio_num = (gpio_num_t)RMT_IN_1;
+    rmt_rx_1.clk_div = RMT_clock_div;
+    rmt_rx_1.mem_block_num = 2;
+    rmt_rx_1.rmt_mode = RMT_MODE_RX;
+    // use 2 as filter to filter out pulses with less than 250ns
+    rmt_rx_1.rx_config.filter_en = 1;
+    rmt_rx_1.rx_config.filter_ticks_thresh = 2;
+    // stop when idle for 4us could be reduced to 3us when necessary, but should be longer than 2us.
+    rmt_rx_1.rx_config.idle_threshold = 3 * RMT_ticks_num;
+
+    if (rmt_config(&rmt_rx_1) != ESP_OK)
+    {
+        INIT_println("RMT RX_1 init failed!");
+        return false;
+    }
+    // set up filter again...
+    if (rmt_set_rx_filter(rmt_rx_1.channel, true, RMT_clock_div * RMT_ticks_num / 2) != ESP_OK)
+    {
+        INIT_println("RMT RX_1 set filter failed!");
+        return false;
+    }
+    // initialization of RMT RX interrupt
+    if (rmt_set_rx_intr_en(rmt_rx_1.channel, true) != ESP_OK)
+    {
+        INIT_println("RMT RX_1 interrupt not started!");
+        return false;
+    }
+
+#if RMT_RX_CHANNEL_COUNT >= 2
+    // config RX_2
+    rmt_config_t rmt_rx_2;
+    rmt_rx_2.channel = RMT_RX_channel_2;
+    rmt_rx_2.gpio_num = (gpio_num_t)RMT_IN_2;
+    rmt_rx_2.clk_div = RMT_clock_div;
+    rmt_rx_2.mem_block_num = 2;
+    rmt_rx_2.rmt_mode = RMT_MODE_RX;
+    rmt_rx_2.rx_config.filter_en = 1;
+    rmt_rx_2.rx_config.filter_ticks_thresh = 2;
+    rmt_rx_2.rx_config.idle_threshold = 3 * RMT_ticks_num;
+
+    if (rmt_config(&rmt_rx_2) != ESP_OK)
+    {
+        INIT_println("RMT RX_2 init failed!");
+        return false;
+    }
+    // set up filter again...
+    if (rmt_set_rx_filter(rmt_rx_2.channel, true, RMT_clock_div * RMT_ticks_num / 2) != ESP_OK)
+    {
+        INIT_println("RMT RX_2 set filter failed!");
+        return false;
+    }
+    // initialization of RMT RX interrupt
+    if (rmt_set_rx_intr_en(rmt_rx_2.channel, true) != ESP_OK)
+    {
+        INIT_println("RMT RX_2 interrupt not started!");
+        return false;
+    }
+#endif
+
+#if RMT_RX_CHANNEL_COUNT == 3
+    // config RX_3
+    rmt_config_t rmt_rx_3;
+    rmt_rx_3.channel = RMT_RX_channel_3;
+    rmt_rx_3.gpio_num = (gpio_num_t)RMT_IN_3;
+    rmt_rx_3.clk_div = RMT_clock_div;
+    rmt_rx_3.mem_block_num = 2;
+    rmt_rx_3.rmt_mode = RMT_MODE_RX;
+    rmt_rx_3.rx_config.filter_en = 1;
+    rmt_rx_3.rx_config.filter_ticks_thresh = 2;
+    rmt_rx_3.rx_config.idle_threshold = 3 * RMT_ticks_num;
+
+    if (rmt_config(&rmt_rx_3) != ESP_OK)
+    {
+        INIT_println("RMT RX_3 init failed!");
+        return false;
+    }
+    // set up filter again...
+    if (rmt_set_rx_filter(rmt_rx_3.channel, true, RMT_clock_div * RMT_ticks_num / 2) != ESP_OK)
+    {
+        INIT_println("RMT RX_3 set filter failed!");
+        return false;
+    }
+    // initialization of RMT RX interrupt
+    if (rmt_set_rx_intr_en(rmt_rx_3.channel, true) != ESP_OK)
+    {
+        INIT_println("RMT RX_3 interrupt not started!");
+        return false;
+    }
+#endif
+    // //enable default isr
+    // else if (rmt_isr_register(rmt_isr_handler, NULL, ESP_INTR_FLAG_LEVEL3, &xHandler) != ESP_OK)
+    // {
+    //     INIT_println("RMT RX interrupt register failed!");
+    //     return false;
+    // }
+
+    // setup ISR
+    if (rmt_isr_register(RMT_RX_ISR_handler, NULL, ESP_INTR_FLAG_LEVEL3, &xHandler) != ESP_OK)
+    {
+        INIT_println("RMT RX interrupt register failed!");
+        return false;
+    }
+
+    // enable RMT_RX
+    if (rmt_rx_start(rmt_rx_1.channel, 1) != ESP_OK)
+    {
+        INIT_println("RMT RX_1 start failed!");
+        return false;
+    }
+#if RMT_RX_CHANNEL_COUNT >= 2
+    if (rmt_rx_start(rmt_rx_2.channel, 1) != ESP_OK)
+    {
+        INIT_println("RMT RX_2 start failed!");
+        return false;
+    }
+#endif
+#if RMT_RX_CHANNEL_COUNT == 3
+    if (rmt_rx_start(rmt_rx_3.channel, 1) != ESP_OK)
+    {
+        INIT_println("RMT RX_3 start failed!");
+        return false;
+    }
+#endif
+    INIT_println("RMT RX setup finished!");
+#endif
+
+    return true;
+}
+
+void IRAM_ATTR RMT_RX_TX::RMT_TX_trigger()
+{
+    rmt_ll_write_memory(&RMTMEM, RMT_TX_channel, TX_prep->Get_TX_pointer(), RMT_TX_length, 0);
+    // reset the lock so other threads can continue to update the TX data
+    TX_prep->Reset_reader_lock();
+    rmt_ll_tx_reset_pointer(&RMT, RMT_TX_channel);
+    rmt_ll_tx_start(&RMT, RMT_TX_channel);
+}
+
+void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
+{
+    // // test start pulse
+    delayhigh100ns(TEST_PIN);
+    // clrbit(TEST_PIN);
+
+    // delay for a bit to make sure all RMT channels finished receiving
+    // I assume a identical signal's delay won't vary by 500ns which is half the RMT pulse width.
+    // It is highly unlikely that two valid yet different signal received within such a short time is different.
+    // If each cycle is 500us, that's a 1/1000 chance that two valid yet different signal will collide,
+    // and this still haven't take into consideration of geometric configuration.
+    delay100ns;
+    delay100ns;
+    delay100ns;
+    // delay100ns;
+    // delay100ns;
+
+    // record time
+    uint64_t rec_time;
+    rec_time = micros();
+
+    // read RMT interrupt status.
+    uint32_t intr_st = RMT.int_st.val;
+    // interrupt state, with order modified so that its 0,1,2 bits represent interrupt state for ch0, ch1, ch2.
+    uint32_t intr_st_1 = 0;
+
+    // rmt item
+    volatile rmt_item32_t *item_1, *item_2, *item_3;
+    // RMT_RX_1, corresponding to RMT channel 2
+    // This channel has the highest priority when >1 channels received the signal.
+    // So make sure that this is the channel that received the signal later.
+    // Because the channel receiving the signal later will have higher received intensity.
+    if (intr_st & (1 << (1 + 3 * RMT_RX_channel_1)))
+    {
+        // change owner state, disable rx
+        RMT.conf_ch[RMT_RX_channel_1].conf1.rx_en = 0;
+        RMT.conf_ch[RMT_RX_channel_1].conf1.mem_owner = RMT_MEM_OWNER_TX;
+        intr_st_1 += 1;
+
+        // RMT storage pointer
+        item_1 = RMTMEM.chan[RMT_RX_channel_1].data32;
+    }
+#if RMT_RX_CHANNEL_COUNT >= 2
+    // RMT_RX_2, corresponding to RMT channel 4
+    if (intr_st & (1 << (1 + 3 * RMT_RX_channel_2)))
+    {
+        // change owner state, disable rx
+        RMT.conf_ch[RMT_RX_channel_2].conf1.rx_en = 0;
+        RMT.conf_ch[RMT_RX_channel_2].conf1.mem_owner = RMT_MEM_OWNER_TX;
+        intr_st_1 += 2;
+
+        // RMT storage pointer
+        item_2 = RMTMEM.chan[RMT_RX_channel_2].data32;
+    }
+#endif
+#if RMT_RX_CHANNEL_COUNT == 3
+    // RMT_RX_3, corresponding to RMT channel 6
+    if (intr_st & (1 << (1 + 3 * RMT_RX_channel_3)))
+    {
+        // change owner state, disable rx
+        RMT.conf_ch[RMT_RX_channel_3].conf1.rx_en = 0;
+        RMT.conf_ch[RMT_RX_channel_3].conf1.mem_owner = RMT_MEM_OWNER_TX;
+        intr_st_1 += 4;
+
+        // RMT storage pointer
+        item_3 = RMTMEM.chan[RMT_RX_channel_3].data32;
+    }
+#endif
+
+    // parsing output buffer
+    uint32_t raw;
+
+    // whether this transmission is valid
+    bool this_valid = false;
+
+    // parse RMT item into a uint32_t
+    if ((intr_st_1 & 1) && Parse_RMT_item(item_1, &raw))
+    {
+#ifdef DEBUG_LED_ENABLED
+        clrbit(LED_PIN_1);
+        if (intr_st_1 & 2)
+            clrbit(LED_PIN_2);
+        if (intr_st_1 & 4)
+            clrbit(LED_PIN_3);
+#endif
+        last_RX_time = micros();
+        // add element to the pool if parsing is successful
+        RX_prep->Parse_RX(Trans_info{raw, intr_st_1, rec_time});
+        this_valid = true;
+    }
+#if RMT_RX_CHANNEL_COUNT >= 2
+    else if ((intr_st_1 & 2) && Parse_RMT_item(item_2, &raw))
+    {
+#ifdef DEBUG_LED_ENABLED
+        clrbit(LED_PIN_2);
+        if (intr_st_1 & 4)
+            clrbit(LED_PIN_3);
+#endif
+        last_RX_time = micros();
+        // add element to the pool if parsing is successful
+        RX_prep->Parse_RX(Trans_info{raw, intr_st_1 & 0b110, rec_time});
+        this_valid = true;
+    }
+#endif
+#if RMT_RX_CHANNEL_COUNT == 3
+    else if ((intr_st_1 & 4) && Parse_RMT_item(item_3, &raw))
+    {
+#ifdef DEBUG_LED_ENABLED
+        clrbit(LED_PIN_3);
+#endif
+        last_RX_time = micros();
+        // add element to the pool if parsing is successful
+        RX_prep->Parse_RX(Trans_info{raw, intr_st_1 & 0b100, rec_time});
+        this_valid = true;
+    }
+#endif
+
+    // test timing
+    // the following code should be deleted when released
+    extern uint64_t rec_finish_time;
+
+    // print & reset when data complete
+    RX_data_fragments_pool *poolptr = RX_prep->Get_pool(THIS_ROBOT_ID);
+    if (this_valid && poolptr && poolptr->Data_valid_q() && !rec_finish_time)
+    {
+#if _DEBUG_PRINT_
+        std::string str;
+        // data
+        for (uint8_t i = 0; i < (pool.Msg_max); i++)
+            str += std::to_string(pool.pool[i]) + std::string(",");
+        Serial.println(str.data());
+        // timing
+        str = "";
+        str += std::to_string(pool.Time_valid_q()) + std::string(":");
+        for (uint8_t i = 0; i < N_RECEIVERS; i++)
+            str += std::to_string(pool.first_message_time[i]) + std::string(" ");
+        Serial.println(str.data());
+#endif
+
+        // setup the time when data is fully captured.
+        rec_finish_time = micros();
+
+        // // reset the pool
+        // pool = RX_data_fragments_pool{};
+    }
+
+    // reset memory and owner state, enable rx
+    if (intr_st_1 & 1)
+    {
+        RMT.conf_ch[RMT_RX_channel_1].conf1.mem_wr_rst = 1;
+        RMT.conf_ch[RMT_RX_channel_1].conf1.mem_owner = RMT_MEM_OWNER_RX;
+        RMT.conf_ch[RMT_RX_channel_1].conf1.rx_en = 1;
+    }
+#if RMT_RX_CHANNEL_COUNT >= 2
+    if (intr_st_1 & 2)
+    {
+        RMT.conf_ch[RMT_RX_channel_2].conf1.mem_wr_rst = 1;
+        RMT.conf_ch[RMT_RX_channel_2].conf1.mem_owner = RMT_MEM_OWNER_RX;
+        RMT.conf_ch[RMT_RX_channel_2].conf1.rx_en = 1;
+    }
+#endif
+#if RMT_RX_CHANNEL_COUNT == 3
+    if (intr_st_1 & 4)
+    {
+        RMT.conf_ch[RMT_RX_channel_3].conf1.mem_wr_rst = 1;
+        RMT.conf_ch[RMT_RX_channel_3].conf1.mem_owner = RMT_MEM_OWNER_RX;
+        RMT.conf_ch[RMT_RX_channel_3].conf1.rx_en = 1;
+    }
+#endif
+
+    // clear RMT interrupt status.
+    RMT.int_clr.val = intr_st;
+
+    // delay for a bit so that the interrupt status could be cleared
+    delay100ns;
+    delay50ns;
+
+    // // test end pulse
+    // delayhigh500ns(TEST_PIN);
+    clrbit(TEST_PIN);
+}
+
+bool RMT_RX_TX::RMT_TX_add_time(uint64_t dt)
+{
+    timerWrite(RMT_TX_trigger_timer, (timerRead(RMT_TX_trigger_timer) + dt * RMT_TX_trigger_period * 80) % (RMT_TX_trigger_period * 80));
+    return true;
+}
+
+bool RMT_RX_TX::RMT_TX_resume()
+{
+    timerAlarmEnable(RMT_TX_trigger_timer);
+    return true;
+}
+
+bool RMT_RX_TX::RMT_TX_pause()
+{
+    timerAlarmDisable(RMT_TX_trigger_timer);
+    return true;
+}
+
+bool RMT_RX_TX::RMT_RX_resume()
+{
+#if RMT_RX_CHANNEL_COUNT >= 1
+    // enable RMT_RX
+    if (rmt_rx_start(RMT_RX_channel_1, 1) != ESP_OK)
+    {
+        INIT_println("RMT RX_1 start failed!");
+        return false;
+    }
+#endif
+#if RMT_RX_CHANNEL_COUNT >= 2
+    if (rmt_rx_start(RMT_RX_channel_2, 1) != ESP_OK)
+    {
+        INIT_println("RMT RX_2 start failed!");
+        return false;
+    }
+#endif
+#if RMT_RX_CHANNEL_COUNT == 3
+    if (rmt_rx_start(RMT_RX_channel_3, 1) != ESP_OK)
+    {
+        INIT_println("RMT RX_3 start failed!");
+        return false;
+    }
+#endif
+    return true;
+}
+
+bool RMT_RX_TX::RMT_RX_pause()
+{
+#if RMT_RX_CHANNEL_COUNT >= 1
+    // enable RMT_RX
+    if (rmt_rx_stop(RMT_RX_channel_1) != ESP_OK)
+    {
+        INIT_println("RMT RX_1 start failed!");
+        return false;
+    }
+#endif
+#if RMT_RX_CHANNEL_COUNT >= 2
+    if (rmt_rx_stop(RMT_RX_channel_2) != ESP_OK)
+    {
+        INIT_println("RMT RX_2 start failed!");
+        return false;
+    }
+#endif
+#if RMT_RX_CHANNEL_COUNT == 3
+    if (rmt_rx_stop(RMT_RX_channel_3) != ESP_OK)
+    {
+        INIT_println("RMT RX_3 start failed!");
+        return false;
+    }
+#endif
+    return true;
 }

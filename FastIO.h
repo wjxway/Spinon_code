@@ -1,36 +1,23 @@
-#ifndef _C_FASTIO_H_
-#define _C_FASTIO_H_
+#ifndef _FASTIO_
+#define _FASTIO_
 #pragma once
-
 #include "Arduino.h"
 
+// accurate delay functions
 #define delay25ns __asm__ __volatile__("nop;nop;nop;nop;nop;nop;")
 #define delay50ns __asm__ __volatile__("nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;")
 #define delay100ns __asm__ __volatile__("nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;")
 
+// fast switching of output
+// set and unset
 #define PRIMITIVE_CAT(x, y) x##y
+#define setbit(b) (GPIO.out_w1ts = PRIMITIVE_CAT(BIT, b))
+#define clrbit(b) (GPIO.out_w1tc = PRIMITIVE_CAT(BIT, b))
 
-//fast switching of output
-//set and unset
-#define setbit(b) (GPIO.out_w1ts = PRIMITIVE_CAT(BIT,b))
-#define clrbit(b) (GPIO.out_w1tc = PRIMITIVE_CAT(BIT,b))
+// fast read
+#define fastread(b) ((PRIMITIVE_CAT(BIT, b) & GPIO.in) ? 1 : 0)
 
-//pins def
-
-
-// //HSPI for ADC
-// #define HSCK 14
-// #define HMISO 12
-// #define HMOSI 13
-// #define HSS 15
-
-// //VSPI for DDS
-// #define VSCK 18
-// #define VMISO 19
-// #define VMOSI 23
-
-
-//timing
+// setbit + coarse delay
 #define delaylow100ns(b) \
     clrbit(b);           \
     clrbit(b);
@@ -57,9 +44,5 @@
 #define delayhigh1us(b) \
     delayhigh500ns(b);  \
     delayhigh500ns(b);
-
-
-//fast read
-#define fastread(b) ((b&GPIO.in)?1:0)
 
 #endif

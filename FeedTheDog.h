@@ -8,6 +8,6 @@
 #include "soc/timer_group_struct.h"
 
 //feed dog to prevent reboot
-void FeedTheDog();
+void Feed_the_dog();
 
 #endif

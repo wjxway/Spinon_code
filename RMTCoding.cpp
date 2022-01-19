@@ -1,6 +1,8 @@
 #include "RMTCoding.h"
 
-extern const uint8_t RMT_data_length;
+using namespace detail;
+
+extern const uint8_t detail::RMT_data_length;
 
 bool Generate_RMT_item(rmt_item32_t *pointer, uint32_t data)
 {
@@ -18,93 +20,6 @@ bool Generate_RMT_item(rmt_item32_t *pointer, uint32_t data)
 
     return true;
 }
-
-// /**
-//  * @brief Convert duration to 1 or 2 pulse periods.
-//  * @param duration Duration in ticks.
-//  * @return (1 or 2) Duration in pulse periods.
-//  * @return 0 Invalid duration.
-//  */
-// int Parse_duration(uint32_t duration)
-// {
-//     if (duration <= RMT_ticks_num + RMT_ticks_tol && duration >= RMT_ticks_num - RMT_ticks_tol)
-//         return 1;
-//     else if (duration <= (RMT_ticks_num + RMT_ticks_tol)*2 && duration >= (RMT_ticks_num - RMT_ticks_tol)*2)
-//         return 2;
-//     else
-//         return 0;
-// }
-
-// bool Parse_RMT_item(volatile rmt_item32_t *pointer, uint32_t *dataptr)
-// {
-//     // reset data
-//     *dataptr = 0;
-
-//     // just in case the idle_level isn't correct
-//     if (pointer[0].level1)
-//         return false;
-
-//     int val = 0, temp = 0, bit_pos = 0;
-//     for (int i = 0; i <= RMT_data_length; i++)
-//     {
-//         // high period
-//         temp = Parse_duration(pointer[i].duration0);
-//         if (temp)
-//         {
-//             val += temp;
-//             switch (val)
-//             {
-//             // Do nothing when is 1
-//             case 1:
-//                 break;
-//             // A 1 is present if val=2
-//             case 2:
-//                 *dataptr += (1 << (bit_pos++));
-//                 break;
-//             // It should never be 3, Or else the signal is invalid
-//             case 3:
-//                 return false;
-//             }
-//         }
-//         else
-//             return false;
-
-//         // low period
-//         // check termination
-//         if (pointer[i].duration1)
-//         {
-//             temp = Parse_duration(pointer[i].duration1);
-//             if (temp)
-//             {
-//                 val -= temp;
-//                 switch (val)
-//                 {
-//                 // Do nothing when is 1
-//                 case 1:
-//                     break;
-//                 // A 0 is present if val=0
-//                 case 0:
-//                     bit_pos++;
-//                     break;
-//                 // It should never be -1, Or else the signal is invalid
-//                 case -1:
-//                     return false;
-//                 }
-//             }
-//             else
-//                 return false;
-//         }
-//         // if data ended, then break the loop.
-//         else
-//             break;
-//     }
-
-//     // check message length
-//     if (bit_pos == RMT_data_length)
-//         return true;
-//     else
-//         return false;
-// }
 
 bool Parse_RMT_item(volatile rmt_item32_t *pointer, uint32_t *dataptr)
 {
@@ -167,14 +82,7 @@ bool Parse_RMT_item(volatile rmt_item32_t *pointer, uint32_t *dataptr)
                     bit_pos++;
             }
             else
-            {
-                // for(int j=i-2;j<=i+2;j++)
-                // {
-                //     Serial.println(pointer[j].val,BIN);
-                // }
-                // Serial.println("END");
                 return false;
-            }
         }
         // if data ended, then break the loop.
         else
