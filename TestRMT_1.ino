@@ -40,7 +40,7 @@ void setup()
 
     blink_led(3);
 
-    RMT_RX_TX::RMT_Init();
+    RMT_RX_TX::RMT_init();
     
     Serial.println("Init end...");
 }
@@ -56,7 +56,7 @@ uint64_t my_diff(uint64_t x, uint64_t y)
 // turn on light based on reception status.
 void loop()
 {
-    FeedTheDog();
+    Feed_the_dog();
 
     static uint64_t t_delay = 70000, t_delay_1 = 60000, t_on = 5000, t_LED_off = 750;
     uint64_t t_now = micros();
@@ -160,7 +160,7 @@ void loop()
     }
 
     // turn off led
-    if (t_now - RMT_RX_TX::last_message_time > t_LED_off && data_blink_state != 2)
+    if (t_now - RMT_RX_TX::last_RX_time > t_LED_off && data_blink_state != 2)
     {
         setbit(LED_PIN_1);
         setbit(LED_PIN_2);

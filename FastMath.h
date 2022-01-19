@@ -6,7 +6,7 @@
 
 //Accuracy @ 6%
 //sufficient for FFT usage
-inline float FastCos(float x) noexcept
+inline float Fast_cos(float x) noexcept
 {
     constexpr float tp = 1.0f/(2.0f*PI);
     
@@ -21,7 +21,7 @@ inline float FastCos(float x) noexcept
 
 //T could be float or double
 template<class T>
-inline int16_t FastFloorInt(T x) noexcept
+inline int16_t Fast_floor_int(T x) noexcept
 {
     int16_t val=(int16_t)x;
     if(val==x) return x;
@@ -31,13 +31,13 @@ inline int16_t FastFloorInt(T x) noexcept
 
 //T could be float or double
 template<class T>
-inline T FastFloor(T x) noexcept
+inline T Fast_floor(T x) noexcept
 {
-    return T(myfloorint(x));
+    return T(Fast_floor_int(x));
 }
 
 //accuracy @ 0.4%
-inline float FastExp(float x) noexcept
+inline float Fast_exp(float x) noexcept
 {
     constexpr float DIVLN2=1.4426950408889634074f;
 
@@ -48,7 +48,7 @@ inline float FastExp(float x) noexcept
     } u={0}, v={0};
 
     float frac=x*DIVLN2;
-    int16_t fl=FastFloorInt(frac);
+    int16_t fl=Fast_floor_int(frac);
     frac-=fl;
 
     //exponent

@@ -8,7 +8,7 @@
 #include <vector>
 
 // Each raw message is in the following form:
-// | ---Robot_ID--- | ---Msg_ID--- | ---Data--- | (---ECC--- |)
+// | ---robot_ID--- | ---msg_ID--- | ---Data or header info--- | (---ECC--- |)
 // where ID is the robot's id, MSG_ID is the ID of message, when all msg_id sent from robot_id is received, then a transmission is complete.
 // I think ECC bit is not necessary, because it is highly unlikely that the received signal is distorted in a way that
 // result in a wrong signal instead of a bad signal.
@@ -87,39 +87,41 @@ namespace detail
     /**
      * @brief Fragments pool itself's decay time. If nothing is added to the pool for this amount of time (in us),
      *        then this robot has probably leaved the communication range and this pool should be re-purposed.
+     * 
+     * @note Data_expire_time should be larger than Timing_expire_time.
      */
     constexpr uint64_t Data_expire_time = 2000000;
 
     /**
      * @brief RMT TX channel num
      */
-    constexpr rmt_channel_t RMT_TX_CHANNEL = RMT_CHANNEL_0;
+    constexpr rmt_channel_t RMT_TX_channel = RMT_CHANNEL_0;
     /**
      * @brief First RMT RX channel num (Highest priority)
      */
-    constexpr rmt_channel_t RMT_RX_CHANNEL_1 = RMT_CHANNEL_2;
+    constexpr rmt_channel_t RMT_RX_channel_1 = RMT_CHANNEL_2;
 #if RMT_RX_CHANNEL_COUNT >= 2
     /**
      * @brief Second RMT RX channel num
      */
-    constexpr rmt_channel_t RMT_RX_CHANNEL_2 = RMT_CHANNEL_4;
+    constexpr rmt_channel_t RMT_RX_channel_2 = RMT_CHANNEL_4;
 #endif
 #if RMT_RX_CHANNEL_COUNT == 3
     /**
      * @brief Third RMT RX channel num (Lowest priority)
      */
-    constexpr rmt_channel_t RMT_RX_CHANNEL_3 = RMT_CHANNEL_6;
+    constexpr rmt_channel_t RMT_RX_channel_3 = RMT_CHANNEL_6;
 #endif
 
     /**
      * @brief Timer channel used for RMT TX trigger
      */
-    constexpr uint8_t RMT_TX_TRIGGER_TIMER_CHANNEL = 3;
+    constexpr uint8_t RMT_TX_trigger_timer_channel = 3;
 
     /**
      * @brief RMT TX Trigger period in us
      */
-    constexpr uint64_t RMT_TX_TRIGGER_PERIOD = 500;
+    constexpr uint64_t RMT_TX_trigger_period = 500;
 
     /**
      * @brief general structure of messages with <=32 bits.
@@ -128,9 +130,9 @@ namespace detail
     {
         struct
         {
-            uint32_t Robot_ID : detail::Robot_ID_bits;
-            uint32_t Msg_ID_init : 1;
-            uint32_t Msg_ID : detail::Msg_ID_bits - 1;
+            uint32_t robot_ID : detail::Robot_ID_bits;
+            uint32_t msg_ID_init : 1;
+            uint32_t msg_ID : detail::Msg_ID_bits - 1;
             uint32_t content : detail::Msg_content_bits;
         };
         uint32_t raw;
@@ -143,10 +145,10 @@ namespace detail
     {
         struct
         {
-            uint32_t Robot_ID : detail::Robot_ID_bits;
-            uint32_t Msg_ID_init : 1;
-            uint32_t Msg_ID : detail::Msg_ID_bits - 1;
-            uint32_t Msg_ID_len : detail::Msg_ID_bits - 1; // Msg_ID will be from 0 (the header) to Msg_ID_len.
+            uint32_t robot_ID : detail::Robot_ID_bits;
+            uint32_t msg_ID_init : 1;
+            uint32_t msg_ID : detail::Msg_ID_bits - 1;
+            uint32_t msg_ID_len : detail::Msg_ID_bits - 1; // Msg_ID will be from 0 (the header) to Msg_ID_len.
             uint32_t CRC : detail::Msg_content_bits - detail::Msg_ID_bits + 1;
         };
         uint32_t raw;
@@ -175,7 +177,7 @@ public:
     // robot id
     uint32_t robot_ID = 0;
     // msg id initial
-    uint32_t msg_id_initial = 0;
+    uint32_t msg_ID_init = 0;
 
     /**
      * @brief Construct a new RMT_TX_prep object.
@@ -195,7 +197,7 @@ public:
      * @return true TX load successful!
      * @return false TX load failed!
      *
-     * @note msg_id_initial will automatically change every time you call this function.
+     * @note msg_ID_init will automatically change every time you call this function.
      */
     bool TX_load(std::vector<uint8_t> raw);
 
@@ -223,11 +225,9 @@ private:
     // the implementation of the read-write lock
 
     // output ready flag
-    // force it into the DRAM to ensure shorter reading time
     // 0 for all set, 1 for updating the header, 2 for updating the content.
-    volatile uint16_t output_ready_flag = 0;
+    volatile uint16_t edit_state_flag = 0;
     // number of readers
-    // force it into the DRAM to ensure shorter reading time
     // should lock write operation when there's >=1 reader
     volatile uint16_t reader_count_flag = 0;
 };
@@ -251,14 +251,12 @@ public:
     /**
      * @brief When the last message in this pool is received.
      */
-    uint64_t last_message_time = 0;
+    uint64_t last_RX_time = 0;
 
     /**
      * @brief Add element to the pool, do sanity checks, reset the pool when necessary.
      *
-     * @param data Input data.
-     * @param receiver receviers' id. from LSB to MSB, 0 to RMT_RX_CHANNEL_COUNT-1 bits, if the corresponding bit is 1 then means this receiver received the data as well.
-     * @param time Time the data arrives.
+     * @param info complete information of transmission
      * @return bool Whether the whole data stream has been completed.
      */
     bool Add_element(detail::Trans_info info);
@@ -296,12 +294,12 @@ private:
     /**
      * @brief How many messages should there be in this pool, indicated by the header message.
      */
-    uint32_t Msg_max = 0;
+    uint32_t msg_ID_max = 0;
 
     /**
      * @brief Number of messages in this pool. excluding header message!
      */
-    uint32_t Msg_count = 0;
+    uint32_t msg_count = 0;
 
     /**
      * @brief Pool filling status.
@@ -316,7 +314,7 @@ private:
     /**
      * @brief Initial bit of messages in this pool.
      */
-    uint32_t Msg_ID_init = 0;
+    uint32_t msg_ID_init = 0;
 
     /**
      * @brief CRC data.
@@ -329,19 +327,17 @@ private:
     bool data_valid_flag = false;
 
     /**
-     * @brief reset the whole pool. Then setup the first data.
+     * @brief reset the data-related contents in pool. Then setup the first data.
      *
-     * @param data Input data.
-     * @param receiver recevier's id. from 0 to RMT_RX_CHANNEL_COUNT-1
-     * @param time Time the data arrives.
+     * @param info complete information of transmission
      */
-    void reset_pool(detail::Trans_info info);
+    void Reset_pool_data(detail::Trans_info info);
 
     /**
      * @brief Reset the whole pool to its initial state.
      *        used by RMT_RX_prep when a pool is obsolete.
      */
-    void reset_pool();
+    void Reset_pool_all();
 
     // RMT_RX_prep is its friend and can acess Reset_all
     friend class RMT_RX_prep;
@@ -362,7 +358,7 @@ public:
     /**
      * @brief Parse rmt item to usable data and add it to data pool for additional processing.
      *
-     * @param pointer Pointer to raw rmt item storage.
+     * @param info complete information of transmission.
      * @return true The corresponding pool has been completed!
      * @return false More data is needed.
      */
@@ -427,14 +423,16 @@ public:
     /**
      * @brief last time when a message is received
      */
-    static uint64_t last_message_time;
+    static volatile uint64_t last_RX_time;
+
+    static volatile uint64_t last_TX_time;
 
     /**
      * @brief Initialization of RMT peripheral, should be called FIRST! Will automatically start RX & TX.
      *
      * @return bool indicating whether the initialization is successful
      */
-    static bool RMT_Init();
+    static bool RMT_init();
 
     /**
      * @brief TX timer interrupt handler
@@ -447,24 +445,31 @@ public:
     static void IRAM_ATTR RMT_RX_ISR_handler(void *arg);
 
     /**
-     * @brief Resume RMT_TX, note that this won't re-setup the timer.
+     * @brief Add some time to the current timer. Use when preventing interference with other robots.
+     *
+     * @param dt time in ticks to add
      */
-    static bool RMT_TX_RESUME();
-
-    /**
-     * @brief Pause RMT_TX, note that this won't stop or free the timer.
-     */
-    static bool RMT_TX_PAUSE();
+    static bool RMT_TX_add_time(uint64_t dt);
 
     /**
      * @brief Resume RMT_TX, note that this won't re-setup the timer.
      */
-    static bool RMT_RX_RESUME();
+    static bool RMT_TX_resume();
 
     /**
      * @brief Pause RMT_TX, note that this won't stop or free the timer.
      */
-    static bool RMT_RX_PAUSE();
+    static bool RMT_TX_pause();
+
+    /**
+     * @brief Resume RMT_TX, note that this won't re-setup the timer.
+     */
+    static bool RMT_RX_resume();
+
+    /**
+     * @brief Pause RMT_TX, note that this won't stop or free the timer.
+     */
+    static bool RMT_RX_pause();
 
     /**
      * @brief This is a utility class, so there shouldn't be a constructor.
