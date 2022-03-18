@@ -76,6 +76,8 @@ namespace detail
     /**
      * @brief Fragments pool's timing data's decay time. If nothing is added to the pool for this amount of time (in us),
      *        then the timing info should be discarded.
+     * 
+     * @note A proper value for Timing_expire_time should be the time it takes for the robot to spin 0.8 rounds.
      */
     constexpr uint64_t Timing_expire_time = 100000;
 
@@ -89,6 +91,8 @@ namespace detail
      *        then this robot has probably leaved the communication range and this pool should be re-purposed.
      * 
      * @note Data_expire_time should be larger than Timing_expire_time.
+     *       A proper value for Data_expire_time should be 1.5 times the minimum span between two consecutive TX_load(...)
+     *       So that it's not too short, but still can prevent msg_ID_init from duplication.
      */
     constexpr uint64_t Data_expire_time = 2000000;
 
