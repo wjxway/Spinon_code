@@ -24,7 +24,7 @@ namespace detail
     /**
      * @brief number of bits for robot's id.
      */
-    constexpr uint8_t Robot_ID_bits = 4;
+    constexpr uint32_t Robot_ID_bits = 4;
 
     /**
      * @brief number of bits for message's id.
@@ -36,12 +36,12 @@ namespace detail
      *          1. With Msg_ID_bits <= 7 we can use a uint64_t to indicate whether we received all the data. Save space & time.
      *          2. The full data should be transmitted in <30 deg time, and with 0.5 deg / message, this means 2^6 messages. Adding up with the header bit, it's 7 bits.
      */
-    constexpr uint8_t Msg_ID_bits = 7;
+    constexpr uint32_t Msg_ID_bits = 7;
 
     /**
      * @brief number of BYTES for message's content.
      */
-    constexpr uint8_t Msg_content_bytes = 2;
+    constexpr uint32_t Msg_content_bytes = 2;
 
     /**
      * @brief maximum memory size for data pool.
@@ -55,7 +55,7 @@ namespace detail
      *       If not, you will have to write your own function to convert an arbitrary data into a array of that many bits.
      *       And you will have to write your own ECC as well.
      */
-    constexpr uint8_t Msg_content_bits = Msg_content_bytes * 8;
+    constexpr uint32_t Msg_content_bits = Msg_content_bytes * 8;
 
     /**
      * @brief The amount of data, in bits, that's transmitted in each RMT transmission.
@@ -64,14 +64,14 @@ namespace detail
      * When RMT length is larger than 63, it will occupy at least two RMT memory register block. That's inconvenient and requires much more processing.
      * I would suggest using rmt length from 16 to 32. dUsing rmt length >32 then you will need to modify the code here and there, changing uint32_t to uint64_t.
      */
-    extern const uint8_t RMT_data_length;
+    extern const uint32_t RMT_data_length;
 
     /**
      * @brief RMT TX sequnce length.
      *
      * @note RMT_TX_length = RMT_data_length + 2 because there will be a '0' header and a ending block
      */
-    const uint8_t RMT_TX_length = RMT_data_length + 2;
+    const uint32_t RMT_TX_length = RMT_data_length + 2;
 
     /**
      * @brief Fragments pool's timing data's decay time. If nothing is added to the pool for this amount of time (in us),
@@ -79,7 +79,7 @@ namespace detail
      * 
      * @note A proper value for Timing_expire_time should be the time it takes for the robot to spin 0.8 rounds.
      */
-    constexpr uint64_t Timing_expire_time = 100000;
+    constexpr uint64_t Timing_expire_time = 80000;
 
     /**
      * @brief maximum number of robots that can communicate with a single robot in the same period of time.
@@ -120,12 +120,12 @@ namespace detail
     /**
      * @brief Timer channel used for RMT TX trigger
      */
-    constexpr uint8_t RMT_TX_trigger_timer_channel = 3;
+    constexpr uint32_t RMT_TX_trigger_timer_channel = 3;
 
     /**
      * @brief RMT TX Trigger period in us
      */
-    constexpr uint64_t RMT_TX_trigger_period = 500;
+    constexpr uint64_t RMT_TX_trigger_period = 100;
 
     /**
      * @brief general structure of messages with <=32 bits.
@@ -230,10 +230,10 @@ private:
 
     // output ready flag
     // 0 for all set, 1 for updating the header, 2 for updating the content.
-    volatile uint16_t edit_state_flag = 0;
+    volatile uint32_t edit_state_flag = 0;
     // number of readers
     // should lock write operation when there's >=1 reader
-    volatile uint16_t reader_count_flag = 0;
+    volatile uint32_t reader_count_flag = 0;
 };
 
 /**
@@ -250,7 +250,7 @@ public:
     /**
      * @brief When each receiver received its first message from this robot.
      */
-    uint64_t first_message_time[RMT_RX_CHANNEL_COUNT] = {0};
+    uint64_t first_message_time[RMT_RX_CHANNEL_COUNT] = {};
 
     /**
      * @brief When the last message in this pool is received.
@@ -323,7 +323,7 @@ private:
     /**
      * @brief CRC data.
      */
-    uint8_t CRC = 0;
+    uint32_t CRC = 0;
 
     /**
      * @brief Data valid indicator.
@@ -432,9 +432,11 @@ public:
     static volatile uint64_t last_TX_time;
 
     /**
-     * @brief Initialization of RMT peripheral, should be called FIRST! Will automatically start RX & TX.
+     * @brief Initialization of RMT peripheral, should be called FIRST! Will automatically start RX, but not TX.
      *
      * @return bool indicating whether the initialization is successful
+     * 
+     * @note You can start TX with RMT_TX_resume(), after loading your own data (default data is {0,0}).
      */
     static bool RMT_init();
 

@@ -5,7 +5,7 @@
 
 using namespace detail;
 
-const uint8_t detail::RMT_data_length = Robot_ID_bits + Msg_ID_bits + Msg_content_bits;
+const uint32_t detail::RMT_data_length = Robot_ID_bits + Msg_ID_bits + Msg_content_bits;
 
 /**
  * @brief CRC function using CRC-8/Maxim standard
@@ -17,10 +17,10 @@ const uint8_t detail::RMT_data_length = Robot_ID_bits + Msg_ID_bits + Msg_conten
  * @note copied from to https://github.com/whik/crc-lib-c
  *       could change to other crc functions for less collision chance when the message is longer.
  */
-uint8_t crc8_maxim(uint8_t *data, uint16_t length)
+uint32_t crc8_maxim(uint8_t *data, uint32_t length)
 {
-    uint8_t i;
-    uint8_t crc = 0; // Initial value
+    uint32_t i;
+    uint32_t crc = 0; // Initial value
     while (length--)
     {
         crc ^= *data++; // crc ^= *data; data++;
@@ -187,7 +187,7 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
 
     if ((info.time - last_RX_time) > Timing_expire_time)
     {
-        for (uint8_t i = 0; i < RMT_RX_CHANNEL_COUNT; i++)
+        for (uint32_t i = 0; i < RMT_RX_CHANNEL_COUNT; i++)
         {
             if ((info.receiver >> i) & 1)
                 first_message_time[i] = info.time;
@@ -203,7 +203,7 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
         // if this is the first message from a receiver, record the time.
         // we could just input RMT.int_st.val, but then it would be hard to change the RMT channels without changing the library.
         uint32_t temp = (info.receiver & (~time_ready_status));
-        for (uint8_t i = 0; i < RMT_RX_CHANNEL_COUNT; i++)
+        for (uint32_t i = 0; i < RMT_RX_CHANNEL_COUNT; i++)
             if ((temp >> i) & 1)
                 first_message_time[i] = info.time;
 
@@ -236,7 +236,7 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
         // 2. previous data's Msg_ID > Msg_ID_len
         header_invalid = (msg_ID_max && (msg_ID_max != msg_hd.msg_ID_len || CRC != msg_hd.CRC)) || (filling_status >= (uint64_t(1) << msg_hd.msg_ID_len));
 
-#ifdef _DEBUG_PRINT_ENABLE_
+#if _DEBUG_PRINT_ENABLE_
         if (header_invalid)
         {
             if (msg_ID_max && (msg_ID_max != msg_hd.msg_ID_len || CRC != msg_hd.CRC))
@@ -271,7 +271,7 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
         || (prev_filled && (Construct_content(pool + (msg.msg_ID - 1) * Msg_content_bytes) != msg.content)) // 4. data inconsistent
         || header_invalid)                                                                                  // 5. header invalid
     {
-#ifdef _DEBUG_PRINT_ENABLE_
+#if _DEBUG_PRINT_ENABLE_
         if (!msg_count && !msg_ID_max)
             Serial.println("New pool reset");
         else if (msg.msg_ID_init != msg_ID_init)
@@ -289,10 +289,6 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
             Serial.println(msg.content);
         }
 #endif
-
-        // // test set pin
-        // delayhigh100ns(18);
-        // clrbit(18);
 
         Reset_pool_data(info);
     }
@@ -527,7 +523,7 @@ bool RMT_RX_TX::RMT_init()
     timerAttachInterrupt(RMT_TX_trigger_timer, &RMT_TX_trigger, true);
     // trigger interrupt every RMT_TX_trigger_period us.
     timerAlarmWrite(RMT_TX_trigger_timer, RMT_TX_trigger_period, true);
-    timerAlarmEnable(RMT_TX_trigger_timer);
+    // timerAlarmEnable(RMT_TX_trigger_timer);
 
     INIT_println("RMT TX timer interrupt successful!");
 
@@ -761,12 +757,12 @@ void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
     // parse RMT item into a uint32_t
     if ((intr_st_1 & 1) && Parse_RMT_item(item_1, &raw))
     {
-#ifdef DEBUG_LED_ENABLED
-        clrbit(LED_PIN_1);
+#if DEBUG_LED_ENABLED
+        digitalWrite(LED_PIN_1,LOW);
         if (intr_st_1 & 2)
-            clrbit(LED_PIN_2);
+            digitalWrite(LED_PIN_2,LOW);
         if (intr_st_1 & 4)
-            clrbit(LED_PIN_3);
+            digitalWrite(LED_PIN_3,LOW);
 #endif
         last_RX_time = micros();
         // add element to the pool if parsing is successful
@@ -776,10 +772,10 @@ void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
 #if RMT_RX_CHANNEL_COUNT >= 2
     else if ((intr_st_1 & 2) && Parse_RMT_item(item_2, &raw))
     {
-#ifdef DEBUG_LED_ENABLED
-        clrbit(LED_PIN_2);
+#if DEBUG_LED_ENABLED
+        digitalWrite(LED_PIN_2,LOW);
         if (intr_st_1 & 4)
-            clrbit(LED_PIN_3);
+            digitalWrite(LED_PIN_3,LOW);
 #endif
         last_RX_time = micros();
         // add element to the pool if parsing is successful
@@ -790,8 +786,8 @@ void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
 #if RMT_RX_CHANNEL_COUNT == 3
     else if ((intr_st_1 & 4) && Parse_RMT_item(item_3, &raw))
     {
-#ifdef DEBUG_LED_ENABLED
-        clrbit(LED_PIN_3);
+#if DEBUG_LED_ENABLED
+        digitalWrite(LED_PIN_3,LOW);
 #endif
         last_RX_time = micros();
         // add element to the pool if parsing is successful
@@ -811,13 +807,13 @@ void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
 #if _DEBUG_PRINT_
         std::string str;
         // data
-        for (uint8_t i = 0; i < (pool.Msg_max); i++)
+        for (uint32_t i = 0; i < (pool.Msg_max); i++)
             str += std::to_string(pool.pool[i]) + std::string(",");
         Serial.println(str.data());
         // timing
         str = "";
         str += std::to_string(pool.Time_valid_q()) + std::string(":");
-        for (uint8_t i = 0; i < N_RECEIVERS; i++)
+        for (uint32_t i = 0; i < N_RECEIVERS; i++)
             str += std::to_string(pool.first_message_time[i]) + std::string(" ");
         Serial.println(str.data());
 #endif
