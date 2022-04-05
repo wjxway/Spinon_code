@@ -1,32 +1,34 @@
-#include "FeedTheDog.h"
-#include "FastIO.h"
-#include "DataTransmission.h"
+#include "FeedTheDog.hpp"
+#include "FastIO.hpp"
+#include "DataTransmission.hpp"
 #include "soc/timer_group_reg.h"
 #include "soc/timer_group_struct.h"
 
+#include <SPI.h>
+
 #include <string>
 
-#include "Prints.h"
+#include "Prints.hpp"
 #include "hal/rmt_ll.h"
 
-uint64_t rec_finish_time=0;
+uint64_t rec_finish_time = 0;
 
 // Blink the LED
 void blink_led(int n)
 {
     for (int i = 0; i < n; i++)
     {
-        digitalWrite(LED_PIN_1,LOW);
-        digitalWrite(LED_PIN_2,LOW);
-        digitalWrite(LED_PIN_3,LOW);
+        digitalWrite(LED_PIN_1, LOW);
+        digitalWrite(LED_PIN_2, LOW);
+        digitalWrite(LED_PIN_3, LOW);
 
-        delay(30);
+        delay(100);
 
-        digitalWrite(LED_PIN_1,HIGH);
-        digitalWrite(LED_PIN_2,HIGH);
-        digitalWrite(LED_PIN_3,HIGH);
+        digitalWrite(LED_PIN_1, HIGH);
+        digitalWrite(LED_PIN_2, HIGH);
+        digitalWrite(LED_PIN_3, HIGH);
 
-        delay(30);
+        delay(100);
     }
 }
 
@@ -41,26 +43,147 @@ void blink_led(int n)
 //     rmt_ll_tx_start(&RMT, detail::RMT_TX_channel);
 // }
 
+//
+
+SPIClass *hspi = nullptr;
+// a mutex to allow only one task to use spi at a time
+xSemaphoreHandle HSPI_MUTEX;
+
+void Time_comm_task(void *pvParameters)
+{
+    // buffer
+    uint64_t buffer[RMT_RX_CHANNEL_COUNT] = {};
+    while (1)
+    {
+#if RMT_RX_CHANNEL_COUNT
+        // check queues
+        xQueueReceive(RMT_RX_TX::time_queue, (void *)buffer, portMAX_DELAY);
+
+        // use MUTEX to ensure that only one task can use hspi at a time
+        xSemaphoreTake(HSPI_MUTEX, portMAX_DELAY);
+        // transfer the data out via spi
+        hspi->transfer((uint8_t *)buffer, sizeof(buffer));
+        xSemaphoreGive(HSPI_MUTEX);
+
+#else
+        // if no receiver, just delete the task.
+        vTaskDelete(NULL);
+#endif
+    }
+}
+
+void Data_comm_task(void *pvParameters)
+{
+    // buffer, just 10 bytes for test
+    uint8_t buffer[10] = {0};
+    while (1)
+    {
+#if RMT_RX_CHANNEL_COUNT
+        // check queues
+        xQueueReceive(RMT_RX_TX::time_queue, (void *)buffer, portMAX_DELAY);
+
+        // use MUTEX to ensure that only one task can use hspi at a time
+        xSemaphoreTake(HSPI_MUTEX, portMAX_DELAY);
+        // transfer the data out via spi
+        hspi->transfer((uint8_t *)buffer, sizeof(buffer));
+        xSemaphoreGive(HSPI_MUTEX);
+
+#else
+        // if no receiver, just delete the task.
+        vTaskDelete(NULL);
+#endif
+    }
+}
+
+void LED_off_task(void *pvParameters)
+{
+    while (1)
+    {
+        // still need to feed the dog
+        Feed_the_dog();
+
+        // turn off led if they haven't been refreshed for a while
+        if (micros() - RMT_RX_TX::last_RX_time > 100)
+        {
+            digitalWrite(LED_PIN_1, HIGH);
+            digitalWrite(LED_PIN_2, HIGH);
+            digitalWrite(LED_PIN_3, HIGH);
+        }
+        delayMicroseconds(50);
+    }
+}
 
 void setup()
 {
     Serial.begin(115200);
-    Serial.println("Init start...");
-    
+    INIT_println("Init start...");
+
+    hspi = new SPIClass(HSPI);
+
+    // hspi
+    hspi->begin();
+    hspi->beginTransaction(SPISettings(5000000, MSBFIRST, SPI_MODE2));
+
     // test output
     pinMode(TEST_PIN, OUTPUT);
+    digitalWrite(TEST_PIN, LOW);
+
     pinMode(LED_PIN_1, OUTPUT);
     pinMode(LED_PIN_2, OUTPUT);
     pinMode(LED_PIN_3, OUTPUT);
 
     blink_led(3);
-    
-    // TX
+
+    // LED off task
+    xTaskCreatePinnedToCore(
+        LED_off_task,
+        "LED_off_task",
+        1000,
+        NULL,
+        2,
+        NULL,
+        0);
+
+    // initialize all
     RMT_RX_TX::RMT_init();
-    RMT_RX_TX::TX_prep->TX_load(std::vector<uint8_t>{1,2,3,4});
+
+    // load TX data and begin TX
+#if EMITTER_ENABLED
+    RMT_RX_TX::TX_prep->TX_load(std::vector<uint8_t>{1, 2, 3, 4});
     RMT_RX_TX::RMT_TX_resume();
 
-    Serial.println("Init end...");
+    INIT_println("RMT TX setup finished!");
+#endif
+
+    // send RX data through SPI
+#if RMT_RX_CHANNEL_COUNT
+    // setup hspi mutex
+    HSPI_MUTEX = xSemaphoreCreateMutex();
+
+    // time comm task
+    xTaskCreatePinnedToCore(
+        Time_comm_task,
+        "Time_comm_task",
+        10000,
+        NULL,
+        3,
+        NULL,
+        0);
+
+    // data comm task
+    xTaskCreatePinnedToCore(
+        Data_comm_task,
+        "Data_comm_task",
+        10000,
+        NULL,
+        3,
+        NULL,
+        0);
+
+    INIT_println("RMT RX setup finished!");
+#endif
+
+    INIT_println("Init end...");
 }
 
 uint64_t my_diff(uint64_t x, uint64_t y)
@@ -71,11 +194,9 @@ uint64_t my_diff(uint64_t x, uint64_t y)
         return y - x;
 }
 
-// turn on light based on reception status.
+// do nothing in loop
 void loop()
 {
-    Feed_the_dog();
-
     // static uint64_t t_delay = 70000, t_delay_1 = 60000, t_on = 5000, t_LED_off = 750;
     // uint64_t t_now = micros();
 
@@ -177,10 +298,5 @@ void loop()
     //     }
     // }
 
-    // // turn off led
-    // if (t_now - RMT_RX_TX::last_RX_time > t_LED_off && data_blink_state != 2)
-    // {
-    //     setbit(LED_PIN_1);
-    //     setbit(LED_PIN_2);
-    // }
+    vTaskDelay(portMAX_DELAY);
 }

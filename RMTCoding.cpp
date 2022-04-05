@@ -1,4 +1,4 @@
-#include "RMTCoding.h"
+#include "RMTCoding.hpp"
 
 // speed is crucial, no debug here!
 #define NDEBUG

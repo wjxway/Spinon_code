@@ -2,5 +2,6 @@
     "port": "COM3",
     "configuration": "PartitionScheme=default,UploadSpeed=921600,DebugLevel=none",
     "board": "esp32:esp32:pico32",
-    "sketch": "TestRMT_1.ino"
+    "sketch": "TestRMT_1.ino",
+    "output": "../ArduinoOutput"
 }
