@@ -61,8 +61,11 @@ void Time_comm_task(void *pvParameters)
 
         // use MUTEX to ensure that only one task can use hspi at a time
         xSemaphoreTake(HSPI_MUTEX, portMAX_DELAY);
+        delaylow100ns(HSS);
         // transfer the data out via spi
         hspi->transfer((uint8_t *)buffer, sizeof(buffer));
+        delaylow100ns(HSS);
+        setbit(HSS);
         xSemaphoreGive(HSPI_MUTEX);
 
 #else
@@ -80,12 +83,15 @@ void Data_comm_task(void *pvParameters)
     {
 #if RMT_RX_CHANNEL_COUNT
         // check queues
-        xQueueReceive(RMT_RX_TX::time_queue, (void *)buffer, portMAX_DELAY);
+        xQueueReceive(RMT_RX_TX::data_queue, (void *)buffer, portMAX_DELAY);
 
         // use MUTEX to ensure that only one task can use hspi at a time
         xSemaphoreTake(HSPI_MUTEX, portMAX_DELAY);
+        delaylow100ns(HSS);
         // transfer the data out via spi
         hspi->transfer((uint8_t *)buffer, sizeof(buffer));
+        delaylow100ns(HSS);
+        setbit(HSS);
         xSemaphoreGive(HSPI_MUTEX);
 
 #else
@@ -118,15 +124,17 @@ void setup()
     Serial.begin(115200);
     INIT_println("Init start...");
 
-    hspi = new SPIClass(HSPI);
-
     // hspi
+    hspi = new SPIClass(HSPI);
     hspi->begin();
-    hspi->beginTransaction(SPISettings(5000000, MSBFIRST, SPI_MODE2));
+    hspi->beginTransaction(SPISettings(5000000, MSBFIRST, SPI_MODE0));
+
+    pinMode(HSS,OUTPUT);
+    setbit(HSS);
 
     // test output
     pinMode(TEST_PIN, OUTPUT);
-    digitalWrite(TEST_PIN, LOW);
+    pinMode(TEST_PIN_2,OUTPUT);
 
     pinMode(LED_PIN_1, OUTPUT);
     pinMode(LED_PIN_2, OUTPUT);

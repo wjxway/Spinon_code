@@ -34,7 +34,7 @@ bool IRAM_ATTR Parse_RMT_item(volatile rmt_item32_t *pointer, uint32_t *dataptr)
     int32_t data = 0, val = 0, bit_pos = 1;
     rmt_item32_t temp;
 
-    for (int i = 0; i <= RMT_data_length; i++)
+    for (int32_t i = 0; i <= RMT_data_length; i++)
     {
         // buffer the data to prevent repetitive flash reads.
         temp.val = pointer[i].val;

@@ -212,15 +212,15 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
                 first_message_time[i] = info.time;
 
         // time valid status before this update
-        bool valid_temp=Time_valid_q();
+        bool valid_temp = Time_valid_q();
         // update time_ready_status
         time_ready_status = time_ready_status | info.receiver;
 
         // when timing is ready at this step, add it to queue.
-        if(Time_valid_q()&&!valid_temp)
+        if (Time_valid_q() && !valid_temp)
         {
-            //set timeout to 0, so if it's lost, it's lost.
-            xQueueSend(RMT_RX_TX::time_queue,(void *)first_message_time,0);
+            // set timeout to 0, so if it's lost, it's lost.
+            xQueueSend(RMT_RX_TX::time_queue, (void *)first_message_time, 0);
         }
 
         // update last_RX_time
@@ -328,7 +328,7 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
 
                 // send data via queue
                 // set timeout to 0, so if it's lost, it's lost.
-                xQueueSend(RMT_RX_TX::data_queue,(void *)pool,0);
+                xQueueSend(RMT_RX_TX::data_queue, (void *)pool, 0);
 
                 return true;
             }
@@ -408,7 +408,9 @@ bool RMT_RX_prep::Parse_RX(Trans_info info)
     }
     // if it's a already existing one, just update the corresponding pool.
     else
+    {
         return pools[data_pos].Add_element(info);
+    }
 }
 
 RX_data_fragments_pool *RMT_RX_prep::Get_pool(uint32_t robot_id)
@@ -558,10 +560,10 @@ bool RMT_RX_TX::RMT_init()
 
     // initialize Queues
     // time_queue, for simplicity, just store all time data
-    time_queue=xQueueCreate(100,sizeof(uint64_t)*RMT_RX_CHANNEL_COUNT);
+    time_queue = xQueueCreate(100, sizeof(uint64_t) * RMT_RX_CHANNEL_COUNT);
     // for simplicity, in the tests we will just transmit the data's first 10 bytes (because test data won't exceed this length).
     // in reality, we also need to send the length of the data
-    data_queue=xQueueCreate(100,sizeof(uint8_t)*10);
+    data_queue = xQueueCreate(100, sizeof(uint8_t) * 10);
 
     // config RX_1
     rmt_config_t rmt_rx_1;
@@ -716,7 +718,7 @@ void IRAM_ATTR RMT_RX_TX::RMT_TX_trigger()
 
 void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
 {
-    // // test start pulse
+    // test start pulse
     delayhigh100ns(TEST_PIN);
     // clrbit(TEST_PIN);
 
@@ -789,15 +791,36 @@ void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
     if ((intr_st_1 & 1) && Parse_RMT_item(item_1, &raw))
     {
 #if DEBUG_LED_ENABLED
-        digitalWrite(LED_PIN_1, LOW);
-        if (intr_st_1 & 2)
-            digitalWrite(LED_PIN_2, LOW);
-        else
-            digitalWrite(LED_PIN_2,HIGH);
+        // digitalWrite(LED_PIN_1, LOW);
+        // if (intr_st_1 & 2)
+        //     digitalWrite(LED_PIN_2, LOW);
+        // else
+        //     digitalWrite(LED_PIN_2,HIGH);
+        // if (intr_st_1 & 4)
+        //     digitalWrite(LED_PIN_3, LOW);
+        // else
+        //     digitalWrite(LED_PIN_3,HIGH);
+
+        // if CH3 is on, then always light up LED_3
         if (intr_st_1 & 4)
+        {
+            digitalWrite(LED_PIN_1, HIGH);
+            digitalWrite(LED_PIN_2, HIGH);
             digitalWrite(LED_PIN_3, LOW);
+        }
+        // if not, then it depends on how many channels are on
+        else if (intr_st_1 == 1)
+        {
+            digitalWrite(LED_PIN_1, LOW);
+            digitalWrite(LED_PIN_2, HIGH);
+            digitalWrite(LED_PIN_3, HIGH);
+        }
         else
-            digitalWrite(LED_PIN_3,HIGH);
+        {
+            digitalWrite(LED_PIN_1, HIGH);
+            digitalWrite(LED_PIN_2, LOW);
+            digitalWrite(LED_PIN_3, HIGH);
+        }
 #endif
         last_RX_time = micros();
         // add element to the pool if parsing is successful
@@ -808,12 +831,26 @@ void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
     else if ((intr_st_1 & 2) && Parse_RMT_item(item_2, &raw))
     {
 #if DEBUG_LED_ENABLED
-        digitalWrite(LED_PIN_1, HIGH);
-        digitalWrite(LED_PIN_2, LOW);
+        // digitalWrite(LED_PIN_1, HIGH);
+        // digitalWrite(LED_PIN_2, LOW);
+        // if (intr_st_1 & 4)
+        //     digitalWrite(LED_PIN_3, LOW);
+        // else
+        //     digitalWrite(LED_PIN_3,HIGH);
+
         if (intr_st_1 & 4)
+        {
+            digitalWrite(LED_PIN_1, HIGH);
+            digitalWrite(LED_PIN_2, HIGH);
             digitalWrite(LED_PIN_3, LOW);
+        }
+        // if not, then it depends on how many channels are on
         else
-            digitalWrite(LED_PIN_3,HIGH);
+        {
+            digitalWrite(LED_PIN_1, LOW);
+            digitalWrite(LED_PIN_2, HIGH);
+            digitalWrite(LED_PIN_3, HIGH);
+        }
 #endif
         last_RX_time = micros();
         // add element to the pool if parsing is successful
@@ -835,6 +872,9 @@ void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
         this_valid = true;
     }
 #endif
+
+    // if(this_valid)
+    //     setbit(TEST_PIN_2);
 
     //     // test timing
     //     // the following code should be deleted when released
@@ -899,6 +939,7 @@ void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
     // // test end pulse
     // delayhigh500ns(TEST_PIN);
     clrbit(TEST_PIN);
+    // clrbit(TEST_PIN_2);
 }
 
 void RMT_RX_TX::RX_process_task(void *parameters)

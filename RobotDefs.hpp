@@ -7,9 +7,9 @@
 #define DEBUG_LED_ENABLED 1
 
 // number of receivers
-#define RMT_RX_CHANNEL_COUNT 0
+#define RMT_RX_CHANNEL_COUNT 3
 // whether to enable the emitter, set to 0 or comment this line to disable.
-#define EMITTER_ENABLED 1
+#define EMITTER_ENABLED 0
 
 // Robot's ID
 constexpr uint32_t THIS_ROBOT_ID = 5;
@@ -29,18 +29,19 @@ constexpr uint32_t THIS_ROBOT_ID = 5;
 #endif
 
 // test pins
-#define TEST_PIN 16
+#define TEST_PIN 27
+#define TEST_PIN_2 23
 
 // R,G,B channels respectively
 #define LED_PIN_1 33
 #define LED_PIN_2 25
 #define LED_PIN_3 32
 
-// //HSPI pins
-// #define HSCK 14
-// #define HMISO 12
-// #define HMOSI 13
-// #define HSS 15
+//HSPI pins
+#define HSCK 14
+#define HMISO 12
+#define HMOSI 13
+#define HSS 15
 
 // //VSPI pins
 // #define VSCK 18
