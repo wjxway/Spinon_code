@@ -219,8 +219,13 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
         // when timing is ready at this step, add it to queue.
         if (Time_valid_q() && !valid_temp)
         {
+            uint64_t temp_buf[4] = {0};
+            temp_buf[0] = robot_id;
+            temp_buf[1] = first_message_time[0];
+            temp_buf[2] = first_message_time[1];
+            temp_buf[3] = first_message_time[2];
             // set timeout to 0, so if it's lost, it's lost.
-            xQueueSend(RMT_RX_TX::time_queue, (void *)first_message_time, 0);
+            xQueueSend(RMT_RX_TX::time_queue, (void *)temp_buf, 0);
         }
 
         // update last_RX_time
@@ -232,6 +237,9 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
     // convert the raw message to Msg_t type
     Msg_t msg;
     msg.raw = info.data;
+
+    // still find it helpful to record the robot id in the pool.
+    robot_id = msg.robot_ID;
 
     // some helper criteria
     bool prev_filled = false, header_invalid = false;
@@ -326,9 +334,16 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
             {
                 data_valid_flag = true;
 
+                uint8_t temp_buf[10] = {0};
+                temp_buf[0] = robot_id + 128;
+                temp_buf[1] = pool[0];
+                temp_buf[2] = pool[1];
+                temp_buf[3] = pool[2];
+                temp_buf[4] = pool[3];
+
                 // send data via queue
                 // set timeout to 0, so if it's lost, it's lost.
-                xQueueSend(RMT_RX_TX::data_queue, (void *)pool, 0);
+                xQueueSend(RMT_RX_TX::data_queue, (void *)temp_buf, 0);
 
                 return true;
             }
@@ -560,10 +575,10 @@ bool RMT_RX_TX::RMT_init()
 
     // initialize Queues
     // time_queue, for simplicity, just store all time data
-    time_queue = xQueueCreate(100, sizeof(uint64_t) * RMT_RX_CHANNEL_COUNT);
+    time_queue = xQueueCreate(300, sizeof(uint64_t) * (RMT_RX_CHANNEL_COUNT + 1));
     // for simplicity, in the tests we will just transmit the data's first 10 bytes (because test data won't exceed this length).
     // in reality, we also need to send the length of the data
-    data_queue = xQueueCreate(100, sizeof(uint8_t) * 10);
+    data_queue = xQueueCreate(300, sizeof(uint8_t) * 10);
 
     // config RX_1
     rmt_config_t rmt_rx_1;

@@ -7,9 +7,9 @@
 #define DEBUG_LED_ENABLED 1
 
 // number of receivers
-#define RMT_RX_CHANNEL_COUNT 3
+#define RMT_RX_CHANNEL_COUNT 0
 // whether to enable the emitter, set to 0 or comment this line to disable.
-#define EMITTER_ENABLED 0
+#define EMITTER_ENABLED 1
 
 // Robot's ID
 constexpr uint32_t THIS_ROBOT_ID = 5;

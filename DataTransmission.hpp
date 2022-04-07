@@ -80,7 +80,7 @@ namespace detail
      *
      * @note A proper value for Timing_expire_time should be the time it takes for the robot to spin 0.8 rounds.
      */
-    constexpr uint64_t Timing_expire_time = 80000;
+    constexpr uint64_t Timing_expire_time = 60000;
 
     /**
      * @brief maximum number of robots that can communicate with a single robot in the same period of time.
@@ -276,6 +276,11 @@ private:
 class RX_data_fragments_pool
 {
 public:
+    /**
+     * @brief corresponding robot's id
+     */
+    uint32_t robot_id = 0;
+
     /**
      * @brief Pool of data fragments.
      */

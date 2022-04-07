@@ -52,7 +52,7 @@ xSemaphoreHandle HSPI_MUTEX;
 void Time_comm_task(void *pvParameters)
 {
     // buffer
-    uint64_t buffer[RMT_RX_CHANNEL_COUNT] = {};
+    uint64_t buffer[RMT_RX_CHANNEL_COUNT + 1] = {};
     while (1)
     {
 #if RMT_RX_CHANNEL_COUNT
@@ -129,12 +129,12 @@ void setup()
     hspi->begin();
     hspi->beginTransaction(SPISettings(5000000, MSBFIRST, SPI_MODE0));
 
-    pinMode(HSS,OUTPUT);
+    pinMode(HSS, OUTPUT);
     setbit(HSS);
 
     // test output
     pinMode(TEST_PIN, OUTPUT);
-    pinMode(TEST_PIN_2,OUTPUT);
+    pinMode(TEST_PIN_2, OUTPUT);
 
     pinMode(LED_PIN_1, OUTPUT);
     pinMode(LED_PIN_2, OUTPUT);
@@ -157,7 +157,7 @@ void setup()
 
     // load TX data and begin TX
 #if EMITTER_ENABLED
-    RMT_RX_TX::TX_prep->TX_load(std::vector<uint8_t>{1, 2, 3, 4});
+    RMT_RX_TX::TX_prep->TX_load(std::vector<uint8_t>{THIS_ROBOT_ID + 1, THIS_ROBOT_ID + 2, THIS_ROBOT_ID + 3, THIS_ROBOT_ID + 4});
     RMT_RX_TX::RMT_TX_resume();
 
     INIT_println("RMT TX setup finished!");
