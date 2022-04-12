@@ -109,7 +109,7 @@ void LED_off_task(void *pvParameters)
         Feed_the_dog();
 
         // turn off led if they haven't been refreshed for a while
-        if (micros() - RMT_RX_TX::last_RX_time > 100)
+        if (micros() - RMT_RX_TX::last_RX_time > 200)
         {
             digitalWrite(LED_PIN_1, HIGH);
             digitalWrite(LED_PIN_2, HIGH);
@@ -129,6 +129,10 @@ void setup()
     hspi->begin();
     hspi->beginTransaction(SPISettings(5000000, MSBFIRST, SPI_MODE0));
 
+    // provide another ground
+    pinMode(27,OUTPUT);
+    digitalWrite(27,LOW);
+
     pinMode(HSS, OUTPUT);
     setbit(HSS);
 
@@ -142,15 +146,15 @@ void setup()
 
     blink_led(3);
 
-    // LED off task
-    xTaskCreatePinnedToCore(
-        LED_off_task,
-        "LED_off_task",
-        1000,
-        NULL,
-        2,
-        NULL,
-        0);
+    // // LED off task
+    // xTaskCreatePinnedToCore(
+    //     LED_off_task,
+    //     "LED_off_task",
+    //     1000,
+    //     NULL,
+    //     2,
+    //     NULL,
+    //     0);
 
     // initialize all
     RMT_RX_TX::RMT_init();

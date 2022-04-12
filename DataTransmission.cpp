@@ -742,7 +742,7 @@ void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
     // It is highly unlikely that two valid yet different signal received within such a short time is different.
     // If each cycle is 250us, that's a 1/1000 chance that two valid yet different signal will collide,
     // and this still haven't take into consideration of geometric configuration.
-    delay100ns;
+    // delay100ns;
 
     // record time
     uint64_t rec_time;
@@ -799,6 +799,26 @@ void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
     // parsing output buffer
     uint32_t raw;
 
+    // test reception?
+    if (intr_st_1 & 1)
+        digitalWrite(LED_PIN_1, LOW);
+    else
+        digitalWrite(LED_PIN_1, HIGH);
+    if (intr_st_1 & 2)
+        digitalWrite(LED_PIN_2, LOW);
+    else
+        digitalWrite(LED_PIN_2, HIGH);
+    if (intr_st_1 & 4)
+        digitalWrite(LED_PIN_3, LOW);
+    else
+        digitalWrite(LED_PIN_3, HIGH);
+
+    delay100ns;
+    delay100ns;
+    digitalWrite(LED_PIN_1, HIGH);
+    digitalWrite(LED_PIN_2, HIGH);
+    digitalWrite(LED_PIN_3, HIGH);
+
     // whether this transmission is valid
     bool this_valid = false;
 
@@ -806,36 +826,36 @@ void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
     if ((intr_st_1 & 1) && Parse_RMT_item(item_1, &raw))
     {
 #if DEBUG_LED_ENABLED
-        // digitalWrite(LED_PIN_1, LOW);
-        // if (intr_st_1 & 2)
-        //     digitalWrite(LED_PIN_2, LOW);
-        // else
-        //     digitalWrite(LED_PIN_2,HIGH);
-        // if (intr_st_1 & 4)
-        //     digitalWrite(LED_PIN_3, LOW);
-        // else
-        //     digitalWrite(LED_PIN_3,HIGH);
-
-        // if CH3 is on, then always light up LED_3
-        if (intr_st_1 & 4)
-        {
-            digitalWrite(LED_PIN_1, HIGH);
-            digitalWrite(LED_PIN_2, HIGH);
-            digitalWrite(LED_PIN_3, LOW);
-        }
-        // if not, then it depends on how many channels are on
-        else if (intr_st_1 == 1)
-        {
-            digitalWrite(LED_PIN_1, LOW);
-            digitalWrite(LED_PIN_2, HIGH);
-            digitalWrite(LED_PIN_3, HIGH);
-        }
-        else
-        {
-            digitalWrite(LED_PIN_1, HIGH);
+        digitalWrite(LED_PIN_1, LOW);
+        if (intr_st_1 & 2)
             digitalWrite(LED_PIN_2, LOW);
+        else
+            digitalWrite(LED_PIN_2, HIGH);
+        if (intr_st_1 & 4)
+            digitalWrite(LED_PIN_3, LOW);
+        else
             digitalWrite(LED_PIN_3, HIGH);
-        }
+
+            // // if CH3 is on, then always light up LED_3
+            // if (intr_st_1 & 4)
+            // {
+            //     digitalWrite(LED_PIN_1, HIGH);
+            //     digitalWrite(LED_PIN_2, HIGH);
+            //     digitalWrite(LED_PIN_3, LOW);
+            // }
+            // // if not, then it depends on how many channels are on
+            // else if (intr_st_1 == 1)
+            // {
+            //     digitalWrite(LED_PIN_1, LOW);
+            //     digitalWrite(LED_PIN_2, HIGH);
+            //     digitalWrite(LED_PIN_3, HIGH);
+            // }
+            // else
+            // {
+            //     digitalWrite(LED_PIN_1, HIGH);
+            //     digitalWrite(LED_PIN_2, LOW);
+            //     digitalWrite(LED_PIN_3, HIGH);
+            // }
 #endif
         last_RX_time = micros();
         // add element to the pool if parsing is successful
@@ -846,26 +866,26 @@ void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
     else if ((intr_st_1 & 2) && Parse_RMT_item(item_2, &raw))
     {
 #if DEBUG_LED_ENABLED
-        // digitalWrite(LED_PIN_1, HIGH);
-        // digitalWrite(LED_PIN_2, LOW);
-        // if (intr_st_1 & 4)
-        //     digitalWrite(LED_PIN_3, LOW);
-        // else
-        //     digitalWrite(LED_PIN_3,HIGH);
-
+        digitalWrite(LED_PIN_1, HIGH);
+        digitalWrite(LED_PIN_2, LOW);
         if (intr_st_1 & 4)
-        {
-            digitalWrite(LED_PIN_1, HIGH);
-            digitalWrite(LED_PIN_2, HIGH);
             digitalWrite(LED_PIN_3, LOW);
-        }
-        // if not, then it depends on how many channels are on
         else
-        {
-            digitalWrite(LED_PIN_1, LOW);
-            digitalWrite(LED_PIN_2, HIGH);
             digitalWrite(LED_PIN_3, HIGH);
-        }
+
+            // if (intr_st_1 & 4)
+            // {
+            //     digitalWrite(LED_PIN_1, HIGH);
+            //     digitalWrite(LED_PIN_2, HIGH);
+            //     digitalWrite(LED_PIN_3, LOW);
+            // }
+            // // if not, then it depends on how many channels are on
+            // else
+            // {
+            //     digitalWrite(LED_PIN_1, LOW);
+            //     digitalWrite(LED_PIN_2, HIGH);
+            //     digitalWrite(LED_PIN_3, HIGH);
+            // }
 #endif
         last_RX_time = micros();
         // add element to the pool if parsing is successful
@@ -886,6 +906,15 @@ void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
         RX_prep->msg_buffer.push(Trans_info{raw, 0b100, rec_time});
         this_valid = true;
     }
+
+#if DEBUG_LED_ENABLED
+    delay100ns;
+    delay100ns;
+    digitalWrite(LED_PIN_1, HIGH);
+    digitalWrite(LED_PIN_2, HIGH);
+    digitalWrite(LED_PIN_3, HIGH);
+#endif
+
 #endif
 
     // if(this_valid)

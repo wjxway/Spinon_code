@@ -24,7 +24,7 @@ bool Generate_RMT_item(rmt_item32_t *pointer, uint32_t data)
     return true;
 }
 
-// fastest version
+// the new, fastest version
 bool IRAM_ATTR Parse_RMT_item(volatile rmt_item32_t *pointer, uint32_t *dataptr)
 {
     // just in case the idle_level isn't correct
@@ -77,3 +77,79 @@ bool IRAM_ATTR Parse_RMT_item(volatile rmt_item32_t *pointer, uint32_t *dataptr)
     else
         return false;
 }
+
+// The old and more picky parsing function
+// bool Parse_RMT_item(volatile rmt_item32_t *pointer, uint32_t *dataptr)
+// {
+//     // reset data
+//     *dataptr = 0;
+
+//     // just in case the idle_level isn't correct
+//     if (pointer[0].level1)
+//         return false;
+
+//     int8_t val = 0, bit_pos = 0;
+//     uint32_t temp = 0;
+//     for (int i = 0; i <= RMT_data_length; i++)
+//     {
+//         // high period
+//         temp = pointer[i].duration0;
+//         // 1 tick long
+//         if (temp <= RMT_ticks_num + RMT_ticks_tol && temp >= RMT_ticks_num - RMT_ticks_tol)
+//         {
+//             val++;
+//             if (val == 2)
+//                 *dataptr += (1 << (bit_pos++));
+//             else if (val != 1)
+//                 return false;
+//         }
+//         // 2 ticks long
+//         else if (temp <= RMT_ticks_num * 2 + RMT_ticks_tol && temp >= RMT_ticks_num * 2 - RMT_ticks_tol)
+//         {
+//             val += 2;
+//             if (val == 2)
+//                 *dataptr += (1 << (bit_pos++));
+//             else
+//                 return false;
+//         }
+//         else
+//             return false;
+
+//         // low period
+//         // check termination
+//         if (temp = pointer[i].duration1)
+//         {
+//             // 1 tick long
+//             if (temp <= RMT_ticks_num + RMT_ticks_tol && temp >= RMT_ticks_num - RMT_ticks_tol)
+//             {
+//                 val--;
+//                 if (!val)
+//                 {
+//                     bit_pos++;
+//                 }
+//                 else if (val != 1)
+//                     return false;
+//             }
+//             // 2 ticks long
+//             else if (temp <= (RMT_ticks_num + RMT_ticks_tol) * 2 && temp >= (RMT_ticks_num - RMT_ticks_tol) * 2)
+//             {
+//                 val -= 2;
+//                 if (val)
+//                     return false;
+//                 else
+//                     bit_pos++;
+//             }
+//             else
+//                 return false;
+//         }
+//         // if data ended, then break the loop.
+//         else
+//             break;
+//     }
+
+//     // check message length
+//     if (bit_pos == RMT_data_length)
+//         return true;
+//     else
+//         return false;
+// }
