@@ -1,6 +1,7 @@
 {
-    "port": "COM4",
-    "configuration": "PSRAM=disabled,PartitionScheme=default,CPUFreq=240,FlashMode=dio,FlashFreq=80,FlashSize=4M,UploadSpeed=921600,LoopCore=0,EventsCore=0,DebugLevel=none",
-    "board": "esp32:esp32:esp32",
-    "sketch": "TestRMT_1.ino"
+    "port": "COM7",
+    "configuration": "PartitionScheme=default,UploadSpeed=921600,DebugLevel=none",
+    "board": "esp32:esp32:pico32",
+    "sketch": "TestRMT_1.ino",
+    "output": "../ArduinoOutput"
 }

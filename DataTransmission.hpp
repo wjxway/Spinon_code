@@ -4,7 +4,8 @@
 #pragma once
 
 #include "Arduino.h"
-#include "RMTCoding.h"
+#include "RMTCoding.hpp"
+#include "Circbuffer.hpp"
 #include <vector>
 
 // Each raw message is in the following form:
@@ -24,7 +25,7 @@ namespace detail
     /**
      * @brief number of bits for robot's id.
      */
-    constexpr uint8_t Robot_ID_bits = 4;
+    constexpr uint32_t Robot_ID_bits = 4;
 
     /**
      * @brief number of bits for message's id.
@@ -36,12 +37,12 @@ namespace detail
      *          1. With Msg_ID_bits <= 7 we can use a uint64_t to indicate whether we received all the data. Save space & time.
      *          2. The full data should be transmitted in <30 deg time, and with 0.5 deg / message, this means 2^6 messages. Adding up with the header bit, it's 7 bits.
      */
-    constexpr uint8_t Msg_ID_bits = 7;
+    constexpr uint32_t Msg_ID_bits = 7;
 
     /**
      * @brief number of BYTES for message's content.
      */
-    constexpr uint8_t Msg_content_bytes = 2;
+    constexpr uint32_t Msg_content_bytes = 2;
 
     /**
      * @brief maximum memory size for data pool.
@@ -55,7 +56,7 @@ namespace detail
      *       If not, you will have to write your own function to convert an arbitrary data into a array of that many bits.
      *       And you will have to write your own ECC as well.
      */
-    constexpr uint8_t Msg_content_bits = Msg_content_bytes * 8;
+    constexpr uint32_t Msg_content_bits = Msg_content_bytes * 8;
 
     /**
      * @brief The amount of data, in bits, that's transmitted in each RMT transmission.
@@ -64,20 +65,22 @@ namespace detail
      * When RMT length is larger than 63, it will occupy at least two RMT memory register block. That's inconvenient and requires much more processing.
      * I would suggest using rmt length from 16 to 32. dUsing rmt length >32 then you will need to modify the code here and there, changing uint32_t to uint64_t.
      */
-    extern const uint8_t RMT_data_length;
+    extern const uint32_t RMT_data_length;
 
     /**
      * @brief RMT TX sequnce length.
      *
      * @note RMT_TX_length = RMT_data_length + 2 because there will be a '0' header and a ending block
      */
-    const uint8_t RMT_TX_length = RMT_data_length + 2;
+    const uint32_t RMT_TX_length = RMT_data_length + 2;
 
     /**
      * @brief Fragments pool's timing data's decay time. If nothing is added to the pool for this amount of time (in us),
      *        then the timing info should be discarded.
+     *
+     * @note A proper value for Timing_expire_time should be the time it takes for the robot to spin 0.8 rounds.
      */
-    constexpr uint64_t Timing_expire_time = 100000;
+    constexpr uint64_t Timing_expire_time = 60000;
 
     /**
      * @brief maximum number of robots that can communicate with a single robot in the same period of time.
@@ -87,8 +90,10 @@ namespace detail
     /**
      * @brief Fragments pool itself's decay time. If nothing is added to the pool for this amount of time (in us),
      *        then this robot has probably leaved the communication range and this pool should be re-purposed.
-     * 
+     *
      * @note Data_expire_time should be larger than Timing_expire_time.
+     *       A proper value for Data_expire_time should be 1.5 times the minimum span between two consecutive TX_load(...)
+     *       So that it's not too short, but still can prevent msg_ID_init from duplication.
      */
     constexpr uint64_t Data_expire_time = 2000000;
 
@@ -116,12 +121,12 @@ namespace detail
     /**
      * @brief Timer channel used for RMT TX trigger
      */
-    constexpr uint8_t RMT_TX_trigger_timer_channel = 3;
+    constexpr uint32_t RMT_TX_trigger_timer_channel = 3;
 
     /**
      * @brief RMT TX Trigger period in us
      */
-    constexpr uint64_t RMT_TX_trigger_period = 500;
+    constexpr uint64_t RMT_TX_trigger_period = 200;
 
     /**
      * @brief general structure of messages with <=32 bits.
@@ -164,19 +169,40 @@ namespace detail
         uint32_t receiver;
         uint64_t time;
     };
+
+    /**
+     * @brief how many messages are allowed to stay in the buffer
+     */
+    constexpr uint32_t Msg_buffer_max_size = 200;
+
+    /**
+     * @brief how frequently we read data from buffer and process it
+     *
+     * @note because we have low duty cycle, we can rest for a while and let other tasks work...
+     *       the signal's period is 100us, and there's seldom >3 emitters
+     *       so in 5ms, there's at most 150 messages we need to process.
+     */
+    constexpr uint32_t Msg_process_period = 5;
 }
 
 /**
  * @brief RMT TX preperation class. Used to process signal emissions from a single robot ID.
  *
  * @note This class is thread-safe for output data acessing
+ *       This class should only be responsible for preperation of data
+ *       but not hardware level interaction!
+ *       This seperation allows us to implement collision avoidance easier in the future.
  */
 class RMT_TX_prep
 {
 public:
-    // robot id
+    /**
+     * @brief robot's ID
+     */
     uint32_t robot_ID = 0;
-    // msg id initial
+    /**
+     * @brief msg id initial
+     */
     uint32_t msg_ID_init = 0;
 
     /**
@@ -217,19 +243,31 @@ public:
     void Reset_reader_lock();
 
 private:
-    // output data
+    /**
+     * @brief output rmt_item32_t data vector
+     */
     std::vector<rmt_item32_t> output;
-    // output data position pointer
+    /**
+     * @brief output data position pointer
+     */
     uint32_t output_pos = 0;
 
     // the implementation of the read-write lock
+    // use spinlocks and flags to prevent added timing associated with FreeRTOS
+    // though less obvious and more unsafe to some extent.
 
-    // output ready flag
-    // 0 for all set, 1 for updating the header, 2 for updating the content.
-    volatile uint16_t edit_state_flag = 0;
-    // number of readers
-    // should lock write operation when there's >=1 reader
-    volatile uint16_t reader_count_flag = 0;
+    /**
+     * @brief output ready flag
+     *
+     * @note 0 for all set, 1 for updating the header, 2 for updating the content.
+     */
+    volatile uint32_t edit_state_flag = 0;
+    /**
+     * @brief number of readers
+     *
+     * @note should lock write operation when there's >=1 reader
+     */
+    volatile uint32_t reader_count_flag = 0;
 };
 
 /**
@@ -239,6 +277,11 @@ class RX_data_fragments_pool
 {
 public:
     /**
+     * @brief corresponding robot's id
+     */
+    uint32_t robot_id = 0;
+
+    /**
      * @brief Pool of data fragments.
      */
     uint8_t pool[detail::Msg_memory_size] = {0};
@@ -246,7 +289,7 @@ public:
     /**
      * @brief When each receiver received its first message from this robot.
      */
-    uint64_t first_message_time[RMT_RX_CHANNEL_COUNT] = {0};
+    uint64_t first_message_time[RMT_RX_CHANNEL_COUNT] = {};
 
     /**
      * @brief When the last message in this pool is received.
@@ -319,7 +362,7 @@ private:
     /**
      * @brief CRC data.
      */
-    uint8_t CRC = 0;
+    uint32_t CRC = 0;
 
     /**
      * @brief Data valid indicator.
@@ -346,10 +389,22 @@ private:
 /**
  * @brief RMT RX preperation class.
  *
+ * @note this class should only be responsible for preperation of data
+ *       but not hardware level interaction!
+ *       This seperation allows us to implement collision avoidance easier in the future.
  */
 class RMT_RX_prep
 {
 public:
+    /**
+     * @brief message buffer
+     *
+     * @note messages received is first decoded by interrupt on core 0
+     *       and then stored in this buffer
+     *       before it could be put in place by core 1. (ECC / place into corresponding pool / other actions)
+     */
+    Circbuffer<detail::Trans_info> msg_buffer{detail::Msg_buffer_max_size};
+
     /**
      * @brief All pools storing data fragments sent by different robots.
      */
@@ -425,12 +480,17 @@ public:
      */
     static volatile uint64_t last_RX_time;
 
+    /**
+     * @brief last time when a message is sent
+     */
     static volatile uint64_t last_TX_time;
 
     /**
-     * @brief Initialization of RMT peripheral, should be called FIRST! Will automatically start RX & TX.
+     * @brief Initialization of RMT peripheral, should be called FIRST! Will automatically start RX, but not TX.
      *
      * @return bool indicating whether the initialization is successful
+     *
+     * @note You can start TX with RMT_TX_resume(), after loading your own data (default data is {0,0}).
      */
     static bool RMT_init();
 
@@ -443,6 +503,24 @@ public:
      * @brief RX interrupt handler
      */
     static void IRAM_ATTR RMT_RX_ISR_handler(void *arg);
+
+    /**
+     * @brief RX processor
+     *
+     * @note this process will process data in the buffer, which is originally generated by ISR handler
+     *       this process should run on core 1.
+     */
+    static void RX_process_task(void *parameters);
+
+    /**
+     * @brief a FreeRTOS queue for storing timing data
+     */
+    static xQueueHandle time_queue;
+
+    /**
+     * @brief a FreeRTOS queue for storing real data
+     */
+    static xQueueHandle data_queue;
 
     /**
      * @brief Add some time to the current timer. Use when preventing interference with other robots.
