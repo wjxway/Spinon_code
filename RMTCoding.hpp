@@ -29,19 +29,30 @@ namespace detail
      * @brief RMT clock division, rmt clock speed = 80MHz / RMT_clock_div
      * @note RMT_ticks_num * RMT_clock_div * 1/80MHz is the pulse width.
      */
-    constexpr uint32_t RMT_clock_div = 4;
+    constexpr uint32_t RMT_clock_div = 5;
 
     /**
      * @brief Ticks count of each pulse
      * @note RMT_ticks_num * RMT_clock_div * 1/80MHz is the pulse width.
      */
-    constexpr uint32_t RMT_ticks_num = 5;
+    constexpr uint32_t RMT_ticks_num = 4;
 
     /**
      * @brief Ticks number that deviate from RMT_ticks_num by RMT_ticks_tol will still be accepted
      * @note There will be error in ticks number in reality, so we could give it some tolerance
      */
-    constexpr uint32_t RMT_ticks_tol = 2;
+    constexpr uint32_t RMT_ticks_tol = 1;
+
+    /**
+     * @brief Number of bits per cycle/pulse
+     * @note Please keep it at 2 for simplicity, making it larger won't improve the performance much further.
+     */
+    constexpr uint32_t Bit_per_cycle = 2;
+
+    /**
+     * @brief Padding before each cycle in ticks
+     */
+    constexpr uint32_t Pad_per_cycle = RMT_ticks_num;
 }
 
 /**

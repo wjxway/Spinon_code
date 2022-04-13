@@ -130,8 +130,8 @@ void setup()
     hspi->beginTransaction(SPISettings(5000000, MSBFIRST, SPI_MODE0));
 
     // provide another ground
-    pinMode(27,OUTPUT);
-    digitalWrite(27,LOW);
+    pinMode(27, OUTPUT);
+    digitalWrite(27, LOW);
 
     pinMode(HSS, OUTPUT);
     setbit(HSS);
@@ -198,17 +198,43 @@ void setup()
     INIT_println("Init end...");
 }
 
-uint64_t my_diff(uint64_t x, uint64_t y)
-{
-    if (x > y)
-        return x - y;
-    else
-        return y - x;
-}
+// uint64_t my_diff(uint64_t x, uint64_t y)
+// {
+//     if (x > y)
+//         return x - y;
+//     else
+//         return y - x;
+// }
+
+// volatile rmt_item32_t val[] = {
+//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 2 + detail::Pad_per_cycle, 0}}},
+//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 3 + detail::Pad_per_cycle, 0}}},
+//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 3 + detail::Pad_per_cycle, 0}}},
+//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 3 + detail::Pad_per_cycle, 0}}},
+//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 2 + detail::Pad_per_cycle, 0}}},
+//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 3 + detail::Pad_per_cycle, 0}}},
+//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 3 + detail::Pad_per_cycle, 0}}},
+//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 4 + detail::Pad_per_cycle, 0}}},
+//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 3 + detail::Pad_per_cycle, 0}}},
+//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 3 + detail::Pad_per_cycle, 0}}},
+//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 3 + detail::Pad_per_cycle, 0}}},
+//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 1 + detail::Pad_per_cycle, 0}}},
+//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 3 + detail::Pad_per_cycle, 0}}},
+//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 3 + detail::Pad_per_cycle, 0}}},
+//     {{{detail::RMT_ticks_num, 1, 0, 0}}},
+// };
 
 // do nothing in loop
 void loop()
 {
+    // uint64_t tnow = micros();
+    // uint32_t data = 0;
+    // for (int i = 0; i < 1000000; i++)
+    //     Parse_RMT_item(val,&data);
+    // Serial.println(micros() - tnow);
+    // Serial.println(Parse_RMT_item(val, &data));
+    // Serial.println(data);
+
     // static uint64_t t_delay = 70000, t_delay_1 = 60000, t_on = 5000, t_LED_off = 750;
     // uint64_t t_now = micros();
 

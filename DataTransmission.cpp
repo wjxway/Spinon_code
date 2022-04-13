@@ -310,7 +310,6 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
             Serial.println(msg.content);
         }
 #endif
-
         Reset_pool_data(info);
     }
     // valid data
@@ -591,7 +590,7 @@ bool RMT_RX_TX::RMT_init()
     rmt_rx_1.rx_config.filter_en = 1;
     rmt_rx_1.rx_config.filter_ticks_thresh = 2;
     // stop when idle for 4us could be reduced to 3us when necessary, but should be longer than 2us.
-    rmt_rx_1.rx_config.idle_threshold = 3 * RMT_ticks_num;
+    rmt_rx_1.rx_config.idle_threshold = (2 << Bit_per_cycle) * RMT_ticks_num + Pad_per_cycle;
 
     if (rmt_config(&rmt_rx_1) != ESP_OK)
     {
@@ -621,7 +620,7 @@ bool RMT_RX_TX::RMT_init()
     rmt_rx_2.rmt_mode = RMT_MODE_RX;
     rmt_rx_2.rx_config.filter_en = 1;
     rmt_rx_2.rx_config.filter_ticks_thresh = 2;
-    rmt_rx_2.rx_config.idle_threshold = 3 * RMT_ticks_num;
+    rmt_rx_2.rx_config.idle_threshold = (2 << Bit_per_cycle) * RMT_ticks_num + Pad_per_cycle;
 
     if (rmt_config(&rmt_rx_2) != ESP_OK)
     {
@@ -652,7 +651,7 @@ bool RMT_RX_TX::RMT_init()
     rmt_rx_3.rmt_mode = RMT_MODE_RX;
     rmt_rx_3.rx_config.filter_en = 1;
     rmt_rx_3.rx_config.filter_ticks_thresh = 2;
-    rmt_rx_3.rx_config.idle_threshold = 3 * RMT_ticks_num;
+    rmt_rx_3.rx_config.idle_threshold = (((1 << Bit_per_cycle) - 1) * 2 + 1) * RMT_ticks_num + Pad_per_cycle;
 
     if (rmt_config(&rmt_rx_3) != ESP_OK)
     {
@@ -734,7 +733,9 @@ void IRAM_ATTR RMT_RX_TX::RMT_TX_trigger()
 void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
 {
     // test start pulse
-    delayhigh100ns(TEST_PIN);
+    delay100ns;
+    delay100ns;
+    // delayhigh100ns(TEST_PIN);
     // clrbit(TEST_PIN);
 
     // delay for a bit to make sure all RMT channels finished receiving
@@ -746,7 +747,7 @@ void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
 
     // record time
     uint64_t rec_time;
-    rec_time = micros();
+    rec_time = esp_timer_get_time();
 
     // read RMT interrupt status.
     uint32_t intr_st = RMT.int_st.val;
@@ -822,6 +823,8 @@ void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
     // whether this transmission is valid
     bool this_valid = false;
 
+    // setbit(TEST_PIN_2);
+
     // parse RMT item into a uint32_t
     if ((intr_st_1 & 1) && Parse_RMT_item(item_1, &raw))
     {
@@ -857,7 +860,7 @@ void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
             //     digitalWrite(LED_PIN_3, HIGH);
             // }
 #endif
-        last_RX_time = micros();
+        last_RX_time = rec_time;
         // add element to the pool if parsing is successful
         RX_prep->msg_buffer.push(Trans_info{raw, intr_st_1, rec_time});
         this_valid = true;
@@ -887,7 +890,7 @@ void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
             //     digitalWrite(LED_PIN_3, HIGH);
             // }
 #endif
-        last_RX_time = micros();
+        last_RX_time = rec_time;
         // add element to the pool if parsing is successful
         RX_prep->msg_buffer.push(Trans_info{raw, intr_st_1 & 0b110, rec_time});
         this_valid = true;
@@ -901,7 +904,7 @@ void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
         digitalWrite(LED_PIN_2, HIGH);
         digitalWrite(LED_PIN_3, LOW);
 #endif
-        last_RX_time = micros();
+        last_RX_time = rec_time;
         // add element to the pool if parsing is successful
         RX_prep->msg_buffer.push(Trans_info{raw, 0b100, rec_time});
         this_valid = true;
@@ -949,6 +952,8 @@ void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
     //         // pool = RX_data_fragments_pool{};
     //     }
 
+    // clrbit(TEST_PIN_2);
+
     // reset memory and owner state, enable rx
     if (intr_st_1 & 1)
     {
@@ -977,12 +982,12 @@ void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
     RMT.int_clr.val = intr_st;
 
     // delay for a bit so that the interrupt status could be cleared
-    delay100ns;
     delay50ns;
+    delay100ns;
 
     // // test end pulse
     // delayhigh500ns(TEST_PIN);
-    clrbit(TEST_PIN);
+    // clrbit(TEST_PIN);
     // clrbit(TEST_PIN_2);
 }
 
