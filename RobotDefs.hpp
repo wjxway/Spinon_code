@@ -12,7 +12,7 @@
 #define EMITTER_ENABLED 1
 
 // Robot's ID
-constexpr uint32_t THIS_ROBOT_ID = 8;
+constexpr uint32_t THIS_ROBOT_ID = 12;
 
 // pins def
 // For pins def, use #define for compatibility with FastIO lib.
@@ -29,7 +29,7 @@ constexpr uint32_t THIS_ROBOT_ID = 8;
 #endif
 
 // test pins
-#define TEST_PIN 16
+#define TEST_PIN 23
 #define TEST_PIN_2 16
 // #define TEST_PIN 27
 // #define TEST_PIN_2 23

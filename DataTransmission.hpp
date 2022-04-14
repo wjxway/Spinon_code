@@ -37,7 +37,7 @@ namespace detail
      *          1. With Msg_ID_bits <= 7 we can use a uint64_t to indicate whether we received all the data. Save space & time.
      *          2. The full data should be transmitted in <30 deg time, and with 0.5 deg / message, this means 2^6 messages. Adding up with the header bit, it's 7 bits.
      */
-    constexpr uint32_t Msg_ID_bits = 7;
+    constexpr uint32_t Msg_ID_bits = 8;
 
     /**
      * @brief number of BYTES for message's content.
@@ -64,6 +64,8 @@ namespace detail
      * @note RMT length should be kept below 63 for convenience of processing (leaving some space for init code and probably ECC.)
      * When RMT length is larger than 63, it will occupy at least two RMT memory register block. That's inconvenient and requires much more processing.
      * I would suggest using rmt length from 16 to 32. dUsing rmt length >32 then you will need to modify the code here and there, changing uint32_t to uint64_t.
+     * 
+     * @note Keep this an even number if using 4ppm encoding!
      */
     extern const uint32_t RMT_data_length;
 
