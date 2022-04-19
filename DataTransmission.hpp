@@ -64,7 +64,7 @@ namespace detail
      * @note RMT length should be kept below 63 for convenience of processing (leaving some space for init code and probably ECC.)
      * When RMT length is larger than 63, it will occupy at least two RMT memory register block. That's inconvenient and requires much more processing.
      * I would suggest using rmt length from 16 to 32. dUsing rmt length >32 then you will need to modify the code here and there, changing uint32_t to uint64_t.
-     * 
+     *
      * @note Keep this an even number if using 4ppm encoding!
      */
     extern const uint32_t RMT_data_length;
@@ -102,7 +102,13 @@ namespace detail
     /**
      * @brief RMT TX channel num
      */
-    constexpr rmt_channel_t RMT_TX_channel = RMT_CHANNEL_0;
+    constexpr rmt_channel_t RMT_TX_channel_1 = RMT_CHANNEL_0;
+
+    /**
+     * @brief RMT TX channel 2 num
+     */
+    constexpr rmt_channel_t RMT_TX_channel_2 = RMT_CHANNEL_1;
+
     /**
      * @brief First RMT RX channel num (Highest priority)
      */
@@ -221,13 +227,15 @@ public:
      *
      * @param raw_1 Raw data's pointer.
      * @param raw_length_1 Raw data's length in bytes.
+     * @param ticks_delay How many ticks of delay before the data, for time sync.
+     * @param ticks_final How many ticks for the final pulse in the data.
      *
      * @return true TX load successful!
      * @return false TX load failed!
      *
      * @note msg_ID_init will automatically change every time you call this function.
      */
-    bool TX_load(std::vector<uint8_t> raw);
+    bool TX_load(std::vector<uint8_t> raw, uint32_t ticks_delay, uint32_t ticks_final);
 
     /**
      * @brief Get start pointer for TX. should transmit exactly RMT_TX_length items.
@@ -475,7 +483,12 @@ public:
     /**
      * @brief TX pointer
      */
-    static RMT_TX_prep *TX_prep;
+    static RMT_TX_prep *TX_prep_1;
+
+    /**
+     * @brief TX pointer
+     */
+    static RMT_TX_prep *TX_prep_2;
 
     /**
      * @brief last time when a message is received

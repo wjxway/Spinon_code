@@ -62,11 +62,13 @@ namespace detail
  *
  * @param pointer Pointer to a pre-defined space of rmt item storage. The elements inside the array are volatile.
  * @param data Input data in an integer form.
+ * @param ticks_delay How many ticks of delay before the data, for time sync.
+ * @param ticks_final How many ticks for the final pulse in the data.
  *
  * @return true Successful!
  * @return false Unable to generate.
  */
-bool Generate_RMT_item(rmt_item32_t *pointer, uint32_t data);
+bool Generate_RMT_item(rmt_item32_t *pointer, uint32_t data, uint32_t ticks_delay, uint32_t ticks_final);
 
 /**
  * @brief Parse rmt item to data.

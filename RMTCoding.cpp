@@ -7,20 +7,27 @@ using namespace detail;
 
 extern const uint32_t detail::RMT_data_length;
 
-bool Generate_RMT_item(rmt_item32_t *pointer, uint32_t data)
+bool Generate_RMT_item(rmt_item32_t *pointer, uint32_t data, uint32_t ticks_delay, uint32_t ticks_final)
 {
     // temp zero length
     uint32_t temp_len = 0, temp = 0;
 
-    for (uint32_t i = 0; i < RMT_data_length / Bit_per_cycle; i++)
+    // delay and initial pulse
+    pointer[0] = {{{ticks_delay, 0, RMT_ticks_num, 1}}};
+
+    for (uint32_t i = 0; i < RMT_data_length / Bit_per_cycle - 1; i++)
     {
-        temp = ((data >> (i * Bit_per_cycle) & ((1 << Bit_per_cycle) - 1)));
+        temp = (((data >> (i * Bit_per_cycle)) & ((1 << Bit_per_cycle) - 1)));
         temp_len += temp;
-        pointer[i] = {{{RMT_ticks_num, 1, RMT_ticks_num * temp_len + Pad_per_cycle, 0}}};
+        pointer[i + 1] = {{{RMT_ticks_num * temp_len + Pad_per_cycle, 0, RMT_ticks_num, 1}}};
         temp_len = ((1 << Bit_per_cycle) - 1) - temp;
     }
-    // termination indicator
-    pointer[RMT_data_length / Bit_per_cycle] = {{{RMT_ticks_num, 1, 0, 0}}};
+
+    // final pulse
+    temp_len += (((data >> (RMT_data_length - Bit_per_cycle)) & ((1 << Bit_per_cycle) - 1)));
+    pointer[RMT_data_length / Bit_per_cycle] = {{{RMT_ticks_num * temp_len + Pad_per_cycle, 0, ticks_final, 1}}};
+
+    // termination
     pointer[RMT_data_length / Bit_per_cycle + 1] = {0};
 
     return true;

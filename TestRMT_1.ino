@@ -161,7 +161,8 @@ void setup()
 
     // load TX data and begin TX
 #if EMITTER_ENABLED
-    RMT_RX_TX::TX_prep->TX_load(std::vector<uint8_t>{THIS_ROBOT_ID + 1, THIS_ROBOT_ID + 2, THIS_ROBOT_ID + 3, THIS_ROBOT_ID + 4});
+    RMT_RX_TX::TX_prep_1->TX_load(std::vector<uint8_t>{THIS_ROBOT_ID + 1, THIS_ROBOT_ID + 2, THIS_ROBOT_ID + 3, THIS_ROBOT_ID + 4}, 3, detail::RMT_ticks_num);
+    RMT_RX_TX::TX_prep_2->TX_load(std::vector<uint8_t>{THIS_ROBOT_ID + 1, THIS_ROBOT_ID + 2, THIS_ROBOT_ID + 3, THIS_ROBOT_ID + 4}, 1, 2 * detail::RMT_ticks_num);
     RMT_RX_TX::RMT_TX_resume();
 
     INIT_println("RMT TX setup finished!");

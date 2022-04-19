@@ -103,7 +103,7 @@ void RMT_TX_prep::Reset_reader_lock()
     reader_count_flag--;
 }
 
-bool RMT_TX_prep::TX_load(std::vector<uint8_t> raw)
+bool RMT_TX_prep::TX_load(std::vector<uint8_t> raw, uint32_t ticks_delay, uint32_t ticks_final)
 {
     // make sure that raw_length_1 is a multiplication of Msg_content_bytes
     if (raw.size() % Msg_content_bytes)
@@ -125,7 +125,7 @@ bool RMT_TX_prep::TX_load(std::vector<uint8_t> raw)
     {
     }
     // create header
-    Generate_RMT_item(output.data(), Msg_header_t{{robot_ID, msg_ID_init, 0, n_msg, crc8_maxim(raw.data(), raw.size())}}.raw);
+    Generate_RMT_item(output.data(), Msg_header_t{{robot_ID, msg_ID_init, 0, n_msg, crc8_maxim(raw.data(), raw.size())}}.raw, ticks_delay, ticks_final);
     // set flat to 2 to prevent acessing of data
     edit_state_flag = 2;
     delay25ns;
@@ -134,7 +134,7 @@ bool RMT_TX_prep::TX_load(std::vector<uint8_t> raw)
     }
     // cycle through data
     for (uint32_t msgid = 1; msgid <= n_msg; msgid++)
-        Generate_RMT_item(output.data() + msgid * RMT_TX_length, Msg_t{{robot_ID, msg_ID_init, msgid, Construct_content(raw.data() + (msgid - 1) * Msg_content_bytes)}}.raw);
+        Generate_RMT_item(output.data() + msgid * RMT_TX_length, Msg_t{{robot_ID, msg_ID_init, msgid, Construct_content(raw.data() + (msgid - 1) * Msg_content_bytes)}}.raw, ticks_delay, ticks_final);
     // reset flag to enable normal acessing of header & data
     edit_state_flag = 0;
 
@@ -485,15 +485,20 @@ void RMT_RX_prep::Delete_obsolete()
 rmt_isr_handle_t RMT_RX_TX::xHandler = nullptr;
 hw_timer_t *RMT_RX_TX::RMT_TX_trigger_timer = nullptr;
 RMT_RX_prep *RMT_RX_TX::RX_prep = nullptr;
-RMT_TX_prep *RMT_RX_TX::TX_prep = nullptr;
+RMT_TX_prep *RMT_RX_TX::TX_prep_1 = nullptr;
+RMT_TX_prep *RMT_RX_TX::TX_prep_2 = nullptr;
 volatile uint64_t RMT_RX_TX::last_RX_time = 0;
 
 bool RMT_RX_TX::RMT_init()
 {
 // RMT output and input
 #if EMITTER_ENABLED
-    pinMode(RMT_OUT, OUTPUT);
+    pinMode(RMT_OUT_1, OUTPUT);
 #endif
+#if EMITTER_ENABLED
+    pinMode(RMT_OUT_2, OUTPUT);
+#endif
+
 #if RMT_RX_CHANNEL_COUNT >= 1
     pinMode(RMT_IN_1, INPUT);
 #endif
@@ -507,13 +512,13 @@ bool RMT_RX_TX::RMT_init()
 #if EMITTER_ENABLED
     // config TX
     rmt_config_t rmt_tx;
-    rmt_tx.channel = RMT_TX_channel;
-    rmt_tx.gpio_num = (gpio_num_t)RMT_OUT;
+    rmt_tx.channel = RMT_TX_channel_1;
+    rmt_tx.gpio_num = (gpio_num_t)RMT_OUT_1;
     rmt_tx.clk_div = RMT_clock_div;
     // I set all mem_block_num to 2 because I can!
     // Might help prevent overflow errors.
     // Theoretically, this could be reduced to 1.
-    rmt_tx.mem_block_num = 2;
+    rmt_tx.mem_block_num = 1;
     rmt_tx.rmt_mode = RMT_MODE_TX;
     rmt_tx.tx_config.loop_en = false;
     // We modulate our own signal, instead of using carrier!
@@ -530,16 +535,16 @@ bool RMT_RX_TX::RMT_init()
     }
 
     // disable interrupt
-    rmt_set_tx_intr_en(RMT_TX_channel, false);
-    rmt_set_tx_thr_intr_en(RMT_TX_channel, false, 1);
+    rmt_set_tx_intr_en(RMT_TX_channel_1, false);
+    rmt_set_tx_thr_intr_en(RMT_TX_channel_1, false, 1);
 
     INIT_println("RMT TX init successful!");
 
     // config RMT_TX_prep
-    TX_prep = new RMT_TX_prep{THIS_ROBOT_ID};
+    TX_prep_1 = new RMT_TX_prep{THIS_ROBOT_ID};
     // set raw data to contain 2 bytes of 0.
     std::vector<uint8_t> raw_input = {0, 0};
-    if (!(TX_prep->TX_load(raw_input)))
+    if (!(TX_prep_1->TX_load(raw_input, 1, RMT_ticks_num)))
     {
         INIT_println("RMT TX data prep failed!");
         return false;
@@ -560,6 +565,69 @@ bool RMT_RX_TX::RMT_init()
     // timerAlarmEnable(RMT_TX_trigger_timer);
 
     INIT_println("RMT TX timer interrupt successful!");
+
+    // // start emission
+    // rmt_ll_write_memory(&RMTMEM, RMT_TX_channel, emit_patt, emit_patt_length, 0);
+    // rmt_ll_tx_reset_pointer(&RMT, RMT_TX_channel);
+    // rmt_ll_tx_start(&RMT, RMT_TX_channel);
+    // Serial.println("RMT Emission successful!");
+#endif
+
+// second emitter
+#if EMITTER_ENABLED
+    // config TX
+    rmt_config_t rmt_tx_2;
+    rmt_tx_2.channel = RMT_TX_channel_2;
+    rmt_tx_2.gpio_num = (gpio_num_t)RMT_OUT_2;
+    rmt_tx_2.clk_div = RMT_clock_div;
+    // I set all mem_block_num to 2 because I can!
+    // Might help prevent overflow errors.
+    // Theoretically, this could be reduced to 1.
+    rmt_tx_2.mem_block_num = 1;
+    rmt_tx_2.rmt_mode = RMT_MODE_TX;
+    rmt_tx_2.tx_config.loop_en = false;
+    // We modulate our own signal, instead of using carrier!
+    rmt_tx_2.tx_config.carrier_level = RMT_CARRIER_LEVEL_HIGH;
+    rmt_tx_2.tx_config.carrier_en = 0;
+    rmt_tx_2.tx_config.idle_level = RMT_IDLE_LEVEL_LOW;
+    rmt_tx_2.tx_config.idle_output_en = 1;
+    rmt_tx_2.tx_config.loop_en = 0;
+    // initialization of RMT
+    if (rmt_config(&rmt_tx_2) != ESP_OK)
+    {
+        INIT_println("RMT TX 2 init failed!");
+        return false;
+    }
+
+    // disable interrupt
+    rmt_set_tx_intr_en(RMT_TX_channel_2, false);
+    rmt_set_tx_thr_intr_en(RMT_TX_channel_2, false, 1);
+
+    INIT_println("RMT TX init successful!");
+
+    // config RMT_TX_prep
+    TX_prep_2 = new RMT_TX_prep{THIS_ROBOT_ID};
+    if (!(TX_prep_2->TX_load(raw_input, 3, RMT_ticks_num * 2)))
+    {
+        INIT_println("RMT TX data prep failed!");
+        return false;
+    }
+    else
+    {
+        INIT_println("RMT TX data prep successful!");
+    }
+
+    // // config timer to transmit TX once in a while
+    // // we are using timer 3 to prevent confiction
+    // // timer ticks 1MHz
+    // RMT_TX_trigger_timer = timerBegin(RMT_TX_trigger_timer_channel, 80, true);
+    // // add timer interrupt
+    // timerAttachInterrupt(RMT_TX_trigger_timer, &RMT_TX_trigger, true);
+    // // trigger interrupt every RMT_TX_trigger_period us.
+    // timerAlarmWrite(RMT_TX_trigger_timer, RMT_TX_trigger_period, true);
+    // // timerAlarmEnable(RMT_TX_trigger_timer);
+
+    INIT_println("RMT TX timer 2 interrupt successful!");
 
     // // start emission
     // rmt_ll_write_memory(&RMTMEM, RMT_TX_channel, emit_patt, emit_patt_length, 0);
@@ -723,11 +791,21 @@ bool RMT_RX_TX::RMT_init()
 
 void IRAM_ATTR RMT_RX_TX::RMT_TX_trigger()
 {
-    rmt_ll_write_memory(&RMTMEM, RMT_TX_channel, TX_prep->Get_TX_pointer(), RMT_TX_length, 0);
+    rmt_ll_write_memory(&RMTMEM, RMT_TX_channel_1, TX_prep_1->Get_TX_pointer(), RMT_TX_length, 0);
     // reset the lock so other threads can continue to update the TX data
-    TX_prep->Reset_reader_lock();
-    rmt_ll_tx_reset_pointer(&RMT, RMT_TX_channel);
-    rmt_ll_tx_start(&RMT, RMT_TX_channel);
+    TX_prep_1->Reset_reader_lock();
+    rmt_ll_tx_reset_pointer(&RMT, RMT_TX_channel_1);
+
+    rmt_ll_write_memory(&RMTMEM, RMT_TX_channel_2, TX_prep_2->Get_TX_pointer(), RMT_TX_length, 0);
+    // reset the lock so other threads can continue to update the TX data
+    TX_prep_2->Reset_reader_lock();
+    rmt_ll_tx_reset_pointer(&RMT, RMT_TX_channel_2);
+
+    // start RMT as fast as possible by directly manipulating the registers
+    RMT.conf_ch[RMT_TX_channel_1].conf1.tx_start = 1;
+    // a tiny delay
+    __asm__ __volatile__("nop;");
+    RMT.conf_ch[RMT_TX_channel_2].conf1.tx_start = 1;
 }
 
 void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
