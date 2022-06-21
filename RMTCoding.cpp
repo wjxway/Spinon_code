@@ -61,6 +61,10 @@ bool IRAM_ATTR Parse_RMT_item(volatile rmt_item32_t *pointer, uint32_t *dataptr)
         val += (curr << (i * Bit_per_cycle));
     }
 
+    // the final message's length
+    // if it's larger than RMT_ticks_num+RMT_ticks_tol, then it's coming from the upper emitter, or else it's coming from the lower emitter.
+    val += ((pointer[RMT_data_length / Bit_per_cycle].duration0 > RMT_ticks_num + RMT_ticks_tol) << (32 - 1));
+
     // discard if the message length is too long.
     if (pointer[RMT_data_length / Bit_per_cycle].duration1)
         return false;

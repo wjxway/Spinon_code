@@ -1,5 +1,5 @@
-#ifndef _FASTMATH_
-#define _FASTMATH_
+#ifndef _FASTMATH_HPP_
+#define _FASTMATH_HPP_
 
 #include "Arduino.h"
 #include <math.h>

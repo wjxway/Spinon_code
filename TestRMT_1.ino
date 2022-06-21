@@ -1,6 +1,7 @@
 #include "FeedTheDog.hpp"
 #include "FastIO.hpp"
 #include "DataTransmission.hpp"
+#include "Tasks.hpp"
 #include "soc/timer_group_reg.h"
 #include "soc/timer_group_struct.h"
 
@@ -32,74 +33,71 @@ void blink_led(int n)
     }
 }
 
-// RMT_TX_prep* TX_prep=new RMT_TX_prep{THIS_ROBOT_ID};
+// /**
+//  * @brief a FreeRTOS queue for storing timing data
+//  */
+// xQueueHandle RMT_RX_time_queue;
 
-// void IRAM_ATTR RMT_TX_trigger()
+// /**
+//  * @brief a FreeRTOS queue for storing real data
+//  */
+// xQueueHandle RMT_RX_data_queue;
+
+
+// // a mutex to allow only one task to use spi at a time
+// xSemaphoreHandle HSPI_MUTEX;
+
+// void Time_comm_task(void *pvParameters)
 // {
-//     rmt_ll_write_memory(&RMTMEM, detail::RMT_TX_channel, TX_prep->Get_TX_pointer(), detail::RMT_TX_length, 0);
-//     // reset the lock so other threads can continue to update the TX data
-//     TX_prep->Reset_reader_lock();
-//     rmt_ll_tx_reset_pointer(&RMT, detail::RMT_TX_channel);
-//     rmt_ll_tx_start(&RMT, detail::RMT_TX_channel);
+//     // buffer
+//     uint64_t buffer[RMT_RX_CHANNEL_COUNT + 2] = {};
+//     while (1)
+//     {
+// #if RMT_RX_CHANNEL_COUNT
+//         // check queues
+//         xQueueReceive(RMT_RX_TX::time_queue, (void *)buffer, portMAX_DELAY);
+
+//         // use MUTEX to ensure that only one task can use hspi at a time
+//         xSemaphoreTake(HSPI_MUTEX, portMAX_DELAY);
+//         delaylow100ns(HSS);
+//         // transfer the data out via spi
+//         hspi->transfer((uint8_t *)buffer, sizeof(buffer));
+//         delaylow100ns(HSS);
+//         setbit(HSS);
+//         xSemaphoreGive(HSPI_MUTEX);
+
+// #else
+//         // if no receiver, just delete the task.
+//         vTaskDelete(NULL);
+// #endif
+//     }
 // }
 
-//
+// void Data_comm_task(void *pvParameters)
+// {
+//     // buffer, just 10 bytes for test
+//     uint8_t buffer[10] = {0};
+//     while (1)
+//     {
+// #if RMT_RX_CHANNEL_COUNT
+//         // check queues
+//         xQueueReceive(RMT_RX_TX::data_queue, (void *)buffer, portMAX_DELAY);
 
-SPIClass *hspi = nullptr;
-// a mutex to allow only one task to use spi at a time
-xSemaphoreHandle HSPI_MUTEX;
+//         // use MUTEX to ensure that only one task can use hspi at a time
+//         xSemaphoreTake(HSPI_MUTEX, portMAX_DELAY);
+//         delaylow100ns(HSS);
+//         // transfer the data out via spi
+//         hspi->transfer((uint8_t *)buffer, sizeof(buffer));
+//         delaylow100ns(HSS);
+//         setbit(HSS);
+//         xSemaphoreGive(HSPI_MUTEX);
 
-void Time_comm_task(void *pvParameters)
-{
-    // buffer
-    uint64_t buffer[RMT_RX_CHANNEL_COUNT + 1] = {};
-    while (1)
-    {
-#if RMT_RX_CHANNEL_COUNT
-        // check queues
-        xQueueReceive(RMT_RX_TX::time_queue, (void *)buffer, portMAX_DELAY);
-
-        // use MUTEX to ensure that only one task can use hspi at a time
-        xSemaphoreTake(HSPI_MUTEX, portMAX_DELAY);
-        delaylow100ns(HSS);
-        // transfer the data out via spi
-        hspi->transfer((uint8_t *)buffer, sizeof(buffer));
-        delaylow100ns(HSS);
-        setbit(HSS);
-        xSemaphoreGive(HSPI_MUTEX);
-
-#else
-        // if no receiver, just delete the task.
-        vTaskDelete(NULL);
-#endif
-    }
-}
-
-void Data_comm_task(void *pvParameters)
-{
-    // buffer, just 10 bytes for test
-    uint8_t buffer[10] = {0};
-    while (1)
-    {
-#if RMT_RX_CHANNEL_COUNT
-        // check queues
-        xQueueReceive(RMT_RX_TX::data_queue, (void *)buffer, portMAX_DELAY);
-
-        // use MUTEX to ensure that only one task can use hspi at a time
-        xSemaphoreTake(HSPI_MUTEX, portMAX_DELAY);
-        delaylow100ns(HSS);
-        // transfer the data out via spi
-        hspi->transfer((uint8_t *)buffer, sizeof(buffer));
-        delaylow100ns(HSS);
-        setbit(HSS);
-        xSemaphoreGive(HSPI_MUTEX);
-
-#else
-        // if no receiver, just delete the task.
-        vTaskDelete(NULL);
-#endif
-    }
-}
+// #else
+//         // if no receiver, just delete the task.
+//         vTaskDelete(NULL);
+// #endif
+//     }
+// }
 
 void LED_off_task(void *pvParameters)
 {
@@ -133,8 +131,8 @@ void setup()
     pinMode(27, OUTPUT);
     digitalWrite(27, LOW);
 
-    pinMode(HSS, OUTPUT);
-    setbit(HSS);
+    pinMode(HSS_PIN, OUTPUT);
+    setbit(HSS_PIN);
 
     // test output
     pinMode(TEST_PIN, OUTPUT);
@@ -160,11 +158,14 @@ void setup()
     RMT_RX_TX::RMT_init();
 
     // load TX data and begin TX
-#if EMITTER_ENABLED
+#if RMT_TX_CHANNEL_COUNT
     RMT_RX_TX::TX_prep_1->TX_load(std::vector<uint8_t>{THIS_ROBOT_ID + 1, THIS_ROBOT_ID + 2, THIS_ROBOT_ID + 3, THIS_ROBOT_ID + 4}, 3, detail::RMT_ticks_num);
-    RMT_RX_TX::TX_prep_2->TX_load(std::vector<uint8_t>{THIS_ROBOT_ID + 1, THIS_ROBOT_ID + 2, THIS_ROBOT_ID + 3, THIS_ROBOT_ID + 4}, 1, 2 * detail::RMT_ticks_num);
-    RMT_RX_TX::RMT_TX_resume();
 
+#if RMT_TX_CHANNEL_COUNT > 1
+    RMT_RX_TX::TX_prep_2->TX_load(std::vector<uint8_t>{THIS_ROBOT_ID + 1, THIS_ROBOT_ID + 2, THIS_ROBOT_ID + 3, THIS_ROBOT_ID + 4}, 1, 2 * detail::RMT_ticks_num);
+#endif
+
+    RMT_RX_TX::RMT_TX_resume();
     INIT_println("RMT TX setup finished!");
 #endif
 
@@ -199,143 +200,8 @@ void setup()
     INIT_println("Init end...");
 }
 
-// uint64_t my_diff(uint64_t x, uint64_t y)
-// {
-//     if (x > y)
-//         return x - y;
-//     else
-//         return y - x;
-// }
-
-// volatile rmt_item32_t val[] = {
-//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 2 + detail::Pad_per_cycle, 0}}},
-//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 3 + detail::Pad_per_cycle, 0}}},
-//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 3 + detail::Pad_per_cycle, 0}}},
-//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 3 + detail::Pad_per_cycle, 0}}},
-//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 2 + detail::Pad_per_cycle, 0}}},
-//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 3 + detail::Pad_per_cycle, 0}}},
-//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 3 + detail::Pad_per_cycle, 0}}},
-//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 4 + detail::Pad_per_cycle, 0}}},
-//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 3 + detail::Pad_per_cycle, 0}}},
-//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 3 + detail::Pad_per_cycle, 0}}},
-//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 3 + detail::Pad_per_cycle, 0}}},
-//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 1 + detail::Pad_per_cycle, 0}}},
-//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 3 + detail::Pad_per_cycle, 0}}},
-//     {{{detail::RMT_ticks_num, 1, detail::RMT_ticks_num * 3 + detail::Pad_per_cycle, 0}}},
-//     {{{detail::RMT_ticks_num, 1, 0, 0}}},
-// };
-
 // do nothing in loop
 void loop()
 {
-    // uint64_t tnow = micros();
-    // uint32_t data = 0;
-    // for (int i = 0; i < 1000000; i++)
-    //     Parse_RMT_item(val,&data);
-    // Serial.println(micros() - tnow);
-    // Serial.println(Parse_RMT_item(val, &data));
-    // Serial.println(data);
-
-    // static uint64_t t_delay = 70000, t_delay_1 = 60000, t_on = 5000, t_LED_off = 750;
-    // uint64_t t_now = micros();
-
-    // // timing blink
-
-    // // State of blinking
-    // // 0: already triggered
-    // // 1: awaiting emission
-    // // 2: emitting
-    // static byte time_blink_state = 0;
-
-    // // timing data
-    // static uint64_t avg_time = 0, t_distance = 0;
-
-    // // pool pointer
-    // RX_data_fragments_pool * poolptr=RMT_RX_TX::RX_prep->Get_pool(THIS_ROBOT_ID);
-
-    // // wait for new data when triggered
-    // if (!time_blink_state)
-    // {
-    //     if (poolptr && poolptr->Time_valid_q())
-    //     {
-    //         // green and then red, red 27
-    //         avg_time = 0.5 * (poolptr->first_message_time[0] + poolptr->first_message_time[1]);
-    //         // uint64_t t_distance = abs(50000.0 / (0.01 + sin(2 * PI * 0.000001 * (pool.first_message_time[1] - pool.first_message_time[0]))));
-
-    //         t_distance = 10 * my_diff(poolptr->first_message_time[1], poolptr->first_message_time[0]);
-
-    //         time_blink_state = 1;
-    //     }
-    // }
-    // else if (time_blink_state == 1)
-    // {
-    //     if (t_now >= avg_time + t_delay)
-    //     {
-    //         clrbit(LED_PIN_3);
-
-    //         time_blink_state = 2;
-    //     }
-    // }
-    // else if (time_blink_state == 2)
-    // {
-    //     if (t_now >= avg_time + t_delay + t_distance)
-    //     {
-    //         setbit(LED_PIN_3);
-
-    //         // reset the pool
-    //         *poolptr = RX_data_fragments_pool{};
-
-    //         time_blink_state = 0;
-    //     }
-    // }
-
-    // // data valid blink
-
-    // // State of blinking
-    // // 0: already triggered
-    // // 1: awaiting emission
-    // // 2: emitting
-    // static byte data_blink_state = 0;
-
-    // // timing data
-    // static uint64_t rec_finish_time_1 = 0;
-
-    // // wait for new data when triggered
-    // if (!data_blink_state)
-    // {
-    //     if (rec_finish_time != 0)
-    //     {
-    //         // buffer the data
-    //         rec_finish_time_1 = rec_finish_time;
-
-    //         data_blink_state = 1;
-    //     }
-    // }
-    // else if (data_blink_state == 1)
-    // {
-    //     if (t_now >= rec_finish_time_1 + t_delay_1)
-    //     {
-    //         clrbit(LED_PIN_1);
-    //         clrbit(LED_PIN_2);
-    //         clrbit(LED_PIN_3);
-
-    //         data_blink_state = 2;
-    //     }
-    // }
-    // else if (data_blink_state == 2)
-    // {
-    //     if (t_now >= rec_finish_time_1 + t_delay_1 + t_on)
-    //     {
-    //         setbit(LED_PIN_1);
-    //         setbit(LED_PIN_2);
-    //         setbit(LED_PIN_3);
-
-    //         // reset the time
-    //         rec_finish_time = 0;
-
-    //         data_blink_state = 0;
-    //     }
-    // }
-
     vTaskDelay(portMAX_DELAY);
 }

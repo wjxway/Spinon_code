@@ -1,5 +1,5 @@
-#ifndef _FEEDTHEDOG_
-#define _FEEDTHEDOG_
+#ifndef _FEEDTHEDOG_HPP_
+#define _FEEDTHEDOG_HPP_
 #pragma once
 
 #include "Arduino.h"

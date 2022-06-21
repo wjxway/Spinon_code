@@ -1,5 +1,5 @@
-#ifndef _FASTIO_
-#define _FASTIO_
+#ifndef _FASTIO_HPP_
+#define _FASTIO_HPP_
 #pragma once
 #include "Arduino.h"
 

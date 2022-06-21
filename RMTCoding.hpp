@@ -1,6 +1,6 @@
 // Encoding & decoding of RMT signal
-#ifndef _RMTCODING_
-#define _RMTCODING_
+#ifndef _RMTCODING_HPP_
+#define _RMTCODING_HPP_
 #pragma once
 
 #include "Arduino.h"

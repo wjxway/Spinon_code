@@ -1,5 +1,5 @@
-#ifndef _PRINTS_
-#define _PRINTS_
+#ifndef _PRINTS_HPP_
+#define _PRINTS_HPP_
 #pragma once
 #include "Arduino.h"
 

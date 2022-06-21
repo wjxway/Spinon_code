@@ -6,8 +6,8 @@
 // 1. the buffer size always larger than the content size (overriding in push will never occur)
 // 2. there's only one writer (push) and one reader (pop).
 
-#ifndef _CIRCBUFFER_
-#define _CIRCBUFFER_
+#ifndef _CIRCBUFFER_HPP_
+#define _CIRCBUFFER_HPP_
 #pragma once
 
 #include "Arduino.h"

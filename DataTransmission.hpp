@@ -1,6 +1,6 @@
 // Encoding & decoding of RMT signal
-#ifndef _DATATRANSMISSION_
-#define _DATATRANSMISSION_
+#ifndef _DATATRANSMISSION_HPP_
+#define _DATATRANSMISSION_HPP_
 #pragma once
 
 #include "Arduino.h"
@@ -25,7 +25,7 @@ namespace detail
     /**
      * @brief number of bits for robot's id.
      */
-    constexpr uint32_t Robot_ID_bits = 4;
+    constexpr uint32_t Robot_ID_bits = 6;
 
     /**
      * @brief number of bits for message's id.
@@ -33,11 +33,11 @@ namespace detail
      *       so that we can distinguish from different data groups sent by the same robot at different time.
      *       If the robot received a message with the other intial bit, it should discard all previous incomplete messages
      *       With the previous initial bit, because the data they contains are already obsolete.
-     *       Should set to <=7, for two reasons.
-     *          1. With Msg_ID_bits <= 7 we can use a uint64_t to indicate whether we received all the data. Save space & time.
+     *       Should set to <= 7, for two reasons.
+     *          1. With Msg_ID_bits <= 8, the ID has <= 7 bits, thus we can use a uint64_t to indicate whether we received all the data. Save space & time.
      *          2. The full data should be transmitted in <30 deg time, and with 0.5 deg / message, this means 2^6 messages. Adding up with the header bit, it's 7 bits.
      */
-    constexpr uint32_t Msg_ID_bits = 8;
+    constexpr uint32_t Msg_ID_bits = 6;
 
     /**
      * @brief number of BYTES for message's content.
@@ -66,6 +66,8 @@ namespace detail
      * I would suggest using rmt length from 16 to 32. dUsing rmt length >32 then you will need to modify the code here and there, changing uint32_t to uint64_t.
      *
      * @note Keep this an even number if using 4ppm encoding!
+     *
+     * @note for simplicity, make sure that this is <= 31, we are currently using the 32th bit to pass the receiver's position (top or bottom).
      */
     extern const uint32_t RMT_data_length;
 
@@ -134,7 +136,7 @@ namespace detail
     /**
      * @brief RMT TX Trigger period in us
      */
-    constexpr uint64_t RMT_TX_trigger_period = 200;
+    constexpr uint64_t RMT_TX_trigger_period = 50;
 
     /**
      * @brief general structure of messages with <=32 bits.
@@ -298,8 +300,10 @@ public:
 
     /**
      * @brief When each receiver received its first message from this robot.
+     *
+     * @note first_message_time[RMT_RX_CHANNEL_COUNT] indicates whether the message is sent by the top emitter or the bottom one.
      */
-    uint64_t first_message_time[RMT_RX_CHANNEL_COUNT] = {};
+    uint64_t first_message_time[RMT_RX_CHANNEL_COUNT + 1] = {};
 
     /**
      * @brief When the last message in this pool is received.
@@ -467,6 +471,16 @@ private:
     uint32_t robot_id_list[detail::Max_robots_simultaneous] = {0};
 };
 
+/**
+ * @brief a FreeRTOS queue for storing timing data
+ */
+extern xQueueHandle RMT_RX_time_queue;
+
+/**
+ * @brief a FreeRTOS queue for storing real data
+ */
+extern xQueueHandle RMT_RX_data_queue;
+
 class RMT_RX_TX final
 {
 public:
@@ -526,16 +540,6 @@ public:
      *       this process should run on core 1.
      */
     static void RX_process_task(void *parameters);
-
-    /**
-     * @brief a FreeRTOS queue for storing timing data
-     */
-    static xQueueHandle time_queue;
-
-    /**
-     * @brief a FreeRTOS queue for storing real data
-     */
-    static xQueueHandle data_queue;
 
     /**
      * @brief Add some time to the current timer. Use when preventing interference with other robots.

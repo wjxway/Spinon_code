@@ -5,11 +5,11 @@
 
 using namespace detail;
 
-const uint32_t detail::RMT_data_length = Robot_ID_bits + Msg_ID_bits + Msg_content_bits;
+// definition
+xQueueHandle RMT_RX_time_queue=nullptr;
+xQueueHandle RMT_RX_data_queue=nullptr;
 
-// declaration of queues
-xQueueHandle RMT_RX_TX::time_queue;
-xQueueHandle RMT_RX_TX::data_queue;
+const uint32_t detail::RMT_data_length = Robot_ID_bits + Msg_ID_bits + Msg_content_bits;
 
 /**
  * @brief CRC function using CRC-8/Maxim standard
@@ -189,6 +189,7 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
     // so the preceding data processing could check if data has expired.
     uint64_t last_RX_time_temp = last_RX_time;
 
+    // If previous data has expired, reset it completely.
     if ((info.time - last_RX_time) > Timing_expire_time)
     {
         for (uint32_t i = 0; i < RMT_RX_CHANNEL_COUNT; i++)
@@ -198,6 +199,14 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
             else
                 first_message_time[i] = 0;
         }
+
+#if RMT_RX_CHANNEL_COUNT > 2
+        // this is only valid when there're three receivers
+        // record whether it's the top emitter that's emitting or the bottom one.
+        if ((info.receiver >> 2) & 1)
+            first_message_time[3] = (info.data >> (32 - 1));
+#endif
+
         time_ready_status = info.receiver;
 
         last_RX_time = info.time;
@@ -211,21 +220,30 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
             if ((temp >> i) & 1)
                 first_message_time[i] = info.time;
 
+#if RMT_RX_CHANNEL_COUNT > 2
+        // this is only valid when there're three receivers
+        // record whether it's the top emitter that's emitting or the bottom one.
+        if ((temp >> 2) & 1)
+            first_message_time[3] = (info.data >> (32 - 1));
+#endif
+
         // time valid status before this update
         bool valid_temp = Time_valid_q();
         // update time_ready_status
         time_ready_status = time_ready_status | info.receiver;
 
         // when timing is ready at this step, add it to queue.
+        // this step is hardware dependent, only applies to 3 receiver config!
         if (Time_valid_q() && !valid_temp)
         {
-            uint64_t temp_buf[4] = {0};
+            uint64_t temp_buf[5] = {0};
             temp_buf[0] = robot_id;
             temp_buf[1] = first_message_time[0];
             temp_buf[2] = first_message_time[1];
             temp_buf[3] = first_message_time[2];
+            temp_buf[4] = first_message_time[3];
             // set timeout to 0, so if it's lost, it's lost.
-            xQueueSend(RMT_RX_TX::time_queue, (void *)temp_buf, 0);
+            xQueueSend(RMT_RX_time_queue, (void *)temp_buf, 0);
         }
 
         // update last_RX_time
@@ -342,7 +360,7 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
 
                 // send data via queue
                 // set timeout to 0, so if it's lost, it's lost.
-                xQueueSend(RMT_RX_TX::data_queue, (void *)temp_buf, 0);
+                xQueueSend(RMT_RX_data_queue, (void *)temp_buf, 0);
 
                 return true;
             }
@@ -492,28 +510,28 @@ volatile uint64_t RMT_RX_TX::last_RX_time = 0;
 bool RMT_RX_TX::RMT_init()
 {
 // RMT output and input
-#if EMITTER_ENABLED
-    pinMode(RMT_OUT_1, OUTPUT);
+#if RMT_TX_CHANNEL_COUNT
+    pinMode(RMT_OUT_PIN_1, OUTPUT);
 #endif
-#if EMITTER_ENABLED
-    pinMode(RMT_OUT_2, OUTPUT);
+#if RMT_TX_CHANNEL_COUNT > 1
+    pinMode(RMT_OUT_PIN_2, OUTPUT);
 #endif
 
 #if RMT_RX_CHANNEL_COUNT >= 1
-    pinMode(RMT_IN_1, INPUT);
+    pinMode(RMT_IN_PIN_1, INPUT);
 #endif
 #if RMT_RX_CHANNEL_COUNT >= 2
-    pinMode(RMT_IN_1, INPUT);
+    pinMode(RMT_IN_PIN_1, INPUT);
 #endif
 #if RMT_RX_CHANNEL_COUNT == 3
-    pinMode(RMT_IN_1, INPUT);
+    pinMode(RMT_IN_PIN_1, INPUT);
 #endif
 
-#if EMITTER_ENABLED
+#if RMT_TX_CHANNEL_COUNT
     // config TX
     rmt_config_t rmt_tx;
     rmt_tx.channel = RMT_TX_channel_1;
-    rmt_tx.gpio_num = (gpio_num_t)RMT_OUT_1;
+    rmt_tx.gpio_num = (gpio_num_t)RMT_OUT_PIN_1;
     rmt_tx.clk_div = RMT_clock_div;
     // I set all mem_block_num to 2 because I can!
     // Might help prevent overflow errors.
@@ -574,11 +592,11 @@ bool RMT_RX_TX::RMT_init()
 #endif
 
 // second emitter
-#if EMITTER_ENABLED
+#if RMT_TX_CHANNEL_COUNT > 1
     // config TX
     rmt_config_t rmt_tx_2;
     rmt_tx_2.channel = RMT_TX_channel_2;
-    rmt_tx_2.gpio_num = (gpio_num_t)RMT_OUT_2;
+    rmt_tx_2.gpio_num = (gpio_num_t)RMT_OUT_PIN_2;
     rmt_tx_2.clk_div = RMT_clock_div;
     // I set all mem_block_num to 2 because I can!
     // Might help prevent overflow errors.
@@ -642,15 +660,15 @@ bool RMT_RX_TX::RMT_init()
 
     // initialize Queues
     // time_queue, for simplicity, just store all time data
-    time_queue = xQueueCreate(300, sizeof(uint64_t) * (RMT_RX_CHANNEL_COUNT + 1));
+    RMT_RX_time_queue = xQueueCreate(300, sizeof(uint64_t) * (RMT_RX_CHANNEL_COUNT + 2));
     // for simplicity, in the tests we will just transmit the data's first 10 bytes (because test data won't exceed this length).
     // in reality, we also need to send the length of the data
-    data_queue = xQueueCreate(300, sizeof(uint8_t) * 10);
+    RMT_RX_data_queue = xQueueCreate(300, sizeof(uint8_t) * 10);
 
     // config RX_1
     rmt_config_t rmt_rx_1;
     rmt_rx_1.channel = RMT_RX_channel_1;
-    rmt_rx_1.gpio_num = (gpio_num_t)RMT_IN_1;
+    rmt_rx_1.gpio_num = (gpio_num_t)RMT_IN_PIN_1;
     rmt_rx_1.clk_div = RMT_clock_div;
     rmt_rx_1.mem_block_num = 2;
     rmt_rx_1.rmt_mode = RMT_MODE_RX;
@@ -682,7 +700,7 @@ bool RMT_RX_TX::RMT_init()
     // config RX_2
     rmt_config_t rmt_rx_2;
     rmt_rx_2.channel = RMT_RX_channel_2;
-    rmt_rx_2.gpio_num = (gpio_num_t)RMT_IN_2;
+    rmt_rx_2.gpio_num = (gpio_num_t)RMT_IN_PIN_2;
     rmt_rx_2.clk_div = RMT_clock_div;
     rmt_rx_2.mem_block_num = 2;
     rmt_rx_2.rmt_mode = RMT_MODE_RX;
@@ -713,7 +731,7 @@ bool RMT_RX_TX::RMT_init()
     // config RX_3
     rmt_config_t rmt_rx_3;
     rmt_rx_3.channel = RMT_RX_channel_3;
-    rmt_rx_3.gpio_num = (gpio_num_t)RMT_IN_3;
+    rmt_rx_3.gpio_num = (gpio_num_t)RMT_IN_PIN_3;
     rmt_rx_3.clk_div = RMT_clock_div;
     rmt_rx_3.mem_block_num = 2;
     rmt_rx_3.rmt_mode = RMT_MODE_RX;
@@ -877,26 +895,6 @@ void IRAM_ATTR RMT_RX_TX::RMT_RX_ISR_handler(void *arg)
 
     // parsing output buffer
     uint32_t raw;
-
-    // test reception?
-    if (intr_st_1 & 1)
-        digitalWrite(LED_PIN_1, LOW);
-    else
-        digitalWrite(LED_PIN_1, HIGH);
-    if (intr_st_1 & 2)
-        digitalWrite(LED_PIN_2, LOW);
-    else
-        digitalWrite(LED_PIN_2, HIGH);
-    if (intr_st_1 & 4)
-        digitalWrite(LED_PIN_3, LOW);
-    else
-        digitalWrite(LED_PIN_3, HIGH);
-
-    delay100ns;
-    delay100ns;
-    digitalWrite(LED_PIN_1, HIGH);
-    digitalWrite(LED_PIN_2, HIGH);
-    digitalWrite(LED_PIN_3, HIGH);
 
     // whether this transmission is valid
     bool this_valid = false;

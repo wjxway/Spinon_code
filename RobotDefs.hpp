@@ -1,5 +1,5 @@
-#ifndef _ROBOTDEFS_
-#define _ROBOTDEFS_
+#ifndef _ROBOTDEFS_HPP_
+#define _ROBOTDEFS_HPP_
 #pragma once
 #include "Arduino.h"
 
@@ -7,9 +7,7 @@
 #define DEBUG_LED_ENABLED 0
 
 // number of receivers
-#define RMT_RX_CHANNEL_COUNT 0
-// whether to enable the emitter, set to 0 or comment this line to disable.
-#define EMITTER_ENABLED 1
+#define RMT_RX_CHANNEL_COUNT 3
 // number of emitters
 #define RMT_TX_CHANNEL_COUNT 2
 
@@ -21,14 +19,14 @@ constexpr uint32_t THIS_ROBOT_ID = 12;
 // Usually you don't need these pins to be typed to write correct code,
 // so no need for defining them using constexpr and bring more trouble with FastIO.
 // RMT pins def
-#define RMT_OUT_1 4
-#define RMT_OUT_2 23
-#define RMT_IN_1 22
+#define RMT_OUT_PIN_1 4
+#define RMT_OUT_PIN_2 23
+#define RMT_IN_PIN_1 22
 #if RMT_RX_CHANNEL_COUNT >= 2
-#define RMT_IN_2 26
+#define RMT_IN_PIN_2 26
 #endif
 #if RMT_RX_CHANNEL_COUNT == 3
-#define RMT_IN_3 21
+#define RMT_IN_PIN_3 21
 #endif
 
 // test pins
@@ -49,10 +47,10 @@ constexpr uint32_t THIS_ROBOT_ID = 12;
 //#define LED_PIN_3 23
 
 //HSPI pins
-#define HSCK 14
-#define HMISO 12
-#define HMOSI 13
-#define HSS 15
+#define HSCK_PIN 14
+#define HMISO_PIN 12
+#define HMOSI_PIN 13
+#define HSS_PIN 15
 
 // //VSPI pins
 // #define VSCK 18
