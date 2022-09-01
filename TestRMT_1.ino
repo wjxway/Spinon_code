@@ -174,7 +174,7 @@ void setup()
     // setup hspi mutex
     HSPI_MUTEX = xSemaphoreCreateMutex();
 
-    // time comm task
+    // time comm task 
     xTaskCreatePinnedToCore(
         Time_comm_task,
         "Time_comm_task",

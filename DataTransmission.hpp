@@ -296,17 +296,31 @@ public:
     /**
      * @brief Pool of data fragments.
      */
-    uint8_t pool[detail::Msg_memory_size] = {0};
+    uint8_t data_pool[detail::Msg_memory_size] = {0};
 
     /**
      * @brief When each receiver received its first message from this robot.
-     *
-     * @note first_message_time[RMT_RX_CHANNEL_COUNT] indicates whether the message is sent by the top emitter or the bottom one.
      */
-    uint64_t first_message_time[RMT_RX_CHANNEL_COUNT + 1] = {};
+    uint64_t first_message_time[RMT_RX_CHANNEL_COUNT] = {0};
+
+    /**
+     * @brief When was the the last first_message_time.
+     *
+     * @note this time should be cauculated based on 1~3 timing in first_message_time being replaced in this update.
+     *       but the exact method of calculation depends on the number of RX channels.
+     */ 
+    uint64_t prev_first_message_time = 0;
 
     /**
      * @brief When the last message in this pool is received.
+     * 
+     * @note note the difference between last_RX_time and prev_first_message_time.
+     *       last_RX_time records the last time ANY message is received,
+     *       and is used to determine whether the incoming message should be considered as 
+     *       first message in this round or completely new message from the same robot.
+     *       It's also used to determine whether the pool is obsolete and should be deleted.
+     *       While prev_first_message_time records the time this robot first see this other robot in the previous round of rotation,
+     *       and is used to determine the rotation speed of robot.
      */
     uint64_t last_RX_time = 0;
 

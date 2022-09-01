@@ -164,7 +164,7 @@ void RX_data_fragments_pool::Reset_pool_data(Trans_info info)
         CRC = 0;
 
         filling_status = (uint64_t(1) << (msg.msg_ID - 1));
-        Deconstruct_content(msg.content, pool + (msg.msg_ID - 1) * Msg_content_bytes);
+        Deconstruct_content(msg.content, data_pool + (msg.msg_ID - 1) * Msg_content_bytes);
     }
     else
     {
@@ -201,7 +201,7 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
         }
 
 #if RMT_RX_CHANNEL_COUNT > 2
-        // this is only valid when there're three receivers
+        // this is only valid when there are three receivers
         // record whether it's the top emitter that's emitting or the bottom one.
         if ((info.receiver >> 2) & 1)
             first_message_time[3] = (info.data >> (32 - 1));
@@ -221,7 +221,7 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
                 first_message_time[i] = info.time;
 
 #if RMT_RX_CHANNEL_COUNT > 2
-        // this is only valid when there're three receivers
+        // this is only valid when there are three receivers
         // record whether it's the top emitter that's emitting or the bottom one.
         if ((temp >> 2) & 1)
             first_message_time[3] = (info.data >> (32 - 1));
@@ -307,7 +307,7 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
         || msg.msg_ID_init != msg_ID_init                                                                   // 1. msg_ID_init not the same
         || (info.time - last_RX_time_temp) > Data_expire_time                                               // 2. data has expired
         || (msg_ID_max && msg.msg_ID > msg_ID_max)                                                          // 3. msg_ID too big
-        || (prev_filled && (Construct_content(pool + (msg.msg_ID - 1) * Msg_content_bytes) != msg.content)) // 4. data inconsistent
+        || (prev_filled && (Construct_content(data_pool + (msg.msg_ID - 1) * Msg_content_bytes) != msg.content)) // 4. data inconsistent
         || header_invalid)                                                                                  // 5. header invalid
     {
 #if _DEBUG_PRINT_ENABLE_
@@ -319,11 +319,11 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
             Serial.println("Pool data expire reset");
         else if (msg_ID_max && msg.msg_ID > msg_ID_max)
             Serial.println("Msg_ID out of bounds reset");
-        else if (prev_filled && (Construct_content(pool + (msg.msg_ID - 1) * Msg_content_bytes) != msg.content))
+        else if (prev_filled && (Construct_content(data_pool + (msg.msg_ID - 1) * Msg_content_bytes) != msg.content))
         {
             Serial.println("Msg content inconsistent reset");
             Serial.print("Old content: ");
-            Serial.println(Construct_content(pool + (msg.msg_ID - 1) * Msg_content_bytes));
+            Serial.println(Construct_content(data_pool + (msg.msg_ID - 1) * Msg_content_bytes));
             Serial.print("New content: ");
             Serial.println(msg.content);
         }
@@ -338,7 +338,7 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
         {
             msg_count++;
             // fill data
-            Deconstruct_content(msg.content, pool + (msg.msg_ID - 1) * Msg_content_bytes);
+            Deconstruct_content(msg.content, data_pool + (msg.msg_ID - 1) * Msg_content_bytes);
             // set filling
             filling_status += (uint64_t(1) << (msg.msg_ID - 1));
         }
@@ -347,16 +347,16 @@ bool RX_data_fragments_pool::Add_element(Trans_info info)
         if (!data_valid_flag && msg_count == msg_ID_max)
         {
             // if CRC valid, then data is complete
-            if (CRC == crc8_maxim(pool, msg_ID_max * Msg_content_bytes))
+            if (CRC == crc8_maxim(data_pool, msg_ID_max * Msg_content_bytes))
             {
                 data_valid_flag = true;
 
                 uint8_t temp_buf[10] = {0};
                 temp_buf[0] = robot_id + 128;
-                temp_buf[1] = pool[0];
-                temp_buf[2] = pool[1];
-                temp_buf[3] = pool[2];
-                temp_buf[4] = pool[3];
+                temp_buf[1] = data_pool[0];
+                temp_buf[2] = data_pool[1];
+                temp_buf[3] = data_pool[2];
+                temp_buf[4] = data_pool[3];
 
                 // send data via queue
                 // set timeout to 0, so if it's lost, it's lost.
