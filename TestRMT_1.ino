@@ -1,16 +1,16 @@
-#include "FeedTheDog.hpp"
-#include "FastIO.hpp"
 #include "DataTransmission.hpp"
 #include "Tasks.hpp"
-#include "soc/timer_group_reg.h"
-#include "soc/timer_group_struct.h"
+#include "soc\timer_group_reg.h"
+#include "soc\timer_group_struct.h"
 
 #include <SPI.h>
 
 #include <string>
 
-#include "Prints.hpp"
-#include "hal/rmt_ll.h"
+#include "Utilities\FeedTheDog.hpp"
+#include "Utilities\DebugDefs.hpp"
+#include "Utilities\FastIO.hpp"
+#include "hal\rmt_ll.h"
 
 uint64_t rec_finish_time = 0;
 
@@ -19,15 +19,15 @@ void blink_led(int n)
 {
     for (int i = 0; i < n; i++)
     {
-        digitalWrite(LED_PIN_1, LOW);
-        digitalWrite(LED_PIN_2, LOW);
-        digitalWrite(LED_PIN_3, LOW);
+        LIT_R;
+        LIT_G;
+        LIT_B;
 
         delay(100);
 
-        digitalWrite(LED_PIN_1, HIGH);
-        digitalWrite(LED_PIN_2, HIGH);
-        digitalWrite(LED_PIN_3, HIGH);
+        QUENCH_R;
+        QUENCH_G;
+        QUENCH_B;
 
         delay(100);
     }
@@ -42,7 +42,6 @@ void blink_led(int n)
 //  * @brief a FreeRTOS queue for storing real data
 //  */
 // xQueueHandle RMT_RX_data_queue;
-
 
 // // a mutex to allow only one task to use spi at a time
 // xSemaphoreHandle HSPI_MUTEX;
@@ -109,9 +108,9 @@ void LED_off_task(void *pvParameters)
         // turn off led if they haven't been refreshed for a while
         if (micros() - RMT_RX_TX::last_RX_time > 200)
         {
-            digitalWrite(LED_PIN_1, HIGH);
-            digitalWrite(LED_PIN_2, HIGH);
-            digitalWrite(LED_PIN_3, HIGH);
+            QUENCH_R;
+            QUENCH_G;
+            QUENCH_B;
         }
         delayMicroseconds(50);
     }
@@ -120,27 +119,24 @@ void LED_off_task(void *pvParameters)
 void setup()
 {
     Serial.begin(115200);
-    INIT_println("Init start...");
+    DEBUG_C(Serial.println("Init start..."));
 
-    // hspi
-    hspi = new SPIClass(HSPI);
-    hspi->begin();
-    hspi->beginTransaction(SPISettings(5000000, MSBFIRST, SPI_MODE0));
+    // // hspi
+    // hspi = new SPIClass(HSPI);
+    // hspi->begin();
+    // hspi->beginTransaction(SPISettings(5000000, MSBFIRST, SPI_MODE0));
 
-    // provide another ground
-    pinMode(27, OUTPUT);
-    digitalWrite(27, LOW);
 
-    pinMode(HSS_PIN, OUTPUT);
-    setbit(HSS_PIN);
+    // pinMode(HSS_PIN, OUTPUT);
+    // setbit(HSS_PIN);
 
     // test output
-    pinMode(TEST_PIN, OUTPUT);
-    pinMode(TEST_PIN_2, OUTPUT);
+    pinMode(DEBUG_PIN_1, OUTPUT);
+    pinMode(DEBUG_PIN_2, OUTPUT);
 
-    pinMode(LED_PIN_1, OUTPUT);
-    pinMode(LED_PIN_2, OUTPUT);
-    pinMode(LED_PIN_3, OUTPUT);
+    pinMode(LED_PIN_R, OUTPUT);
+    pinMode(LED_PIN_G, OUTPUT);
+    pinMode(LED_PIN_B, OUTPUT);
 
     blink_led(3);
 
@@ -166,15 +162,15 @@ void setup()
 #endif
 
     RMT_RX_TX::RMT_TX_resume();
-    INIT_println("RMT TX setup finished!");
+    DEBUG_C(Serial.println("RMT TX setup finished!"));
 #endif
 
     // send RX data through SPI
 #if RMT_RX_CHANNEL_COUNT
-    // setup hspi mutex
-    HSPI_MUTEX = xSemaphoreCreateMutex();
+    // // setup hspi mutex
+    // HSPI_MUTEX = xSemaphoreCreateMutex();
 
-    // time comm task 
+    // time comm task
     xTaskCreatePinnedToCore(
         Time_comm_task,
         "Time_comm_task",
@@ -194,14 +190,33 @@ void setup()
         NULL,
         0);
 
-    INIT_println("RMT RX setup finished!");
+    DEBUG_C(Serial.println("RMT RX setup finished!"));
 #endif
 
-    INIT_println("Init end...");
+    // monitor the performance of cores
+    xTaskCreatePinnedToCore(
+        Idle_stats_task,
+        "idle0",
+        10000,
+        NULL,
+        1,
+        NULL,
+        0);
+
+    xTaskCreatePinnedToCore(
+        Idle_stats_task,
+        "idle1",
+        10000,
+        NULL,
+        1,
+        NULL,
+        1);
+
+    DEBUG_C(Serial.println("Init end..."));
 }
 
-// do nothing in loop
+// delete loop() immediately
 void loop()
 {
-    vTaskDelay(portMAX_DELAY);
+    vTaskDelete(NULL);
 }

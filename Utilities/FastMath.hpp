@@ -1,8 +1,9 @@
 #ifndef _FASTMATH_HPP_
 #define _FASTMATH_HPP_
-
-#include "Arduino.h"
+#pragma once
 #include <math.h>
+
+#define EXTRA_PRECISION 1
 
 //Accuracy @ 6%
 //sufficient for FFT usage
@@ -21,9 +22,9 @@ inline float Fast_cos(float x) noexcept
 
 //T could be float or double
 template<class T>
-inline int16_t Fast_floor_int(T x) noexcept
+inline int32_t Fast_floor_int(T x) noexcept
 {
-    int16_t val=(int16_t)x;
+    int32_t val=(int32_t)x;
     if(val==x) return x;
     else if(x>0) return val;
     else return val-1;
@@ -48,7 +49,7 @@ inline float Fast_exp(float x) noexcept
     } u={0}, v={0};
 
     float frac=x*DIVLN2;
-    int16_t fl=Fast_floor_int(frac);
+    int32_t fl=Fast_floor_int(frac);
     frac-=fl;
 
     //exponent

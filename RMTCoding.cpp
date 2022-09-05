@@ -1,12 +1,13 @@
 #include "RMTCoding.hpp"
+#include "RMTMessageDefs.hpp"
+// #include "Utilities/DebugDefs.hpp"
 
 // speed is crucial, no debug here!
 #define NDEBUG
 
 using namespace detail;
 
-extern const uint32_t detail::RMT_data_length;
-
+// modified 1+4ppm version
 bool Generate_RMT_item(rmt_item32_t *pointer, uint32_t data, uint32_t ticks_delay, uint32_t ticks_final)
 {
     // temp zero length
@@ -15,7 +16,7 @@ bool Generate_RMT_item(rmt_item32_t *pointer, uint32_t data, uint32_t ticks_dela
     // delay and initial pulse
     pointer[0] = {{{ticks_delay, 0, RMT_ticks_num, 1}}};
 
-    for (uint32_t i = 0; i < RMT_data_length / Bit_per_cycle - 1; i++)
+    for (uint32_t i = 0; i < RMT_data_pulse_count - 1; i++)
     {
         temp = (((data >> (i * Bit_per_cycle)) & ((1 << Bit_per_cycle) - 1)));
         temp_len += temp;
@@ -25,25 +26,27 @@ bool Generate_RMT_item(rmt_item32_t *pointer, uint32_t data, uint32_t ticks_dela
 
     // final pulse
     temp_len += (((data >> (RMT_data_length - Bit_per_cycle)) & ((1 << Bit_per_cycle) - 1)));
-    pointer[RMT_data_length / Bit_per_cycle] = {{{RMT_ticks_num * temp_len + Pad_per_cycle, 0, ticks_final, 1}}};
+    pointer[RMT_data_pulse_count] = {{{RMT_ticks_num * temp_len + Pad_per_cycle, 0, ticks_final, 1}}};
 
     // termination
-    pointer[RMT_data_length / Bit_per_cycle + 1] = {0};
+    pointer[RMT_data_pulse_count + 1] = {0};
 
     return true;
 }
 
-// modified 4ppm version
+// modified 1+4ppm version
 bool IRAM_ATTR Parse_RMT_item(volatile rmt_item32_t *pointer, uint32_t *dataptr)
 {
     // just in case the idle_level isn't correct
     if (pointer[0].level1)
         return false;
 
+    // val is the final uint32_t output
+    // curr is the absolute starting time of this or last pulse.
     uint32_t val = 0, curr = 3;
     rmt_item32_t temp;
 
-    for (int i = 0; i < RMT_data_length / Bit_per_cycle; i++)
+    for (int i = 0; i < RMT_data_pulse_count; i++)
     {
         temp.val = pointer[i].val;
 
@@ -51,6 +54,7 @@ bool IRAM_ATTR Parse_RMT_item(volatile rmt_item32_t *pointer, uint32_t *dataptr)
         if (!temp.duration1)
             return false;
 
+        // add pulse length and pulse gap to the absolute starting time of last pulse to get the start time of this pulse.
         curr += 1 + ((temp.duration1 + RMT_ticks_tol - Pad_per_cycle) / RMT_ticks_num);
 
         // discard if time gap between two messages are incorrect
@@ -63,10 +67,11 @@ bool IRAM_ATTR Parse_RMT_item(volatile rmt_item32_t *pointer, uint32_t *dataptr)
 
     // the final message's length
     // if it's larger than RMT_ticks_num+RMT_ticks_tol, then it's coming from the upper emitter, or else it's coming from the lower emitter.
-    val += ((pointer[RMT_data_length / Bit_per_cycle].duration0 > RMT_ticks_num + RMT_ticks_tol) << (32 - 1));
+    // record this information in the 32th bit.
+    val += ((pointer[RMT_data_pulse_count].duration0 > RMT_ticks_num + RMT_ticks_tol) << (32 - 1));
 
     // discard if the message length is too long.
-    if (pointer[RMT_data_length / Bit_per_cycle].duration1)
+    if (pointer[RMT_data_pulse_count].duration1)
         return false;
     else
     {

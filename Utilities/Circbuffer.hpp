@@ -10,8 +10,6 @@
 #define _CIRCBUFFER_HPP_
 #pragma once
 
-#include "Arduino.h"
-
 template <class T>
 class Circbuffer
 {
@@ -30,7 +28,7 @@ public:
      *
      * @param cont content to push in
      */
-    void push(const T cont);
+    void push(const T& cont);
     /**
      * @brief pop an item out at the tail and delete it
      *
@@ -94,7 +92,7 @@ Circbuffer<T>::~Circbuffer()
 }
 
 template <class T>
-void Circbuffer<T>::push(const T cont)
+void Circbuffer<T>::push(const T& cont)
 {
     // push element
     *head = cont;
