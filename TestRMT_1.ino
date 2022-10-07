@@ -12,6 +12,8 @@
 #include "Utilities\FastIO.hpp"
 #include "hal\rmt_ll.h"
 
+#include "IrTX.hpp"
+
 uint64_t rec_finish_time = 0;
 
 // Blink the LED
@@ -116,7 +118,7 @@ void LED_off_task(void *pvParameters)
     }
 }
 
-void setup()
+void real_setup(void *pvParameters)
 {
     Serial.begin(115200);
     DEBUG_C(Serial.println("Init start..."));
@@ -125,7 +127,6 @@ void setup()
     // hspi = new SPIClass(HSPI);
     // hspi->begin();
     // hspi->beginTransaction(SPISettings(5000000, MSBFIRST, SPI_MODE0));
-
 
     // pinMode(HSS_PIN, OUTPUT);
     // setbit(HSS_PIN);
@@ -155,10 +156,10 @@ void setup()
 
     // load TX data and begin TX
 #if RMT_TX_CHANNEL_COUNT
-    RMT_RX_TX::TX_prep_1->TX_load(std::vector<uint8_t>{THIS_ROBOT_ID + 1, THIS_ROBOT_ID + 2, THIS_ROBOT_ID + 3, THIS_ROBOT_ID + 4}, 3, detail::RMT_ticks_num);
+    RMT_RX_TX::TX_prep_1->TX_load(std::vector<uint8_t>{Robot_ID + 1, Robot_ID + 2, Robot_ID + 3, Robot_ID + 4}, 3, detail::RMT_ticks_num);
 
 #if RMT_TX_CHANNEL_COUNT > 1
-    RMT_RX_TX::TX_prep_2->TX_load(std::vector<uint8_t>{THIS_ROBOT_ID + 1, THIS_ROBOT_ID + 2, THIS_ROBOT_ID + 3, THIS_ROBOT_ID + 4}, 1, 2 * detail::RMT_ticks_num);
+    RMT_RX_TX::TX_prep_2->TX_load(std::vector<uint8_t>{Robot_ID + 1, Robot_ID + 2, Robot_ID + 3, Robot_ID + 4}, 1, 2 * detail::RMT_ticks_num);
 #endif
 
     RMT_RX_TX::RMT_TX_resume();
@@ -213,6 +214,18 @@ void setup()
         1);
 
     DEBUG_C(Serial.println("Init end..."));
+}
+
+void setup()
+{
+    xTaskCreatePinnedToCore(
+        real_setup,
+        "setup_task",
+        10000,
+        NULL,
+        20,
+        NULL,
+        0);
 }
 
 // delete loop() immediately

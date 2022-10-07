@@ -5,6 +5,6 @@
 /**
  * @brief manually feed dog to prevent reboot
  */
-void Feed_the_dog();
+inline void Feed_the_dog();
 
 #endif

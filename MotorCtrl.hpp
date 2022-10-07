@@ -3,9 +3,8 @@
 #define _MOTORCTRL_HPP_
 #include "Arduino.h"
 
-class Motor
+namespace Motor
 {
-public:
     /**
      * @brief resolution of the input PWM
      *
@@ -17,7 +16,7 @@ public:
      *          93.6kHz --- 7 bits
      *         187.2kHz --- 6 bits
      */
-    static constexpr uint32_t PWM_resolution = 7;
+    constexpr uint32_t PWM_resolution = 7;
 
     /**
      * @brief set so that it fits the PWM resolution.
@@ -28,38 +27,50 @@ public:
      *         100kHz --- 7 bits
      *       cannot be higher than 100kHz
      */
-    static constexpr uint32_t PWM_frequency = 40000;
+    constexpr uint32_t PWM_frequency = 40000;
+
+    /**
+     * @brief default register configuration
+     */
+    constexpr uint8_t Default_config[] = {
+        // 0x00, 0x00,
+        0x01, 0x03, 0x00, 0xFE,              // 2~5
+        0x00, 0x00, 0x10, 0x20, 0x00,        // 6~10
+        0x01, 0x00, 0x00, 0x97, 0xD5,        // 11~15
+        0x00, 0xE6, 0x03, 0x16, 0x0A,        // 16~20
+        0x3F, /*0x2E*/ 0x32 + 4, 0x2B, 0x40, // 21~24
+    };
 
     /**
      * @brief the last set speed or duty.
-     * 
-     * @note it is the value you set through Set_speed last time, and will be different from the actual motor speed. 
+     *
+     * @note it is the value you set through Set_speed last time, and will be different from the actual motor speed.
      *       to get the actual motor speed, use Measure_speed().
      */
-    uint32_t Last_set_speed = 0;
+    extern uint32_t Last_set_speed;
 
     /**
      * @brief initialize motor
-     * 
+     *
      * @return 1 for success, 0 for failure
      */
     uint8_t Init();
 
     /**
      * @brief config the registers
-     * 
+     *
      * @note you don't have to set default config. that's already initialized.
      *       the default config should be used if there's no very special need.
-     * 
+     *
      * @param address the register's address
      * @param value the new value
-     * 
+     *
      * @return 1 for success, 0 for failure
      */
     uint8_t Config_register(uint8_t address, uint8_t value);
 
     /**
-     * @brief set motor speed
+     * @brief set motor speed. In open loop mode, the PWM duty cycle is duty/2^PWM_resolution
      *
      * @param duty duty cycle (when in open loop mode) or motor speed (when in closed loop mode)
      */
@@ -69,8 +80,8 @@ public:
      * @brief get motor speed
      *
      * @return uint32_t speed in some form, maybe pulse width maybe something else. still haven't decided yet.
-     * 
-     * @note DO NOT call this function frequently because it will halt this core and wait for pulses, potentially up to 10ms depending on the time_out settings. 
+     *
+     * @note DO NOT call this function frequently because it will halt this core and wait for pulses, potentially up to 10ms depending on the time_out settings.
      *       if we ever need to, we can switch to an interrupt based, always on function, but I will keep it like this for now.
      */
     uint32_t Measure_speed();
@@ -94,17 +105,7 @@ public:
      *
      * @note actively brake the motor for now.
      */
-    void IRAM_ATTR Alert_ISR(void *arg);
-
-private:
-    static constexpr uint8_t Default_config[] = {
-        // 0x00, 0x00,
-              0x01, 0x03, 0x00, 0xFE, // 2~5
-        0x00, 0x00, 0x10, 0x20, 0x00, // 6~10
-        0x01, 0x00, 0x00, 0x97, 0xD5, // 11~15
-        0x00, 0xE6, 0x03, 0x16, 0x0A, // 16~20
-        0x3F, /*0x2E*/ 0x32+4, 0x2B, 0x40,       // 21~24
-    };
-};
+    void IRAM_ATTR Alert_ISR();
+}
 
 #endif

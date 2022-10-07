@@ -14,23 +14,30 @@
 // RMT pins def
 // If we enable both TX channnels (as in our real hardware)
 // the convention will be:
-//      RMT_OUT_PIN_1 -> bottom emitter (shorter pulses at the end)
-//      RMT_OUT_PIN_2 -> top emitter (longer pulses at the end)
+//      RMT_TX_PIN_1 -> bottom emitter (shorter pulses at the end)
+//      RMT_TX_PIN_2 -> top emitter (longer pulses at the end)
 // Note that please make sure that when both can be seen, the top emitter will be seen FIRST.
-#define RMT_OUT_PIN_1 18
-#define RMT_OUT_PIN_2 17
+#if RMT_TX_CHANNEL_COUNT >=1
+#define RMT_TX_PIN_1 18
+#endif
+#if RMT_TX_CHANNEL_COUNT == 2
+#define RMT_TX_PIN_2 10
+#endif
 
 // If we enable all three RX channnels (as in our real hardware)
 // the convention will be:
-//      RMT_IN_PIN_1 -> left emitter
-//      RMT_IN_PIN_2 -> right emitter
-//      RMT_IN_PIN_3 -> middle emitter
-#define RMT_IN_PIN_1 22
+//      RMT_RX_PIN_1 -> left emitter
+//      RMT_RX_PIN_2 -> right emitter
+//      RMT_RX_PIN_3 -> middle emitter
+#if RMT_RX_CHANNEL_COUNT >=1
+#define RMT_RX_PIN_1 22
+#endif
 #if RMT_RX_CHANNEL_COUNT >= 2
-#define RMT_IN_PIN_2 19
+#define RMT_RX_PIN_2 19
 #endif
 #if RMT_RX_CHANNEL_COUNT == 3
-#define RMT_IN_PIN_3 23
+#define RMT_RX_PIN_3 23
+#endif
 
 // // this is the old one
 // #define RMT_OUT_PIN_1 4
@@ -41,18 +48,18 @@
 // #endif
 // #if RMT_RX_CHANNEL_COUNT == 3
 // #define RMT_IN_PIN_3 21
-#endif
+
 
 // test pins
 #define DEBUG_PIN_1 4
-#define DEBUG_PIN_2 16
+#define DEBUG_PIN_2 9
 
 // R,G,B channels respectively
 // pull low to lit
 // when updating this, please also update DebugDefs
 // because LED_PIN_R is >=32, it cannot be directly toggled using setbit and clrbit
 #define LED_PIN_R 32
-#define LED_PIN_G 23
+#define LED_PIN_G 33
 #define LED_PIN_B 25
 
 // analog input for polarized light sensor
@@ -89,11 +96,11 @@
 
 // RMT channel and timer definitions
 /**
- * @brief RMT TX channel num
+ * @brief RMT TX channel 1 num (lower emitter)
  */
 constexpr rmt_channel_t RMT_TX_channel_1 = RMT_CHANNEL_0;
 /**
- * @brief RMT TX channel 2 num
+ * @brief RMT TX channel 2 num (upper emitter)
  */
 constexpr rmt_channel_t RMT_TX_channel_2 = RMT_CHANNEL_1;
 /**
@@ -114,9 +121,9 @@ constexpr rmt_channel_t RMT_RX_channel_3 = RMT_CHANNEL_6;
 #endif
 
 /**
- * @brief Timer channel used for RMT TX trigger
+ * @brief Timer channel used for IR TX trigger
  */
-constexpr uint32_t RMT_TX_trigger_timer_channel = 3;
+constexpr uint32_t IR_TX_trigger_timer_channel = 3;
 
 /**
  * @brief motor's i2c address

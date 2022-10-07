@@ -35,195 +35,238 @@
 //
 // Note that this header file is for messages <=32 bits, if you want to use larger messages, change uint32_t to uint64_t.
 
-// Implementation details are hide in this namespace to keep global clean
-namespace detail
+/**
+ * @brief IR communication and localization
+ */
+namespace IR
 {
-    // message content specifications
-
-    /**
-     * @brief number of bits for robot's id.
-     */
-    constexpr uint32_t Robot_ID_bits = 6;
-
-    /**
-     * @brief number of bits for message's id.
-     * @note message ID on messages for the same data should have same initial bit,
-     *       so that we can distinguish from different data groups sent by the same robot at different time.
-     *       If the robot received a message with the other intial bit, it should discard all previous incomplete messages
-     *       With the previous initial bit, because the data they contains are already obsolete.
-     *       Should set to <= 7, for two reasons.
-     *          1. With Msg_ID_bits <= 8, the ID has <= 7 bits, thus we can use a uint64_t to indicate whether we received all the data. Save space & time.
-     *          2. The full data should be transmitted in <30 deg time, and with 0.5 deg / message, this means 2^6 messages. Adding up with the header bit, it's 7 bits.
-     */
-    constexpr uint32_t Msg_ID_bits = 6;
-
-    /**
-     * @brief number of BYTES for message's content.
-     */
-    constexpr uint32_t Msg_content_bytes = 2;
-
-    /**
-     * @brief number of bits for message's content.
-     *
-     * @note please make sure that this is a multiplier of 8 for easy conversion.
-     *       If not, you will have to write your own function to convert an arbitrary data into a array of that many bits.
-     *       And you will have to write your own ECC as well.
-     */
-    constexpr uint32_t Msg_content_bits = Msg_content_bytes * 8;
-
-    /**
-     * @brief The amount of data, in bits, that's transmitted in each RMT transmission.
-     *
-     * @note RMT length should be kept below 63 for convenience of processing (leaving some space for init code and probably ECC.)
-     * When RMT length is larger than 63, it will occupy at least two RMT memory register block. That's inconvenient and requires much more processing.
-     * I would suggest using rmt length from 16 to 32. dUsing rmt length >32 then you will need to modify the code here and there, changing uint32_t to uint64_t.
-     *
-     * @note Keep this an even number if using 4ppm encoding!
-     *
-     * @note for simplicity, make sure that this is <= 31, we are currently using the 32th bit to pass the receiver's position (top or bottom).
-     */
-    constexpr uint32_t RMT_data_length = Robot_ID_bits + Msg_ID_bits + Msg_content_bits;
-
-
-    // data structure specification
-
-    /**
-     * @brief general structure of messages with <=32 bits.
-     */
-    typedef union
+    namespace detail
     {
-        struct
+        // message content specifications
+
+        /**
+         * @brief number of bits for robot's id.
+         */
+        constexpr uint32_t Robot_ID_bits = 6;
+
+        /**
+         * @brief type of message
+         * @note the reason we have this is because we want to transmit multiple types of messages at the same time.
+         *       and possibly with different frequency and different priority.
+         *       For example, control signal are short and should be sent more frequently,
+         *                    timing sync messages only need to be sent once in a while.
+         *                    highest priority alert messages should be sent immediately and occupy the whole channel.
+         *                    localization information messages are of lowest priority and should be sent all the time.
+         *       Msg_type_bits also allow us to have certain pre-defined types where one transmission is be sufficient. e.g. control/alert signal.
+         *       this is set by Single_transmission_msg_type. Any messages with Msg_type <= Single_transmission_msg_type is single transmission messages.
+         */
+        constexpr uint32_t Msg_type_bits = 3;
+
+        /**
+         * @brief Messages with Msg_type <= Single_transmission_msg_type are single transmission messages.
+         */
+        constexpr uint32_t Single_transmission_msg_type = 2;
+
+        /**
+         * @brief number of bits for message's id.
+         * @note message ID on messages for the same data should have same initial bit,
+         *       so that we can distinguish from different data groups sent by the same robot at different time.
+         *       If the robot received a message with the other intial bit, it should discard all previous incomplete messages
+         *       With the previous initial bit, because the data they contains are already obsolete.
+         *       Should set to <= 7, for two reasons.
+         *          1. With Msg_ID_bits <= 8, the ID has <= 7 bits, thus we can use a uint64_t to indicate whether we received all the data. Save space & time.
+         *          2. The full data should be transmitted in <30 deg time, and with 0.5 deg / message, this means 2^6 messages. Adding up with the header bit, it's 7 bits.
+         */
+        constexpr uint32_t Msg_ID_bits = 5;
+
+        /**
+         * @brief number of BYTES for message's content.
+         */
+        constexpr uint32_t Msg_content_bytes = 2;
+
+        /**
+         * @brief number of bits for message's content.
+         *
+         * @note please make sure that this is a multiplier of 8 for easy conversion.
+         *       If not, you will have to write your own function to convert an arbitrary data into a array of that many bits.
+         *       And you will have to write your own ECC as well.
+         */
+        constexpr uint32_t Msg_content_bits = Msg_content_bytes * 8;
+
+        /**
+         * @brief The amount of data, in bits, that's transmitted in each RMT transmission.
+         *
+         * @note RMT length should be kept below 63 for convenience of processing (leaving some space for init code and probably ECC.)
+         * When RMT length is larger than 63, it will occupy at least two RMT memory register block. That's inconvenient and requires much more processing.
+         * I would suggest using rmt length from 16 to 32. dUsing rmt length >32 then you will need to modify the code here and there, changing uint32_t to uint64_t.
+         *
+         * @note Keep this an even number if using 4ppm encoding!
+         *
+         * @note for simplicity, make sure that this is <= 31, we are currently using the 32th bit to pass the receiver's position (top or bottom).
+         */
+        constexpr uint32_t RMT_data_length = Robot_ID_bits + Msg_type_bits + Msg_ID_bits + Msg_content_bits;
+
+        // data structure specification
+
+        /**
+         * @brief general structure of messages with <=32 bits.
+         */
+        typedef union
         {
-            uint32_t robot_ID : detail::Robot_ID_bits;
-            uint32_t msg_ID_init : 1;
-            uint32_t msg_ID : detail::Msg_ID_bits - 1;
-            uint32_t content : detail::Msg_content_bits;
-        };
-        uint32_t raw;
-    } Msg_t;
+            struct
+            {
+                uint32_t robot_ID : Robot_ID_bits;
+                uint32_t msg_type : Msg_type_bits;
+                uint32_t msg_ID_init : 1;
+                uint32_t msg_ID : Msg_ID_bits - 1;
+                uint32_t content : Msg_content_bits;
+            };
+            uint32_t raw;
+        } Msg_t;
 
-    /**
-     * @brief general structure of message headers with <=32 bits.
-     */
-    typedef union
-    {
-        struct
+        /**
+         * @brief general structure of single transmission messages.
+         */
+        typedef union
         {
-            uint32_t robot_ID : detail::Robot_ID_bits;
-            uint32_t msg_ID_init : 1;
-            uint32_t msg_ID : detail::Msg_ID_bits - 1;
-            uint32_t msg_ID_len : detail::Msg_ID_bits - 1; // Msg_ID will be from 0 (the header) to Msg_ID_len.
-            uint32_t CRC : detail::Msg_content_bits - detail::Msg_ID_bits + 1;
+            struct
+            {
+                uint32_t robot_ID : Robot_ID_bits;
+                uint32_t msg_type : Msg_type_bits;
+                uint32_t msg_ID_init : 1;
+                uint32_t CRC : Msg_ID_bits - 1;
+                uint32_t content : Msg_content_bits;
+            };
+            uint32_t raw;
+        } Msg_single_t;
+
+        /**
+         * @brief general structure of message headers with <=32 bits.
+         */
+        typedef union
+        {
+            struct
+            {
+                uint32_t robot_ID : Robot_ID_bits;
+                uint32_t msg_type : Msg_type_bits;
+                uint32_t msg_ID_init : 1;
+                uint32_t msg_ID : Msg_ID_bits - 1;
+                uint32_t msg_ID_len : Msg_ID_bits - 1; // Msg_ID will be from 0 (the header) to Msg_ID_len.
+                uint32_t CRC : Msg_content_bits - Msg_ID_bits + 1;
+            };
+            uint32_t raw;
+        } Msg_header_t;
+
+        /**
+         * @brief a struct packed with data / receiver state / time of reception, which is all information contained in a transmission.
+         *
+         */
+        struct Trans_info
+        {
+            uint32_t data;
+            uint32_t receiver;
+            uint64_t time;
         };
-        uint32_t raw;
-    } Msg_header_t;
 
-    /**
-     * @brief a struct packed with data / receiver state / time of reception, which is all information contained in a transmission.
-     *
-     */
-    struct Trans_info
-    {
-        uint32_t data;
-        uint32_t receiver;
-        uint64_t time;
-    };
+        // RMT timing specifications
 
+        /**
+         * @brief RMT clock division, rmt clock speed = 80MHz / RMT_clock_div
+         * @note RMT_ticks_num * RMT_clock_div * 1/80MHz is the pulse width.
+         */
+        constexpr uint32_t RMT_clock_div = 2;
 
-    // RMT timing specifications
+        /**
+         * @brief Ticks count of each pulse
+         * @note RMT_ticks_num * RMT_clock_div * 1/80MHz is the pulse width.
+         */
+        constexpr uint32_t RMT_ticks_num = 4;
 
-    /**
-     * @brief RMT clock division, rmt clock speed = 80MHz / RMT_clock_div
-     * @note RMT_ticks_num * RMT_clock_div * 1/80MHz is the pulse width.
-     */
-    constexpr uint32_t RMT_clock_div = 2;
+        /**
+         * @brief Ticks number that deviate from RMT_ticks_num by RMT_ticks_tol will still be accepted
+         * @note There will be error in ticks number in reality, so we could give it some tolerance
+         */
+        constexpr uint32_t RMT_ticks_tol = 1;
 
-    /**
-     * @brief Ticks count of each pulse
-     * @note RMT_ticks_num * RMT_clock_div * 1/80MHz is the pulse width.
-     */
-    constexpr uint32_t RMT_ticks_num = 4;
+        /**
+         * @brief Number of bits per cycle/pulse
+         * @note Please keep it at 2 for simplicity, making it larger won't improve the performance much further.
+         */
+        constexpr uint32_t Bit_per_cycle = 2;
 
-    /**
-     * @brief Ticks number that deviate from RMT_ticks_num by RMT_ticks_tol will still be accepted
-     * @note There will be error in ticks number in reality, so we could give it some tolerance
-     */
-    constexpr uint32_t RMT_ticks_tol = 1;
+        /**
+         * @brief Padding before each cycle in ticks
+         */
+        constexpr uint32_t Pad_per_cycle = RMT_ticks_num;
 
-    /**
-     * @brief Number of bits per cycle/pulse
-     * @note Please keep it at 2 for simplicity, making it larger won't improve the performance much further.
-     */
-    constexpr uint32_t Bit_per_cycle = 2;
+        /**
+         * @brief RMT data pulse count.
+         *
+         * @note RMT_data_pulse_count = RMT_data_length / Bit_per_cycle
+         */
+        constexpr uint32_t RMT_data_pulse_count = RMT_data_length / Bit_per_cycle;
 
-    /**
-     * @brief Padding before each cycle in ticks
-     */
-    constexpr uint32_t Pad_per_cycle = RMT_ticks_num;
+        /**
+         * @brief RMT TX data structure length (array of rmt_item32_t).
+         *
+         * @note RMT_TX_length = RMT_data_pulse_count + 2 because there will be a '0' header and a {0} as ending block
+         */
+        constexpr uint32_t RMT_TX_length = RMT_data_pulse_count + 2;
 
-    /**
-     * @brief RMT data pulse count.
-     *
-     * @note RMT_data_pulse_count = RMT_data_length / Bit_per_cycle
-     */
-    constexpr uint32_t RMT_data_pulse_count = RMT_data_length / Bit_per_cycle;
+        // storage and buffer specifications
 
-    /**
-     * @brief RMT TX data structure length (array of rmt_item32_t).
-     *
-     * @note RMT_TX_length = RMT_data_pulse_count + 2 because there will be a '0' header and a {0} as ending block
-     */
-    constexpr uint32_t RMT_TX_length = RMT_data_pulse_count + 2;
+        /**
+         * @brief maximum memory size for data pool.
+         */
+        constexpr uint32_t Msg_memory_size = ((1 << (Msg_ID_bits - 1)) - 1) * Msg_content_bytes;
 
+        /**
+         * @brief maximum number of robots that can communicate with a single robot in the same period of time.
+         */
+        constexpr uint32_t Max_robots_simultaneous = 8;
 
-    // storage and buffer specifications
+        /**
+         * @brief Fragments pool's timing data's decay time. If nothing is added to the pool for this amount of time (in us),
+         *        then the timing info should be discarded.
+         *
+         * @note A proper value for Timing_expire_time should be the time it takes for the robot to spin 0.8 rounds.
+         */
+        constexpr uint64_t Timing_expire_time = 60000;
 
-    /**
-     * @brief maximum memory size for data pool.
-     */
-    constexpr uint32_t Msg_memory_size = ((1 << (Msg_ID_bits - 1)) - 1) * Msg_content_bytes;
+        /**
+         * @brief Fragments pool itself's decay time. If nothing is added to the pool for this amount of time (in us),
+         *        then this robot has probably leaved the communication range and this pool should be re-purposed.
+         *
+         * @note Data_expire_time should be larger than Timing_expire_time.
+         *       A proper value for Data_expire_time should be 1.5 times the minimum span between two consecutive TX_load(...)
+         *       So that it's not too short, but still can prevent msg_ID_init from duplication.
+         */
+        constexpr uint64_t Data_expire_time = 1000000;
 
-    /**
-     * @brief maximum number of robots that can communicate with a single robot in the same period of time.
-     */
-    constexpr uint32_t Max_robots_simultaneous = 8;
+        /**
+         * @brief RMT TX minimum trigger period in us
+         */
+        constexpr uint32_t RMT_TX_trigger_period_min = 40;
 
-    /**
-     * @brief Fragments pool's timing data's decay time. If nothing is added to the pool for this amount of time (in us),
-     *        then the timing info should be discarded.
-     *
-     * @note A proper value for Timing_expire_time should be the time it takes for the robot to spin 0.8 rounds.
-     */
-    constexpr uint64_t Timing_expire_time = 60000;
+        /**
+         * @brief RMT TX maximum trigger period in us
+         */
+        constexpr uint32_t RMT_TX_trigger_period_max = 80;
 
-    /**
-     * @brief Fragments pool itself's decay time. If nothing is added to the pool for this amount of time (in us),
-     *        then this robot has probably leaved the communication range and this pool should be re-purposed.
-     *
-     * @note Data_expire_time should be larger than Timing_expire_time.
-     *       A proper value for Data_expire_time should be 1.5 times the minimum span between two consecutive TX_load(...)
-     *       So that it's not too short, but still can prevent msg_ID_init from duplication.
-     */
-    constexpr uint64_t Data_expire_time = 1000000;
+        /**
+         * @brief how many messages are allowed to stay in the buffer
+         */
+        constexpr uint32_t Msg_buffer_max_size = 200;
 
-    /**
-     * @brief RMT TX Trigger period in us
-     */
-    constexpr uint64_t RMT_TX_trigger_period = 50;
-
-    /**
-     * @brief how many messages are allowed to stay in the buffer
-     */
-    constexpr uint32_t Msg_buffer_max_size = 200;
-
-    /**
-     * @brief how frequently we read data from buffer and process it (in ms)
-     *
-     * @note because we have low duty cycle, we can rest for a while and let other tasks work...
-     *       the signal's period is 100us, and there's seldom >3 emitters
-     *       so in 5ms, there's at most 150 messages we need to process.
-     */
-    constexpr uint32_t Msg_process_period = 5;
+        /**
+         * @brief how frequently we read data from buffer and process it (in ms)
+         *
+         * @note because we have low duty cycle, we can rest for a while and let other tasks work...
+         *       the signal's period is 100us, and there's seldom >3 emitters
+         *       so in 5ms, there's at most 150 messages we need to process.
+         */
+        constexpr uint32_t Msg_process_period = 5;
+    }
 }
 
 #endif

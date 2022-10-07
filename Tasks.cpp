@@ -123,7 +123,7 @@ void IRAM_ATTR Idle_stats_task(void *pvParameters)
         if (curr_time - startup_time > stat_update_time)
         {
             // debug print or something else
-            std::string temp_str = "CPU " + std::to_string(xPortGetCoreID()) + " idle: " + std::to_string(float(execution_count * stat_time_resolution) / stat_update_time);
+            std::string temp_str = "CPU " + std::to_string(xPortGetCoreID()) + " usage: " + std::to_string(100.0f - 100.0f * float(execution_count * stat_time_resolution) / stat_update_time) + "%";
             DEBUG_C(Serial.println(temp_str.c_str()));
 
             // feed the dog because idle task will never be invoked
