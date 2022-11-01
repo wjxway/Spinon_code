@@ -884,7 +884,7 @@ namespace IR
             }
 
             // delay and let other tasks work
-            vTaskDelayUntil(&xLastWakeTime, Msg_process_period / portTICK_PERIOD_MS);
+            vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(Msg_process_period));
         }
     }
 

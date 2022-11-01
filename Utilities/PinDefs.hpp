@@ -54,6 +54,8 @@
 #define DEBUG_PIN_1 4
 #define DEBUG_PIN_2 9
 
+// #define DEBUG_PIN_3 25
+
 // R,G,B channels respectively
 // pull low to lit
 // when updating this, please also update DebugDefs
@@ -63,9 +65,7 @@
 #define LED_PIN_B 25
 
 // analog input for polarized light sensor
-// unfortunately I routed the analog signal to a digital only pin
-// so either flywire or we just get digital signal...
-#define PL_PIN 21
+#define PL_PIN 34
 
 // motor pins
 #define MOTOR_ALERT_PIN 26

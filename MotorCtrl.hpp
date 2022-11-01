@@ -38,7 +38,7 @@ namespace Motor
         0x00, 0x00, 0x10, 0x20, 0x00,        // 6~10
         0x01, 0x00, 0x00, 0x97, 0xD5,        // 11~15
         0x00, 0xE6, 0x03, 0x16, 0x0A,        // 16~20
-        0x3F, /*0x2E*/ 0x32 + 4, 0x2B, 0x40, // 21~24
+        0x3F, /*0x2E*/ 0x32 + 4, /*0x2B*/ 0x3F, 0x40, // 21~24
     };
 
     /**
@@ -70,7 +70,7 @@ namespace Motor
     uint8_t Config_register(uint8_t address, uint8_t value);
 
     /**
-     * @brief set motor speed. In open loop mode, the PWM duty cycle is duty/2^PWM_resolution
+     * @brief set motor speed. In open loop, the PWM duty cycle is duty/2^PWM_resolution
      *
      * @param duty duty cycle (when in open loop mode) or motor speed (when in closed loop mode)
      */

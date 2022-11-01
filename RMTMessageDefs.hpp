@@ -63,9 +63,14 @@ namespace IR
         constexpr uint32_t Msg_type_bits = 3;
 
         /**
+         * @brief max msg type
+         */
+        constexpr uint32_t Msg_type_max = (1 << Msg_type_bits) - 1;
+
+        /**
          * @brief Messages with Msg_type <= Single_transmission_msg_type are single transmission messages.
          */
-        constexpr uint32_t Single_transmission_msg_type = 2;
+        constexpr uint32_t Single_transmission_msg_type = (1 << (Msg_type_bits - 1)) - 1;
 
         /**
          * @brief number of bits for message's id.
@@ -180,7 +185,17 @@ namespace IR
          * @brief Ticks count of each pulse
          * @note RMT_ticks_num * RMT_clock_div * 1/80MHz is the pulse width.
          */
-        constexpr uint32_t RMT_ticks_num = 4;
+        constexpr uint32_t RMT_ticks_num = 8;
+
+        /**
+         * @brief padding ticks added before TX channel 2 signal for synchronization
+         */
+        constexpr uint32_t RMT_sync_ticks_num = 5;
+
+        /**
+         * @brief final pulse duration of TX channel 2
+         */
+        constexpr uint32_t CH2_final_pulse_duration = 2 * RMT_ticks_num;
 
         /**
          * @brief Ticks number that deviate from RMT_ticks_num by RMT_ticks_tol will still be accepted
@@ -246,12 +261,12 @@ namespace IR
         /**
          * @brief RMT TX minimum trigger period in us
          */
-        constexpr uint32_t RMT_TX_trigger_period_min = 40;
+        constexpr uint32_t RMT_TX_trigger_period_min = 80;
 
         /**
          * @brief RMT TX maximum trigger period in us
          */
-        constexpr uint32_t RMT_TX_trigger_period_max = 80;
+        constexpr uint32_t RMT_TX_trigger_period_max = 160;
 
         /**
          * @brief how many messages are allowed to stay in the buffer

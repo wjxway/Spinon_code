@@ -1,12 +1,11 @@
 #include "MotorCtrl.hpp"
-#include "Utilities/FastIO.hpp"
-#include "Utilities/PinDefs.hpp"
-#include "Utilities/DebugDefs.hpp"
+#include "Utilities\FastIO.hpp"
+#include "Utilities\PinDefs.hpp"
 #include <Wire.h>
 
 namespace Motor
 {
-    uint32_t Last_set_speed = 0;
+    uint32_t Last_set_speed=0;
 
     uint8_t Init()
     {
@@ -35,7 +34,7 @@ namespace Motor
         ledcSetup(Motor_LEDC_PWM_channel, PWM_frequency, PWM_resolution);
         ledcAttachPin(MOTOR_SPD_CTRL_PIN, Motor_LEDC_PWM_channel);
         ledcWrite(Motor_LEDC_PWM_channel, 0);
-
+        
         // attach alert interrupt
         attachInterrupt(MOTOR_ALERT_PIN, Alert_ISR, FALLING);
 

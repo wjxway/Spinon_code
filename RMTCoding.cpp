@@ -16,7 +16,7 @@ namespace IR
         uint32_t temp_len = 0, temp = 0;
 
         // delay and initial pulse
-        pointer[0] = {{{1, 0, RMT_ticks_num, 1}}};
+        pointer[0] = {{{1 + RMT_sync_ticks_num, 0, RMT_ticks_num, 1}}};
 
         for (uint32_t i = 0; i < RMT_data_pulse_count; i++)
         {

@@ -16,8 +16,8 @@
 #if LED_ENABLED
 #define LIT_R (GPIO.out1_w1tc.data = 1)
 #define QUENCH_R (GPIO.out1_w1ts.data = 1)
-#define LIT_G clrbit(LED_PIN_G)
-#define QUENCH_G setbit(LED_PIN_G)
+#define LIT_G (GPIO.out1_w1tc.data = 2)
+#define QUENCH_G (GPIO.out1_w1tc.data = 2)
 #define LIT_B clrbit(LED_PIN_B)
 #define QUENCH_B clrbit(LED_PIN_B)
 #else
