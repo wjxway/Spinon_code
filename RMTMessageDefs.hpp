@@ -228,35 +228,7 @@ namespace IR
          */
         constexpr uint32_t RMT_TX_length = RMT_data_pulse_count + 2;
 
-        // storage and buffer specifications
-
-        /**
-         * @brief maximum memory size for data pool.
-         */
-        constexpr uint32_t Msg_memory_size = ((1 << (Msg_ID_bits - 1)) - 1) * Msg_content_bytes;
-
-        /**
-         * @brief maximum number of robots that can communicate with a single robot in the same period of time.
-         */
-        constexpr uint32_t Max_robots_simultaneous = 8;
-
-        /**
-         * @brief Fragments pool's timing data's decay time. If nothing is added to the pool for this amount of time (in us),
-         *        then the timing info should be discarded.
-         *
-         * @note A proper value for Timing_expire_time should be the time it takes for the robot to spin 0.8 rounds.
-         */
-        constexpr uint64_t Timing_expire_time = 60000;
-
-        /**
-         * @brief Fragments pool itself's decay time. If nothing is added to the pool for this amount of time (in us),
-         *        then this robot has probably leaved the communication range and this pool should be re-purposed.
-         *
-         * @note Data_expire_time should be larger than Timing_expire_time.
-         *       A proper value for Data_expire_time should be 1.5 times the minimum span between two consecutive TX_load(...)
-         *       So that it's not too short, but still can prevent msg_ID_init from duplication.
-         */
-        constexpr uint64_t Data_expire_time = 1000000;
+        // TX period info
 
         /**
          * @brief RMT TX minimum trigger period in us
@@ -267,20 +239,6 @@ namespace IR
          * @brief RMT TX maximum trigger period in us
          */
         constexpr uint32_t RMT_TX_trigger_period_max = 160;
-
-        /**
-         * @brief how many messages are allowed to stay in the buffer
-         */
-        constexpr uint32_t Msg_buffer_max_size = 200;
-
-        /**
-         * @brief how frequently we read data from buffer and process it (in ms)
-         *
-         * @note because we have low duty cycle, we can rest for a while and let other tasks work...
-         *       the signal's period is 100us, and there's seldom >3 emitters
-         *       so in 5ms, there's at most 150 messages we need to process.
-         */
-        constexpr uint32_t Msg_process_period = 5;
     }
 }
 

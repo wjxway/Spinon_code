@@ -5,7 +5,7 @@
 
 #include "Arduino.h"
 #include "RMTMessageDefs.hpp"
-#include "driver\rmt.h"
+#include "driver/rmt.h"
 #include <vector>
 
 namespace IR
@@ -15,7 +15,10 @@ namespace IR
         constexpr uint32_t TX_priority_max = detail::Msg_type_max;
 
         /**
-         * @brief initialization of assets.
+         * @brief initialization of TX routine, including
+         *        1. initialize TX RMT channels
+         *        2. initialize TX ISR, timer and random number generator
+         *        2. initialize scheduler and default TX task
          */
         void Init();
 

@@ -1,5 +1,5 @@
 #include "CRCCheck.hpp"
-#include "..\RMTMessageDefs.hpp"
+#include "../RMTMessageDefs.hpp"
 
 uint32_t crc4_itu(uint32_t data)
 {
