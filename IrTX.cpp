@@ -47,10 +47,10 @@ namespace IR
                  * @brief update tx data object with data and complete settings.
                  *
                  * @param type msg_type of data
-                 * @param raw raw data, each uint32_t should contain Msg_content_bits of data.
+                 * @param raw raw data, each uint16_t should contain Msg_content_bits of data.
                  * @note When constructing single transmission data, construct a vector out of it first.
                  */
-                void TX_update(const std::vector<uint32_t> &raw)
+                void TX_update(const std::vector<uint16_t> &raw)
                 {
                     // number of all messages - 1 (excluding header message)
                     uint32_t n_msg = raw.size();
@@ -65,7 +65,7 @@ namespace IR
                                 Serial.println("Feeding multiple transmission data into single transmission messages! Only the first data will be sent!");)
                         // resize, generate RMT_item, and setup pointer
                         data.resize(RMT_TX_length);
-                        Generate_RMT_item(data.data(), Msg_single_t{{Robot_ID, msg_type, msg_ID_init, crc4_itu(raw[0]), raw[0]}}.raw);
+                        Generate_RMT_item(data.data(), Msg_single_t{{This_robot_ID, msg_type, msg_ID_init, crc4_itu(raw[0]), raw[0]}}.raw);
 
                         end_ptr = ptr = data.data();
                     }
@@ -76,11 +76,11 @@ namespace IR
                         data.resize((n_msg + 1) * RMT_TX_length);
 
                         // create header
-                        Generate_RMT_item(data.data(), Msg_header_t{{Robot_ID, msg_type, msg_ID_init, 0, n_msg, crc8_maxim(raw.data(), raw.size())}}.raw);
+                        Generate_RMT_item(data.data(), Msg_header_t{{This_robot_ID, msg_type, msg_ID_init, 0, n_msg, crc8_maxim(raw.data(), raw.size())}}.raw);
 
                         // cycle through data and generate data
                         for (uint32_t msgid = 1; msgid <= n_msg; msgid++)
-                            Generate_RMT_item(data.data() + msgid * RMT_TX_length, Msg_t{{Robot_ID, msg_type, msg_ID_init, msgid, raw[msgid - 1]}}.raw);
+                            Generate_RMT_item(data.data() + msgid * RMT_TX_length, Msg_t{{This_robot_ID, msg_type, msg_ID_init, msgid, raw[msgid - 1]}}.raw);
 
                         // setup pointers
                         ptr = data.data();
@@ -432,7 +432,7 @@ namespace IR
             }
         }
 
-        void Add_to_schedule(const uint32_t type, const std::vector<uint32_t> &raw, uint32_t priority1, int32_t expiration_count, uint32_t period)
+        void Add_to_schedule(const uint32_t type, const std::vector<uint16_t> &raw, uint32_t priority1, int32_t expiration_count, uint32_t period)
         {
             // setup flag to skip the interrupt (interrupt still active, but will not transmit any data)
             TX_enable_flag = false;

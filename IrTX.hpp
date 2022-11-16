@@ -40,7 +40,7 @@ namespace IR
          *
          * @note calling this will ALWAYS override the existing data.
          */
-        void Add_to_schedule(const uint32_t type, const std::vector<uint32_t> &raw, uint32_t priority1, int32_t expiration_count, uint32_t period);
+        void Add_to_schedule(const uint32_t type, const std::vector<uint16_t> &raw, uint32_t priority1, int32_t expiration_count, uint32_t period);
     }
 }
 
