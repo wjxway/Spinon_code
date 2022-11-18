@@ -1,11 +1,9 @@
 #ifndef _FEEDTHEDOG_HPP_
 #define _FEEDTHEDOG_HPP_
-#pragma once
-#include "Arduino.h"
 
 /**
- * @brief manually feed dog to prevent reboot
+ * @brief Kicks the watchdog preventing a reboot
  */
-inline void Feed_the_dog();
+void Feed_the_dog();
 
 #endif

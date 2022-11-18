@@ -3,7 +3,7 @@
 #include "soc/timer_group_reg.h"
 #include "soc/timer_group_struct.h"
 
-inline void Feed_the_dog()
+void Feed_the_dog()
 {
     //feed dog 0
     TIMERG0.wdt_wprotect = TIMG_WDT_WKEY_VALUE; //write enable

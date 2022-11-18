@@ -68,6 +68,9 @@
  *       for every size... seems redundant. but by giving the size inside
  *       template, we can use plain arrays instead of vectors.
  */
+
+#include <cstdint>
+
 template <class T, uint32_t max_size>
 class Circbuffer
 {
@@ -256,8 +259,7 @@ public:
      * @param orig1 a pointer to what it's gonna copy
      */
     Circbuffer_copycat(Circbuffer<T, max_size> *orig1) :
-        orig(orig1), start(orig1->start), end(orig1->end),
-        max_size(orig1->max_size)
+        orig(orig1), start(orig1->start), end(orig1->end)
     {
         uint32_t curr_flag;
         do
@@ -391,7 +393,6 @@ private:
     Circbuffer<T, max_size> *orig;
     T *start;
     T *end;
-    uint32_t max_size;
 
     /**
      * @brief head of copycat

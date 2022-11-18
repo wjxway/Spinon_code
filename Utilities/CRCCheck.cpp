@@ -3,31 +3,39 @@
 
 uint16_t crc4_itu(uint16_t data)
 {
-    for (int i = 0; i < IR::detail::Msg_content_bits; ++i)
-        data = (data >> 1) ^ ((-(data & 1)) & 0xC);
+    for (size_t i = 0U; i < IR::detail::Msg_content_bits; ++i)
+    {
+        data = (data >> 1) ^ ((-(data & 0x1)) & 0xC);
+    }
     return data;
 }
 
-uint16_t crc8_maxim(const uint16_t *data, const uint16_t length)
+uint16_t crc8_maxim(const uint16_t *data, const size_t length)
 {
-    uint16_t i, length1 = length, crc = 0;
-    while (length1--)
+    uint16_t crc = 0;
+    for (size_t j = length; j > 0U; j--)
     {
-        crc ^= *data++; // crc ^= *data; data++;
-        for (i = 0; i < IR::detail::Msg_content_bits; i++)
-            crc = (crc >> 1) ^ ((-(crc & 1)) & 0x8C);
+        crc ^= *data++;
+        for (size_t i = 0U; i < IR::detail::Msg_content_bits; i++)
+        {
+            crc = (crc >> 1) ^ ((-(crc & 0x1)) & 0x8C);
+        }
     }
     return crc;
 }
 
-uint16_t crc12_cdma(const uint16_t *data, const uint16_t length)
+uint16_t crc12_cdma(const uint16_t *data, const size_t length)
 {
-    uint16_t i, length1 = length, crc = 0;
-    while (length1--)
+    uint16_t crc = 0;
+
+    for (size_t j = length; j > 0U; j--)
     {
-        crc ^= *data++; // crc ^= *data; data++;
-        for (i = 0; i < IR::detail::Msg_content_bits; i++)
-            crc = (crc >> 1) ^ ((-(crc & 1)) & 0xC8F);
+        crc ^= *data++;
+        for (uint16_t i = 0U; i < IR::detail::Msg_content_bits; i++)
+        {
+            crc = (crc >> 1) ^ ((-(crc & 0x1)) & 0xC8F);
+        }
     }
+
     return crc;
 }
