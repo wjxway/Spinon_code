@@ -1,9 +1,9 @@
 #include "IrTX.hpp"
-#include "RobotDefs.hpp"
+#include "../RobotDefs.hpp"
 #include "RMTCoding.hpp"
-#include "Utilities/FastIO.hpp"
-#include "Utilities/DebugDefs.hpp"
-#include "Utilities/CRCCheck.hpp"
+#include "../Utilities/FastIO.hpp"
+#include "../Utilities/DebugDefs.hpp"
+#include "../Utilities/CRCCheck.hpp"
 #include "bootloader_random.h"
 #include "hal/rmt_ll.h"
 

@@ -1,10 +1,10 @@
 #include "IrRX.hpp"
 #include "RMTCoding.hpp"
 #include "RMTMessageDefs.hpp"
-#include "Utilities/FastIO.hpp"
-#include "Utilities/DebugDefs.hpp"
-#include "Utilities/CRCCheck.hpp"
-#include "Utilities/Circbuffer.hpp"
+#include "../Utilities/FastIO.hpp"
+#include "../Utilities/DebugDefs.hpp"
+#include "../Utilities/CRCCheck.hpp"
+#include "../Utilities/Circbuffer.hpp"
 
 namespace IR
 {

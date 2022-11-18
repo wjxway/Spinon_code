@@ -3,8 +3,8 @@
 #include "Utilities/FeedTheDog.hpp"
 #include "Utilities/DebugDefs.hpp"
 #include "Utilities/FastIO.hpp"
-#include "MotorCtrl.hpp"
-#include "IrTX.hpp"
+#include "MotorCtrl/MotorCtrl.hpp"
+#include "IrCommunication/IrTX.hpp"
 #include "Tasks.hpp"
 
 uint64_t rec_finish_time = 0;

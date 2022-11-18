@@ -1,6 +1,6 @@
 #include "MotorCtrl.hpp"
-#include "Utilities/FastIO.hpp"
-#include "Utilities/PinDefs.hpp"
+#include "../Utilities/FastIO.hpp"
+#include "../Utilities/PinDefs.hpp"
 #include <Wire.h>
 
 namespace Motor
