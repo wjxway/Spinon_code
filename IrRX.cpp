@@ -36,6 +36,16 @@ namespace IR
         //          // read stuffs
         //      } while(curr_flag!=io_flag)
         // so if the read is preempted by write, we will read again.
+
+        /**
+         * @brief get raw uint32_t data from buffer(data comes from RX_ISR) and organize and store all parsed data packet.
+         *        this function shall be called at ~100Hz rate (just not very frequently).
+         *
+         * @note I know that this function is too long, but it's still pretty structured and clear so I am not gonna split it into multiple functions.
+         * @note This task should not be preempted by other user tasks!!! or else read and write of buffer might get messy.
+         */
+        void Preprocess_task(void *pvParameters);
+
         namespace
         {
             // variable definitions
@@ -50,16 +60,151 @@ namespace IR
              */
             Circbuffer<Trans_info, Raw_msg_buffer_size> raw_msg_buffer;
 
+            // struct definitions
+            /**
+             * @brief a general class for storing parsed messages
+             *        it has subclass Parsed_msg_single, Parsed_msg_multiple.
+             *        it is used by msg_buffer and recent_msg_buffer.
+             *        you can get the validity of msg, length of msg, the starting pointer for msg, and last time its received.
+             *        but except for these, there might be other relavent information inside the data structure,
+             *        those are for me to construct it, not for you to read directly!
+             */
+            class Parsed_msg
+            {
+            public:
+                /**
+                 * @brief last time this message is received.
+                 */
+                uint64_t last_reception_time;
+                /**
+                 * @brief get how many elements are there in the content
+                 *
+                 * @return uint32_t number of uint16_t, *2 is the number of bytes
+                 */
+                virtual inline uint32_t Get_content_length() = 0;
+                /**
+                 * @brief get the starting pointer of the content
+                 *
+                 * @return uint16_t* starting pointer
+                 */
+                virtual inline uint16_t *Get_content_pointer() = 0;
+                /**
+                 * @brief whether the content is valid right now
+                 *
+                 * @return bool validity
+                 */
+                virtual inline bool Content_valid_Q() = 0;
+
+                friend void IR::RX::Preprocess_task(void *pvParameters);
+
+            protected:
+                /**
+                 * @brief Initial bit of messages in this pool.
+                 */
+                uint32_t msg_ID_init = 0;
+            };
+
+            class Parsed_msg_single : public Parsed_msg
+            {
+            public:
+                uint16_t content;
+                inline uint32_t Get_content_length()
+                {
+                    return 1;
+                }
+                inline uint16_t *Get_content_pointer()
+                {
+                    return &content;
+                }
+                inline bool Content_valid_Q()
+                {
+                    return 1;
+                }
+                friend void IR::RX::Preprocess_task(void *pvParameters);
+                ;
+            };
+
+            class Parsed_msg_multiple : public Parsed_msg
+            {
+            public:
+                uint16_t content[Msg_memory_size];
+                inline uint32_t Get_content_length()
+                {
+                    return msg_ID_max;
+                }
+                inline uint16_t *Get_content_pointer()
+                {
+                    return content;
+                }
+                inline bool Content_valid_Q()
+                {
+                    return content_valid_flag;
+                }
+                friend void IR::RX::Preprocess_task(void *pvParameters);
+
+            private:
+                /**
+                 * @brief Add element to the pool, do sanity checks, reset the pool when necessary.
+                 *
+                 * @param info complete information of transmission
+                 * @return uint32_t there are two useful bits, bit 0 and bit 1.
+                 *         bit 0 indicates whether we should open a new structure for the new inquiry. 1 for yes.
+                 *         bit 1 indicates whether we just finished a complete message.
+                 *
+                 * @note to call this function or Add_header is determined by Preprocess
+                 */
+                uint32_t Add_content(Trans_info info);
+
+                /**
+                 * @brief Add header to the pool, do sanity checks, reset the pool when necessary.
+                 *
+                 * @param info complete information of transmission
+                 * @return uint32_t there are two useful bits, bit 0 and bit 1.
+                 *         bit 0 indicates whether we should open a new structure for the new inquiry. 1 for yes.
+                 *         bit 1 indicates whether we just finished a complete message.
+                 *
+                 * @note to call this function or Add_content is determined by Preprocess
+                 */
+                uint32_t Add_header(Trans_info info);
+
+                /**
+                 * @brief How many messages should there be in this pool, indicated by the header message, excluding header message.
+                 */
+                uint32_t msg_ID_max = 0;
+
+                /**
+                 * @brief Number of messages in this pool. including header message! so when full, we have msg_count = msg_ID_max + 1.
+                 */
+                uint32_t msg_count = 0;
+
+                /**
+                 * @brief Pool filling status. bit i in filling status indicates whether message with msg_id i is filled.
+                 *
+                 * @note header is bit 0. first message is bit 1.
+                 */
+                uint32_t filling_status = 0;
+
+                /**
+                 * @brief CRC data.
+                 */
+                uint32_t CRC = 0;
+
+                /**
+                 * @brief Data valid indicator.
+                 */
+                bool content_valid_flag = false;
+            };
+
             class Robot_RX
             {
             public:
                 uint32_t robot_ID;
                 uint64_t last_reception_time;
 
-                std::array<Circbuffer<Parsed_msg_single, msg_buffer_history_size>, Single_transmission_msg_type + 1> single_data;
-                std::array<Circbuffer<Parsed_msg_multiple, msg_buffer_history_size>, Msg_type_max - Single_transmission_msg_type> multiple_dat;
+                std::array<Circbuffer<Parsed_msg_single, Msg_buffer_history_size>, Single_transmission_msg_type + 1> single_data;
+                std::array<Circbuffer<Parsed_msg_multiple, Msg_buffer_history_size>, Msg_type_max - Single_transmission_msg_type> multiple_dat;
 
-                Circbuffer<Msg_timing_t, msg_buffer_history_size> timing_dat;
+                Circbuffer<Msg_timing_t, Msg_buffer_history_size> timing_dat;
             };
 
             /**
@@ -79,18 +224,213 @@ namespace IR
             /**
              * @brief recent_msg_buffer stores data that recently completed transmission.
              */
-            std::array<Circbuffer<Parsed_msg_completed, recent_msg_buffer_history_size>, Msg_type_max + 1> recent_msg_buffer;
+            std::array<Circbuffer<Parsed_msg_completed, Recent_msg_buffer_history_size>, Msg_type_max + 1> recent_msg_buffer;
 
             /**
              * @brief a buffer that stores timing information of
              *        'when the first message from each robot is received by each receiver in this revolution'.
              */
-            Circbuffer<Msg_timing_t, timing_buffer_history_size> recent_timing_buffer;
+            Circbuffer<Msg_timing_t, Timing_buffer_history_size> recent_timing_buffer;
 
             /**
              * @brief flag that will increase when write. used to resolve concurrency (check notes at the beginning of this file).
              */
             uint32_t io_flag = 0;
+
+            /**
+             * @brief a handle to RX_ISR
+             */
+            rmt_isr_handle_t RX_ISR_handler;
+
+            uint32_t Parsed_msg_multiple::Add_content(Trans_info info)
+            {
+                // re-parse data
+                Msg_t msg;
+                msg.raw = info.data;
+
+                // filling status of corresponding position
+                bool this_filled = filling_status & (1 << (msg.msg_ID));
+
+                // check if the new data is consistent
+                // consistency is determind by three factors:
+                //      1. time elapsed between last reception and this reception is less than Data_expire_time (it's not obsolete).
+                //      2. msg_ID_init is consistent (probably the same message).
+                //      3. msg_ID_max == 0 or msg_ID <= msg_ID_max (msg_ID out of bounds).
+                //      4. either the data is missing or the data is the same as previous (data consistency).
+                bool meta_consistency = (info.time - last_reception_time < Data_expire_time) && (msg.msg_ID_init == msg_ID_init) && (msg_ID_max == 0 || msg_ID_max >= msg.msg_ID);
+                bool data_consistency = (this_filled == 0 || content[msg.msg_ID - 1] == msg.content);
+                bool consistency = meta_consistency && data_consistency;
+
+                // check if data is full and checked
+                if (content_valid_flag)
+                {
+                    // if consistent, no need for action except for update timing, if not, open new instance.
+                    if (consistency)
+                    {
+                        last_reception_time = info.time;
+                        return 0;
+                    }
+                    else
+                        return 1;
+                }
+                // if not full...
+                else
+                {
+                    // if consistent
+                    if (consistency)
+                    {
+                        // if the data is filled, then data is a duplicate, update time and quit.
+                        if (this_filled)
+                        {
+                            last_reception_time = info.time;
+                            return 0;
+                        }
+                        // if not, then the data is new, add it to the list
+                        else
+                        {
+                            last_reception_time = info.time;
+                            msg_count++;
+                            filling_status |= 1 << (msg.msg_ID);
+                            content[msg.msg_ID - 1] = msg.content;
+
+                            // check if full now
+                            // at least header should present to complete the message, so msg_count > 1.
+                            // if full, check if valid
+                            if (msg_count > 1 && msg_count == msg_ID_max + 1)
+                            {
+                                // if data is valid, set content_valid_flag
+                                // if not, do nothing and we will reset the whole structure later.
+                                if (crc8_maxim(content, msg_ID_max) == CRC)
+                                {
+                                    content_valid_flag = 1;
+                                    return 2;
+                                }
+                            }
+                            else
+                            {
+                                return 0;
+                            }
+                        }
+                    }
+                    // if not consistent, but meta is consistent, then data must be inconsistent, we just ignore the new data.
+                    // we do so instead of replacing the old with the new is that do nothing is faster, and these two data has equal chance of being wrong.
+                    // depending on the requirement, we can either update timing or not. Here we do not.
+                    else if (meta_consistency)
+                    {
+                        return 0;
+                    }
+
+                    // if meta is not consistent or if CRC check failed, the old data will never be completed, so we discard it directly and re-start the pool.
+                    last_reception_time = info.time;
+                    msg_ID_init = msg.msg_ID_init;
+                    msg_ID_max = 0;
+                    msg_count = 1;
+                    filling_status = 1 << (msg.msg_ID);
+                    CRC = 0;
+                    content_valid_flag = 0;
+                    content[msg.msg_ID - 1] = msg.content;
+
+                    return 0;
+                }
+            }
+
+            uint32_t Parsed_msg_multiple::Add_header(Trans_info info)
+            {
+                // re-parse data
+                Msg_header_t msg;
+                msg.raw = info.data;
+
+                // filling status of header
+                bool this_filled = filling_status & 1;
+
+                // check if the new data is consistent
+                // consistency is determind by three factors:
+                //      1. time elapsed between last reception and this reception is less than Data_expire_time (it's not obsolete).
+                //      2. msg_ID_init is consistent (probably the same message).
+                //      3. no message with msg_ID > msg_ID_max has been received, which means (filling_status >> msg.msg_ID_len) at max is 1 (msg_ID out of bounds).
+                //      4. either the header is missing or the header is the same as previous (data consistency).
+                bool meta_consistency = (info.time - last_reception_time < Data_expire_time) && (msg.msg_ID_init == msg_ID_init) && ((filling_status >> msg.msg_ID_len) < 2);
+                bool data_consistency = (this_filled == 0 || (CRC == msg.CRC && msg_ID_max == msg.msg_ID_len));
+                bool consistency = meta_consistency && data_consistency;
+
+                // check if data is full and checked
+                if (content_valid_flag)
+                {
+                    // if consistent, no need for action except for update timing, if not, open new instance.
+                    if (consistency)
+                    {
+                        last_reception_time = info.time;
+                        return 0;
+                    }
+                    else
+                        return 1;
+                }
+                // if not full...
+                else
+                {
+                    // if meta data is consistent
+                    // note that here it's slightly different than the Add_content case
+                    // because when we meet new, inconsistent metadata, we always OVERRIDE.
+                    // consider a case where msg_ID_len is incorrect and is larger than the actual value.
+                    // if we never replace the old one, the content will never be full, thus it will never check CRC.
+                    // but at the same time, duplicated data will come in at all times, so refreshing last_reception_time to keep the pool fresh.
+                    // this means that the pool will always be incorrect yet never reset.
+                    // by replacing the metadata whenever there's inconsistency between the old and the new, we can ensure that even if the initial metadata is wrong
+                    // it will be overriden at some point, fixing the structure.
+                    if (meta_consistency)
+                    {
+                        // if the header is filled and data is consistent, then header is a duplicate, update time and quit.
+                        if (this_filled && data_consistency)
+                        {
+                            last_reception_time = info.time;
+                            return 0;
+                        }
+                        // if not, then either
+                        //      1. the header is new or
+                        //      2. we have a inconsistency between old and new header
+                        // in either case, we have to update the information
+                        else
+                        {
+                            last_reception_time = info.time;
+                            // only add msg_count when not filled
+                            if (!this_filled)
+                                msg_count++;
+                            filling_status |= 1;
+                            CRC = msg.CRC;
+                            msg_ID_max = msg.msg_ID_len;
+
+                            // check if full now
+                            // at least header should present to complete the message, so msg_count > 1.
+                            // if full, check if valid
+                            if (msg_count == msg_ID_max + 1)
+                            {
+                                // if data is valid, set content_valid_flag
+                                // if not, do nothing and we will reset the whole structure later.
+                                if (crc8_maxim(content, msg_ID_max) == CRC)
+                                {
+                                    content_valid_flag = 1;
+                                    return 2;
+                                }
+                            }
+                            else
+                            {
+                                return 0;
+                            }
+                        }
+                    }
+
+                    // if meta is not consistent or if CRC check failed, the old data will never be completed, so we discard it directly and re-start the pool.
+                    last_reception_time = info.time;
+                    msg_ID_init = msg.msg_ID_init;
+                    msg_ID_max = msg.msg_ID_len;
+                    msg_count = 1;
+                    filling_status = 1;
+                    CRC = msg.CRC;
+                    content_valid_flag = 0;
+
+                    return 0;
+                }
+            }
         }
 
         /**
@@ -211,196 +551,6 @@ namespace IR
             return res;
         }
 
-        uint32_t Parsed_msg_multiple::Add_content(Trans_info info)
-        {
-            // re-parse data
-            Msg_t msg;
-            msg.raw = info.data;
-
-            // filling status of corresponding position
-            bool this_filled = filling_status & (1 << (msg.msg_ID));
-
-            // check if the new data is consistent
-            // consistency is determind by three factors:
-            //      1. time elapsed between last reception and this reception is less than Data_expire_time (it's not obsolete).
-            //      2. msg_ID_init is consistent (probably the same message).
-            //      3. msg_ID_max == 0 or msg_ID <= msg_ID_max (msg_ID out of bounds).
-            //      4. either the data is missing or the data is the same as previous (data consistency).
-            bool meta_consistency = (info.time - last_reception_time < Data_expire_time) && (msg.msg_ID_init == msg_ID_init) && (msg_ID_max == 0 || msg_ID_max >= msg.msg_ID);
-            bool data_consistency = (this_filled == 0 || content[msg.msg_ID - 1] == msg.content);
-            bool consistency = meta_consistency && data_consistency;
-
-            // check if data is full and checked
-            if (content_valid_flag)
-            {
-                // if consistent, no need for action except for update timing, if not, open new instance.
-                if (consistency)
-                {
-                    last_reception_time = info.time;
-                    return 0;
-                }
-                else
-                    return 1;
-            }
-            // if not full...
-            else
-            {
-                // if consistent
-                if (consistency)
-                {
-                    // if the data is filled, then data is a duplicate, update time and quit.
-                    if (this_filled)
-                    {
-                        last_reception_time = info.time;
-                        return 0;
-                    }
-                    // if not, then the data is new, add it to the list
-                    else
-                    {
-                        last_reception_time = info.time;
-                        msg_count++;
-                        filling_status |= 1 << (msg.msg_ID);
-                        content[msg.msg_ID - 1] = msg.content;
-
-                        // check if full now
-                        // at least header should present to complete the message, so msg_count > 1.
-                        // if full, check if valid
-                        if (msg_count > 1 && msg_count == msg_ID_max + 1)
-                        {
-                            // if data is valid, set content_valid_flag
-                            // if not, do nothing and we will reset the whole structure later.
-                            if (crc8_maxim(content, msg_ID_max) == CRC)
-                            {
-                                content_valid_flag = 1;
-                                return 2;
-                            }
-                        }
-                        else
-                        {
-                            return 0;
-                        }
-                    }
-                }
-                // if not consistent, but meta is consistent, then data must be inconsistent, we just ignore the new data.
-                // we do so instead of replacing the old with the new is that do nothing is faster, and these two data has equal chance of being wrong.
-                // depending on the requirement, we can either update timing or not. Here we do not.
-                else if (meta_consistency)
-                {
-                    return 0;
-                }
-
-                // if meta is not consistent or if CRC check failed, the old data will never be completed, so we discard it directly and re-start the pool.
-                last_reception_time = info.time;
-                msg_ID_init = msg.msg_ID_init;
-                msg_ID_max = 0;
-                msg_count = 1;
-                filling_status = 1 << (msg.msg_ID);
-                CRC = 0;
-                content_valid_flag = 0;
-                content[msg.msg_ID - 1] = msg.content;
-
-                return 0;
-            }
-        }
-
-        uint32_t Parsed_msg_multiple::Add_header(Trans_info info)
-        {
-            // re-parse data
-            Msg_header_t msg;
-            msg.raw = info.data;
-
-            // filling status of header
-            bool this_filled = filling_status & 1;
-
-            // check if the new data is consistent
-            // consistency is determind by three factors:
-            //      1. time elapsed between last reception and this reception is less than Data_expire_time (it's not obsolete).
-            //      2. msg_ID_init is consistent (probably the same message).
-            //      3. no message with msg_ID > msg_ID_max has been received, which means (filling_status >> msg.msg_ID_len) at max is 1 (msg_ID out of bounds).
-            //      4. either the header is missing or the header is the same as previous (data consistency).
-            bool meta_consistency = (info.time - last_reception_time < Data_expire_time) && (msg.msg_ID_init == msg_ID_init) && ((filling_status >> msg.msg_ID_len) < 2);
-            bool data_consistency = (this_filled == 0 || (CRC == msg.CRC && msg_ID_max == msg.msg_ID_len));
-            bool consistency = meta_consistency && data_consistency;
-
-            // check if data is full and checked
-            if (content_valid_flag)
-            {
-                // if consistent, no need for action except for update timing, if not, open new instance.
-                if (consistency)
-                {
-                    last_reception_time = info.time;
-                    return 0;
-                }
-                else
-                    return 1;
-            }
-            // if not full...
-            else
-            {
-                // if meta data is consistent
-                // note that here it's slightly different than the Add_content case
-                // because when we meet new, inconsistent metadata, we always OVERRIDE.
-                // consider a case where msg_ID_len is incorrect and is larger than the actual value.
-                // if we never replace the old one, the content will never be full, thus it will never check CRC.
-                // but at the same time, duplicated data will come in at all times, so refreshing last_reception_time to keep the pool fresh.
-                // this means that the pool will always be incorrect yet never reset.
-                // by replacing the metadata whenever there's inconsistency between the old and the new, we can ensure that even if the initial metadata is wrong
-                // it will be overriden at some point, fixing the structure.
-                if (meta_consistency)
-                {
-                    // if the header is filled and data is consistent, then header is a duplicate, update time and quit.
-                    if (this_filled && data_consistency)
-                    {
-                        last_reception_time = info.time;
-                        return 0;
-                    }
-                    // if not, then either
-                    //      1. the header is new or
-                    //      2. we have a inconsistency between old and new header
-                    // in either case, we have to update the information
-                    else
-                    {
-                        last_reception_time = info.time;
-                        // only add msg_count when not filled
-                        if (!this_filled)
-                            msg_count++;
-                        filling_status |= 1;
-                        CRC = msg.CRC;
-                        msg_ID_max = msg.msg_ID_len;
-
-                        // check if full now
-                        // at least header should present to complete the message, so msg_count > 1.
-                        // if full, check if valid
-                        if (msg_count == msg_ID_max + 1)
-                        {
-                            // if data is valid, set content_valid_flag
-                            // if not, do nothing and we will reset the whole structure later.
-                            if (crc8_maxim(content, msg_ID_max) == CRC)
-                            {
-                                content_valid_flag = 1;
-                                return 2;
-                            }
-                        }
-                        else
-                        {
-                            return 0;
-                        }
-                    }
-                }
-
-                // if meta is not consistent or if CRC check failed, the old data will never be completed, so we discard it directly and re-start the pool.
-                last_reception_time = info.time;
-                msg_ID_init = msg.msg_ID_init;
-                msg_ID_max = msg.msg_ID_len;
-                msg_count = 1;
-                filling_status = 1;
-                CRC = msg.CRC;
-                content_valid_flag = 0;
-
-                return 0;
-            }
-        }
-
         inline uint32_t Get_io_flag()
         {
             return io_flag;
@@ -491,9 +641,9 @@ namespace IR
             return empty ? Parsed_msg_completed{} : res;
         }
 
-        inline Circbuffer_copycat<Parsed_msg_completed, recent_msg_buffer_history_size> Get_msg_buffer_by_type(uint32_t msg_type)
+        inline Circbuffer_copycat<Parsed_msg_completed, Recent_msg_buffer_history_size> Get_msg_buffer_by_type(uint32_t msg_type)
         {
-            return Circbuffer_copycat<Parsed_msg_completed, recent_msg_buffer_history_size>{&recent_msg_buffer[msg_type]};
+            return Circbuffer_copycat<Parsed_msg_completed, Recent_msg_buffer_history_size>{&recent_msg_buffer[msg_type]};
         }
 
         // Msg_timing_t Get_timing_data(uint32_t age)
@@ -512,7 +662,7 @@ namespace IR
         //     return res;
         // }
 
-        uint32_t Copy_timing_data(Msg_timing_t *start)
+        uint32_t Get_timing_data(Msg_timing_t *start)
         {
             uint32_t curr_flag;
             uint32_t len = 0;
@@ -533,8 +683,49 @@ namespace IR
             return len;
         }
 
-        // actual tasks
-        void IRAM_ATTR RX_ISR()
+        uint32_t Get_neighboring_robots_ID(uint32_t *start, uint64_t history_time)
+        {
+            uint32_t curr_flag;
+
+            uint64_t t_now = micros();
+            // pointer to the current position in start array
+            uint32_t *ptr;
+            // number of robots
+            uint32_t count;
+
+            do
+            {
+                curr_flag = io_flag;
+
+                count = 0;
+                // if start == nullptr, ignore this.
+                if (start)
+                {
+                    ptr = start;
+                }
+                for (int i = 0; i < Max_robots_simultaneous; i++)
+                {
+                    if (history_time == 0 || (t_now - msg_buffer[i].last_reception_time < history_time))
+                    {
+                        if (start)
+                        {
+                            *ptr = msg_buffer[i].robot_ID;
+                            ptr++;
+                        }
+                        count++;
+                    }
+                }
+            }
+            // repeat if write task preempted this task
+            while (io_flag != curr_flag);
+
+            return count;
+        }
+
+        /**
+         * @brief RX ISR that handles input RMT transmissions and store them into a buffer.
+         */
+        void IRAM_ATTR RX_ISR(void *)
         {
             // test start pulse
             // delayhigh100ns(TEST_PIN);
@@ -699,154 +890,358 @@ namespace IR
             // clrbit(TEST_PIN_2);
         }
 
-        /**
-         * @brief get raw uint32_t data from buffer(data comes from RX_ISR) and organize and store all parsed data packet.
-         *        this function shall be called at ~100Hz rate (just not very frequently).
-         *
-         * @note I know that this function is too long, but it's still pretty structured and clear so I am not gonna split it into multiple functions.
-         */
-        void Preprocess()
+        void Preprocess_task(void *pvParameters)
         {
-            // increment io_flag as a coarse lock
-            // all read task should have lower priority than preprocess task
-            // and they should check io_flag to determine whether the read has been preempted by Preprocess
-            io_flag++;
-
-            // keep doing till the buffer is empty
-            while (raw_msg_buffer.n_elem)
+            TickType_t prev_wake_time = xTaskGetTickCount();
+            while (1)
             {
-                // fetch message from buffer
-                Trans_info info = raw_msg_buffer.pop();
+                // increment io_flag as a coarse lock
+                // all read task should have lower priority than preprocess task
+                // and they should check io_flag to determine whether the read has been preempted by Preprocess
+                io_flag++;
 
-                // whether the message is from the top emitter
-                uint32_t emitter = info.data & (1 << (32 - 1));
-
-                // setup a temporary value and extract some basic properties of the message.
-                Msg_t temp_msg;
-                temp_msg.raw = info.data;
-                uint32_t robot_ID = temp_msg.robot_ID, msg_type = temp_msg.msg_type, msg_ID = temp_msg.msg_ID;
-
-                // obtain pointer to buffer, create Robot_RX instance if needed.
-                Robot_RX *robot_ptr = Add_new_robot(robot_ID);
-
-                // deal with timing buffer
-                // note that we always update timing buffer regardless of message's validity
-                // I am fully aware that incorrect messages with incorrect robot_ID might disrupt this routine, but I don't have a choice right now.
-                // because we do not have a way of verifying whether the message is error free for multiple-transmission messages
-                // if we are gonna do this, we have to add CRC to all messages regardless of type, which is kinda expensive.
-                // but anyway, now just a sanity check about pulse count and pulse width should be quite enough for most scenarios, so we will ignore this for now
-                // if there's a problem later, we can always add an additional CRC about the raw message in the future.
-                robot_ptr->timing_dat;
-
-                // deal with data buffers
-                // check type, if single message
-                if (msg_type <= Single_transmission_msg_type)
+                // keep doing till the buffer is empty
+                while (raw_msg_buffer.n_elem)
                 {
-                    // parse msg correctly
-                    Msg_single_t real_msg;
-                    real_msg.raw = info.data;
-                    uint32_t content = real_msg.content, msg_ID_init = real_msg.msg_ID_init;
+                    // fetch message from buffer
+                    Trans_info info = raw_msg_buffer.pop();
 
-                    // check for CRC, if cannot pass, discard message.
-                    if (crc4_itu(content) != real_msg.CRC)
-                        continue;
+                    // setup a temporary value and extract some basic properties of the message.
+                    Msg_t temp_msg;
+                    temp_msg.raw = info.data;
+                    uint32_t robot_ID = temp_msg.robot_ID, msg_type = temp_msg.msg_type, msg_ID = temp_msg.msg_ID;
 
-                    // update robot's timing info
-                    robot_ptr->last_reception_time = info.time;
+                    // obtain pointer to buffer, create Robot_RX instance if needed.
+                    Robot_RX *robot_ptr = Add_new_robot(robot_ID);
 
-                    // fetch latest message if exist
-                    if (robot_ptr->single_data[msg_type].n_elem)
+                    // deal with timing buffer
+                    // note that we always update timing buffer regardless of message's validity
+                    // I am fully aware that incorrect messages with incorrect robot_ID might disrupt this routine, but I don't have a choice right now.
+                    // because we do not have a way of verifying whether the message is error free for multiple-transmission messages
+                    // if we are gonna do this, we have to add CRC to all messages regardless of type, which is kinda expensive.
+                    // but anyway, now just a sanity check about pulse count and pulse width should be quite enough for most scenarios, so we will ignore this for now
+                    // if there's a problem later, we can always add an additional CRC about the raw message in the future.
+                    auto timebuf = robot_ptr->timing_dat;
+                    // whether the message is from the top emitter
+                    uint32_t emitter = info.data & (1 << (32 - 1));
+                    // if there's element and the last time this robot received any message is close,
+                    // then we should not add a new instance. We should only update the timing info when needed.
+                    if (timebuf.n_elem && (info.time - robot_ptr->last_reception_time) < Timing_expire_time)
                     {
-                        Parsed_msg_single &tail = robot_ptr->single_data[msg_type].peek_tail();
-                        // check if is the same and not obsolete, if so, simply change tail's reception time and continue.
-                        if (tail.msg_ID_init == msg_ID_init && tail.content == content && (info.time - tail.last_reception_time) < Data_expire_time)
+                        // peek the latest one
+                        auto &last_time = timebuf.peek_tail();
+                        uint32_t new_pos = info.receiver & (~last_time.receiver);
+                        // usually this is just 0, then we can skip all the rest.
+                        if (new_pos != 0)
                         {
-                            tail.last_reception_time = info.time;
-                            continue;
+                            for (int i = 0; i < RMT_RX_CHANNEL_COUNT; i++)
+                            {
+                                if (new_pos | (1 << i))
+                                {
+                                    last_time.time_arr[i] = info.time;
+                                    last_time.emitter_pos += (emitter << i);
+                                }
+                            }
+                            last_time.receiver |= info.receiver;
+
+                            if (last_time.receiver == ((1 << RMT_RX_CHANNEL_COUNT) - 1))
+                            {
+                                last_time.timing_valid_Q = 1;
+                                // add to recent_timing_buffer if finished
+                                recent_timing_buffer.push(last_time);
+                            }
                         }
                     }
-
-                    // if one of the following is true
-                    //  1. buffer is empty
-                    //  2. the messages are not the same
-                    //  3. the old message is just too old
-                    // construct Parsed_msg_single and push it inside pool
-                    Parsed_msg_single temp;
-                    temp.content = content;
-                    temp.msg_ID_init = msg_ID_init;
-                    temp.last_reception_time = info.time;
-
-                    robot_ptr->single_data[msg_type].push(temp);
-
-                    // because it's single transmission message, always add to the recent_msg_buffer
-                    recent_msg_buffer[msg_type].push(To_completed_form(robot_ID, msg_type, temp));
-                }
-                // if not, must be multiple message type
-                else
-                {
-                    // update timing
-                    // note that the timing for robot might be later than the timing for individual messages
-                    // because when faulty multiple message type message is received, we will not update timing for individual pool
-                    // but we will always update timing for robot time.
-                    robot_ptr->last_reception_time = info.time;
-                    // the corresponding typed circular buffer
-                    auto circbuf = robot_ptr->multiple_dat[msg_type - Single_transmission_msg_type - 1];
-
-                    // bit 0 -> whether the data should be in a new bin
-                    // bit 1 -> whether the data is just full
-                    uint32_t flags = 0b01;
-
-                    // check if it's content message
-                    if (msg_ID)
-                    {
-                        // if content message, try to figure out if the corresponding pool is empty
-                        if (circbuf.n_elem)
-                        {
-                            // if not, try to add content to the existing, latest message
-                            flags = circbuf.peek_tail().Add_content(info);
-                        }
-                        // if requires to generate a new content (flags's first bit is 1)
-                        if (flags | 1)
-                        {
-                            Parsed_msg_multiple temp;
-                            flags = temp.Add_content(info);
-                            circbuf.push(temp);
-                        }
-                        // if data has just been finished update recent_msg_buffer
-                        if (flags | 2)
-                        {
-                            recent_msg_buffer[msg_type].push(To_completed_form(robot_ID, msg_type, circbuf.peek_tail()));
-                        }
-                    }
-                    // if multiple message type and not content, must be header
+                    // add new instance and push inside buffer if we cannot merge with the last instance
                     else
                     {
-                        // if header message, try to figure out if the corresponding pool is empty
-                        if (circbuf.n_elem)
+                        Msg_timing_t temp;
+                        temp.receiver = info.receiver;
+                        temp.robot_ID = robot_ID;
+                        for (int i = 0; i < RMT_RX_CHANNEL_COUNT; i++)
                         {
-                            // if not, try to add header to the existing, latest message
-                            flags = circbuf.peek_tail().Add_header(info);
+                            if (info.receiver | (1 << i))
+                            {
+                                temp.time_arr[i] = info.time;
+                                temp.emitter_pos += (emitter << i);
+                            }
                         }
-                        // if requires to generate a new content (flags's first bit is 1)
-                        if (flags | 1)
+                        if (info.receiver == ((1 << RMT_RX_CHANNEL_COUNT) - 1))
                         {
-                            Parsed_msg_multiple temp;
-                            flags = temp.Add_header(info);
-                            circbuf.push(temp);
+                            temp.timing_valid_Q = 1;
+                            // add to recent_timing_buffer if finished
+                            recent_timing_buffer.push(temp);
                         }
-                        // if data has just been finished update recent_msg_buffer
-                        if (flags | 2)
+
+                        timebuf.push(temp);
+                    }
+
+                    // deal with data buffers
+                    // check type, if single message
+                    if (msg_type <= Single_transmission_msg_type)
+                    {
+                        // parse msg correctly
+                        Msg_single_t real_msg;
+                        real_msg.raw = info.data;
+                        uint32_t content = real_msg.content, msg_ID_init = real_msg.msg_ID_init;
+
+                        // check for CRC, if cannot pass, discard message.
+                        if (crc4_itu(content) != real_msg.CRC)
+                            continue;
+
+                        // update robot's timing info
+                        robot_ptr->last_reception_time = info.time;
+
+                        // fetch latest message if exist
+                        if (robot_ptr->single_data[msg_type].n_elem)
                         {
-                            recent_msg_buffer[msg_type].push(To_completed_form(robot_ID, msg_type, circbuf.peek_tail()));
+                            Parsed_msg_single &tail = robot_ptr->single_data[msg_type].peek_tail();
+                            // check if is the same and not obsolete, if so, simply change tail's reception time and continue.
+                            if (tail.msg_ID_init == msg_ID_init && tail.content == content && (info.time - tail.last_reception_time) < Data_expire_time)
+                            {
+                                tail.last_reception_time = info.time;
+                                continue;
+                            }
+                        }
+
+                        // if one of the following is true
+                        //  1. buffer is empty
+                        //  2. the messages are not the same
+                        //  3. the old message is just too old
+                        // construct Parsed_msg_single and push it inside pool
+                        Parsed_msg_single temp;
+                        temp.content = content;
+                        temp.msg_ID_init = msg_ID_init;
+                        temp.last_reception_time = info.time;
+
+                        robot_ptr->single_data[msg_type].push(temp);
+
+                        // because it's single transmission message, always add to the recent_msg_buffer
+                        recent_msg_buffer[msg_type].push(To_completed_form(robot_ID, msg_type, temp));
+                    }
+                    // if not, must be multiple message type
+                    else
+                    {
+                        // update timing
+                        // note that the timing for robot might be later than the timing for individual messages
+                        // because when faulty multiple message type message is received, we will not update timing for individual pool
+                        // but we will always update timing for robot time.
+                        robot_ptr->last_reception_time = info.time;
+                        // the corresponding typed circular buffer
+                        auto circbuf = robot_ptr->multiple_dat[msg_type - Single_transmission_msg_type - 1];
+
+                        // bit 0 -> whether the data should be in a new bin
+                        // bit 1 -> whether the data is just full
+                        uint32_t flags = 0b01;
+
+                        // check if it's content message
+                        if (msg_ID)
+                        {
+                            // if content message, try to figure out if the corresponding pool is empty
+                            if (circbuf.n_elem)
+                            {
+                                // if not, try to add content to the existing, latest message
+                                flags = circbuf.peek_tail().Add_content(info);
+                            }
+                            // if requires to generate a new content (flags's first bit is 1)
+                            if (flags | 1)
+                            {
+                                Parsed_msg_multiple temp;
+                                flags = temp.Add_content(info);
+                                circbuf.push(temp);
+                            }
+                            // if data has just been finished update recent_msg_buffer
+                            if (flags | 2)
+                            {
+                                recent_msg_buffer[msg_type].push(To_completed_form(robot_ID, msg_type, circbuf.peek_tail()));
+                            }
+                        }
+                        // if multiple message type and not content, must be header
+                        else
+                        {
+                            // if header message, try to figure out if the corresponding pool is empty
+                            if (circbuf.n_elem)
+                            {
+                                // if not, try to add header to the existing, latest message
+                                flags = circbuf.peek_tail().Add_header(info);
+                            }
+                            // if requires to generate a new content (flags's first bit is 1)
+                            if (flags | 1)
+                            {
+                                Parsed_msg_multiple temp;
+                                flags = temp.Add_header(info);
+                                circbuf.push(temp);
+                            }
+                            // if data has just been finished update recent_msg_buffer
+                            if (flags | 2)
+                            {
+                                recent_msg_buffer[msg_type].push(To_completed_form(robot_ID, msg_type, circbuf.peek_tail()));
+                            }
                         }
                     }
                 }
+
+                vTaskDelayUntil(&prev_wake_time, pdMS_TO_TICKS(Preprocess_trigger_period));
             }
         }
 
-        void Init()
+        bool Init()
         {
-            xxxx;
+
+#if RMT_RX_CHANNEL_COUNT >= 1
+            pinMode(RMT_RX_PIN_1, INPUT);
+#endif
+#if RMT_RX_CHANNEL_COUNT >= 2
+            pinMode(RMT_RX_PIN_1, INPUT);
+#endif
+#if RMT_RX_CHANNEL_COUNT == 3
+            pinMode(RMT_RX_PIN_1, INPUT);
+#endif
+
+#if RMT_RX_CHANNEL_COUNT >= 1
+
+            // config RX_1
+            rmt_config_t rmt_rx_1;
+            rmt_rx_1.channel = RMT_RX_channel_1;
+            rmt_rx_1.gpio_num = (gpio_num_t)RMT_RX_PIN_1;
+            rmt_rx_1.clk_div = RMT_clock_div;
+            rmt_rx_1.mem_block_num = 2;
+            rmt_rx_1.rmt_mode = RMT_MODE_RX;
+            // use 2 as filter to filter out pulses with less than 250ns
+            rmt_rx_1.rx_config.filter_en = 1;
+            rmt_rx_1.rx_config.filter_ticks_thresh = 2;
+            // stop when idle for 4us could be reduced to 3us when necessary, but should be longer than 2us.
+            rmt_rx_1.rx_config.idle_threshold = (2 << Bit_per_cycle) * RMT_ticks_num + Pad_per_cycle;
+
+            if (rmt_config(&rmt_rx_1) != ESP_OK)
+            {
+                DEBUG_C(Serial.println("RMT RX_1 init failed!"));
+                return false;
+            }
+            // set up filter again...
+            if (rmt_set_rx_filter(rmt_rx_1.channel, true, RMT_clock_div * RMT_ticks_num / 2) != ESP_OK)
+            {
+                DEBUG_C(Serial.println("RMT RX_1 set filter failed!"));
+                return false;
+            }
+            // initialization of RMT RX interrupt
+            if (rmt_set_rx_intr_en(rmt_rx_1.channel, true) != ESP_OK)
+            {
+                DEBUG_C(Serial.println("RMT RX_1 interrupt not started!"));
+                return false;
+            }
+
+#if RMT_RX_CHANNEL_COUNT >= 2
+            // config RX_2
+            rmt_config_t rmt_rx_2;
+            rmt_rx_2.channel = RMT_RX_channel_2;
+            rmt_rx_2.gpio_num = (gpio_num_t)RMT_RX_PIN_2;
+            rmt_rx_2.clk_div = RMT_clock_div;
+            rmt_rx_2.mem_block_num = 2;
+            rmt_rx_2.rmt_mode = RMT_MODE_RX;
+            rmt_rx_2.rx_config.filter_en = 1;
+            rmt_rx_2.rx_config.filter_ticks_thresh = 2;
+            rmt_rx_2.rx_config.idle_threshold = (2 << Bit_per_cycle) * RMT_ticks_num + Pad_per_cycle;
+
+            if (rmt_config(&rmt_rx_2) != ESP_OK)
+            {
+                DEBUG_C(Serial.println("RMT RX_2 init failed!"));
+                return false;
+            }
+            // set up filter again...
+            if (rmt_set_rx_filter(rmt_rx_2.channel, true, RMT_clock_div * RMT_ticks_num / 2) != ESP_OK)
+            {
+                DEBUG_C(Serial.println("RMT RX_2 set filter failed!"));
+                return false;
+            }
+            // initialization of RMT RX interrupt
+            if (rmt_set_rx_intr_en(rmt_rx_2.channel, true) != ESP_OK)
+            {
+                DEBUG_C(Serial.println("RMT RX_2 interrupt not started!"));
+                return false;
+            }
+#endif
+
+#if RMT_RX_CHANNEL_COUNT == 3
+            // config RX_3
+            rmt_config_t rmt_rx_3;
+            rmt_rx_3.channel = RMT_RX_channel_3;
+            rmt_rx_3.gpio_num = (gpio_num_t)RMT_RX_PIN_3;
+            rmt_rx_3.clk_div = RMT_clock_div;
+            rmt_rx_3.mem_block_num = 2;
+            rmt_rx_3.rmt_mode = RMT_MODE_RX;
+            rmt_rx_3.rx_config.filter_en = 1;
+            rmt_rx_3.rx_config.filter_ticks_thresh = 2;
+            rmt_rx_3.rx_config.idle_threshold = (((1 << Bit_per_cycle) - 1) * 2 + 1) * RMT_ticks_num + Pad_per_cycle;
+
+            if (rmt_config(&rmt_rx_3) != ESP_OK)
+            {
+                DEBUG_C(Serial.println("RMT RX_3 init failed!"));
+                return false;
+            }
+            // set up filter again...
+            if (rmt_set_rx_filter(rmt_rx_3.channel, true, RMT_clock_div * RMT_ticks_num / 2) != ESP_OK)
+            {
+                DEBUG_C(Serial.println("RMT RX_3 set filter failed!"));
+                return false;
+            }
+            // initialization of RMT RX interrupt
+            if (rmt_set_rx_intr_en(rmt_rx_3.channel, true) != ESP_OK)
+            {
+                DEBUG_C(Serial.println("RMT RX_3 interrupt not started!"));
+                return false;
+            }
+#endif
+
+            // //enable default isr
+            // else if (rmt_isr_register(rmt_isr_handler, NULL, ESP_INTR_FLAG_LEVEL3, &xHandler) != ESP_OK)
+            // {
+            //     INIT_println("RMT RX interrupt register failed!");
+            //     return false;
+            // }
+
+            // setup ISR
+            if (rmt_isr_register(RX_ISR, NULL, ESP_INTR_FLAG_LEVEL3, &RX_ISR_handler) != ESP_OK)
+            {
+                DEBUG_C(Serial.println("RMT RX interrupt register failed!"));
+                return false;
+            }
+
+            // enable RMT_RX
+            if (rmt_rx_start(rmt_rx_1.channel, 1) != ESP_OK)
+            {
+                DEBUG_C(Serial.println("RMT RX_1 start failed!"));
+                return false;
+            }
+#if RMT_RX_CHANNEL_COUNT >= 2
+            if (rmt_rx_start(rmt_rx_2.channel, 1) != ESP_OK)
+            {
+                DEBUG_C(Serial.println("RMT RX_2 start failed!"));
+                return false;
+            }
+#endif
+#if RMT_RX_CHANNEL_COUNT == 3
+            if (rmt_rx_start(rmt_rx_3.channel, 1) != ESP_OK)
+            {
+                DEBUG_C(Serial.println("RMT RX_3 start failed!"));
+                return false;
+            }
+#endif
+
+            // create the preprocess task
+            xTaskCreatePinnedToCore(
+                Preprocess_task,
+                "RX_preprocess_task",
+                100000,
+                NULL,
+                Preprocess_task_priority,
+                NULL,
+                0);
+
+            DEBUG_C(Serial.println("RMT RX setup finished!"));
+#endif
+
+            return true;
         }
     }
 }

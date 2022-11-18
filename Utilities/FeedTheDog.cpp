@@ -1,5 +1,4 @@
 #include "FeedTheDog.hpp"
-#include "Arduino.h"
 #include "esp_task_wdt.h"
 #include "soc/timer_group_reg.h"
 #include "soc/timer_group_struct.h"

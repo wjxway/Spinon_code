@@ -19,6 +19,16 @@ namespace IR
     {
         // constants
         /**
+         * @brief how frequently will preprocess task be triggered, in ms.
+         */
+        constexpr uint32_t Preprocess_trigger_period = 100;
+
+        /**
+         * @brief priority of Preprocess task, note that all other user tasks based on RX should have lower priority than this!
+         */
+        constexpr uint32_t Preprocess_task_priority = 10;
+        
+        /**
          * @brief timing data's valid time
          *
          * @note A proper value for Timing_expire_time should be the time it takes for the robot to spin 1 rounds.
@@ -60,149 +70,17 @@ namespace IR
         /**
          * @brief how many messages will we save per robot per type
          */
-        constexpr uint32_t msg_buffer_history_size = 5;
+        constexpr uint32_t Msg_buffer_history_size = 5;
 
         /**
          * @brief how many messages will we save in the recent message buffer
          */
-        constexpr uint32_t recent_msg_buffer_history_size = 20;
+        constexpr uint32_t Recent_msg_buffer_history_size = 20;
 
         /**
          * @brief how many messages will we save in the timing message buffer
          */
-        constexpr uint32_t timing_buffer_history_size = 3 * Max_robots_simultaneous;
-
-        // struct definitions
-        /**
-         * @brief a general class for storing parsed messages
-         *        it has subclass Parsed_msg_single, Parsed_msg_multiple.
-         *        it is used by msg_buffer and recent_msg_buffer.
-         *        you can get the validity of msg, length of msg, the starting pointer for msg, and last time its received.
-         *        but except for these, there might be other relavent information inside the data structure,
-         *        those are for me to construct it, not for you to read directly!
-         */
-        class Parsed_msg
-        {
-        public:
-            /**
-             * @brief last time this message is received.
-             */
-            uint64_t last_reception_time;
-            /**
-             * @brief get how many elements are there in the content
-             *
-             * @return uint32_t number of uint16_t, *2 is the number of bytes
-             */
-            virtual inline uint32_t Get_content_length() = 0;
-            /**
-             * @brief get the starting pointer of the content
-             *
-             * @return uint16_t* starting pointer
-             */
-            virtual inline uint16_t *Get_content_pointer() = 0;
-            /**
-             * @brief whether the content is valid right now
-             *
-             * @return bool validity
-             */
-            virtual inline bool Content_valid_Q() = 0;
-
-            friend void Preprocess();
-
-        protected:
-            /**
-             * @brief Initial bit of messages in this pool.
-             */
-            uint32_t msg_ID_init = 0;
-        };
-
-        class Parsed_msg_single : public Parsed_msg
-        {
-        public:
-            uint16_t content;
-            inline uint32_t Get_content_length()
-            {
-                return 1;
-            }
-            inline uint16_t *Get_content_pointer()
-            {
-                return &content;
-            }
-            inline bool Content_valid_Q()
-            {
-                return 1;
-            }
-            friend void Preprocess();
-        };
-
-        class Parsed_msg_multiple : public Parsed_msg
-        {
-        public:
-            uint16_t content[Msg_memory_size];
-            inline uint32_t Get_content_length()
-            {
-                return msg_ID_max;
-            }
-            inline uint16_t *Get_content_pointer()
-            {
-                return content;
-            }
-            inline bool Content_valid_Q()
-            {
-                return content_valid_flag;
-            }
-            friend void Preprocess();
-
-        private:
-            /**
-             * @brief Add element to the pool, do sanity checks, reset the pool when necessary.
-             *
-             * @param info complete information of transmission
-             * @return uint32_t there are two useful bits, bit 0 and bit 1.
-             *         bit 0 indicates whether we should open a new structure for the new inquiry. 1 for yes.
-             *         bit 1 indicates whether we just finished a complete message.
-             * 
-             * @note to call this function's or Add_header is determined by the Preprocess
-             */
-            uint32_t Add_content(Trans_info info);
-
-            /**
-             * @brief Add header to the pool, do sanity checks, reset the pool when necessary.
-             *
-             * @param info complete information of transmission
-             * @return uint32_t there are two useful bits, bit 0 and bit 1.
-             *         bit 0 indicates whether we should open a new structure for the new inquiry. 1 for yes.
-             *         bit 1 indicates whether we just finished a complete message.
-             */
-            uint32_t Add_header(Trans_info info);
-
-            /**
-             * @brief How many messages should there be in this pool, indicated by the header message, excluding header message.
-             */
-            uint32_t msg_ID_max = 0;
-
-            /**
-             * @brief Number of messages in this pool. including header message! so when full, we have msg_count = msg_ID_max + 1.
-             */
-            uint32_t msg_count = 0;
-
-            /**
-             * @brief Pool filling status. bit i in filling status indicates whether message with msg_id i is filled.
-             * 
-             * @note header is bit 0. first message is bit 1.
-             */
-            uint32_t filling_status = 0;
-
-            /**
-             * @brief CRC data.
-             */
-            uint32_t CRC = 0;
-
-            /**
-             * @brief Data valid indicator.
-             */
-            bool content_valid_flag = false;
-        };
+        constexpr uint32_t Timing_buffer_history_size = 3 * Max_robots_simultaneous;
 
         /**
          * @brief Parsed_msg_completed can be shorter because it's always finished so we can get rid of some metadata.
@@ -246,7 +124,12 @@ namespace IR
              */
             uint64_t time_arr[RMT_RX_CHANNEL_COUNT];
             /**
-             * @brief byte channel represents whether timing for channel i is sent by top/bottom emitter.
+             * @brief bit i represents whether message received by receiver i is sent by top/bottom emitter.
+             *        0 -> top, 1 -> bottom
+             */
+            uint32_t emitter_pos = 0;
+            /**
+             * @brief helper for quickly identifying the occupation state of time_arr. if bit i=1, then time_arr[i] is occupied
              */
             uint32_t receiver = 0;
             /**
@@ -260,27 +143,10 @@ namespace IR
          *        1. initialize RX RMT channels
          *        2. initialize RX ISR
          *        3. initialize preprocess data structures, routine, and timer
+         * 
+         * @return whether init is successful
          */
-        void Init();
-
-        /**
-         * @brief RX ISR that handles input RMT transmissions and store them into a buffer.
-         */
-        void IRAM_ATTR RX_ISR();
-
-        /**
-         * @brief get raw uint32_t data from buffer(data comes from RX_ISR) and organize and store all parsed data packet.
-         *        this function shall be called at ~100Hz rate (just not very frequently).
-         *
-         * @note I know that this function is too long, but it's still pretty structured and clear so I am not gonna split it into multiple functions. 
-         * @note This task should not be preempted by other user tasks!!! or else read and write of buffer might get messy.
-         */
-        void Preprocess();
-
-        /**
-         * @brief get current absolute position
-         */
-        void Calc_position_task(void *pvParameters);
+        bool Init();
 
         /**
          * @brief get io_flag, can be used to implement one's own read routine.
@@ -304,7 +170,7 @@ namespace IR
          * @param age by default is 0 -> latest, 1 -> next latest, etc. max is msg_buffer_history_size - 2
          * @return Parsed_msg* the pointer to a Parsed_msg object. you can use relavent functions to access its content.
          *
-         * @note this will return the rank'th **completed** message! 
+         * @note this will return the rank'th **completed** message!
          * @note please check if data exists by checking the timing information of the returned result. if it's 0 then no message.
          */
         Parsed_msg_completed Get_latest_msg_by_bot(uint32_t robot_ID, uint32_t msg_type, uint32_t age = 0);
@@ -321,18 +187,18 @@ namespace IR
 
         /**
          * @brief get a queue of certain type of message which you can save as a stream and pop() as you wish without worrying about influencing other tasks.
-         * 
+         *
          * @param msg_type which type of message?
          * @return Circbuffer_copycat<Parsed_msg_completed,recent_msg_buffer_history_size> the 'stream' circbuffer.
          */
-        inline Circbuffer_copycat<Parsed_msg_completed,recent_msg_buffer_history_size> Get_msg_buffer_by_type(uint32_t msg_type);
+        inline Circbuffer_copycat<Parsed_msg_completed, Recent_msg_buffer_history_size> Get_msg_buffer_by_type(uint32_t msg_type);
 
         // /**
         //  * @brief get the age th latest timing data
         //  *
-        //  * @param age by default is 0 -> latest, 1 -> next latest, etc. max is timing_buffer_history_size - 1
+        //  * @param age by default is 0 -> latest, 1 -> next latest, etc. max is Timing_buffer_history_size - 1
         //  * @return Msg_timing_t corresponding data
-        //  * 
+        //  *
         //  * @note Don't know why anyone would want this...
         //  */
         // Msg_timing_t Get_timing_data(uint32_t age = 0);
@@ -343,7 +209,17 @@ namespace IR
          * @param start starting pointer of array.
          * @return uint32_t length of Msg_timing_t array
          */
-        uint32_t Copy_timing_data(Msg_timing_t *start);
+        uint32_t Get_timing_data(Msg_timing_t *start);
+
+        /**
+         * @brief get all neighboring robot's ID
+         *
+         * @param start starting pointer with type uint32_t, when == nullptr, then only return the number of robot.
+         * @param history_time get only the robots that has been seen within history_time us. when is 0, then access all.
+         *
+         * @return uint32_t how many robots are there?
+         */
+        uint32_t Get_neighboring_robots_ID(uint32_t *start, uint64_t history_time = 0);
     }
 }
 
