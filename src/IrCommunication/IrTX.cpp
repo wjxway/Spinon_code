@@ -1,6 +1,6 @@
 #include "IrTX.hpp"
-#include "../RobotDefs.hpp"
 #include "RMTCoding.hpp"
+#include "../RobotDefs.hpp"
 #include "../Utilities/FastIO.hpp"
 #include "../Utilities/DebugDefs.hpp"
 #include "../Utilities/CRCCheck.hpp"
@@ -13,7 +13,6 @@ namespace IR
 
     namespace TX
     {
-        // anonymous namespace
         namespace
         {
             /**
@@ -26,14 +25,14 @@ namespace IR
              *
              * @return uint32_t time in us.
              */
-            inline uint32_t Generate_trigger_time()
+            uint32_t Generate_trigger_time()
             {
                 return esp_random() % (RMT_TX_trigger_period_max - RMT_TX_trigger_period_min) + RMT_TX_trigger_period_min;
             }
 
             /**
-             * @brief a helper class that convert the vector of input data to rmt_item32_t
-             *        and provide correct pointer for TX_ISR.
+             * @brief a helper class that convert the vector of input data to
+             * rmt_item32_t and provide correct pointer for TX_ISR.
              */
             class TX_data
             {
@@ -135,21 +134,25 @@ namespace IR
                 rmt_item32_t *end_ptr;
             };
 
-            // here we construct a scheduler to help us determine which type of message to send out.
-            // the implementation might be a bit complicated, but the basic idea is just to simulate the RTOS's behavoir
-            // and the implementation is similar too.
+            // here we construct a scheduler to help us determine which type of
+            // message to send out. the implementation might be a bit
+            // complicated, but the basic idea is just to simulate the RTOS's
+            // behavoir and the implementation is similar too.
             // So we have a linked list which is sorted by
             //     1. priority
-            //     2. last transmission time (this is slightly different from FreeRTOS's mechanism, which determines the priority based on last 'not-blocked' time)
+            //     2. last transmission time (this is slightly different from
+            // FreeRTOS's mechanism, which determines the priority based on last
+            // 'not-blocked' time)
             // the data structure is as follows:
             //
             // pointers:   start_ptr  pe_ptr[5]            pe_ptr[2]  pe_ptr[0]
             // priority:      5          5          2          2          0
             // nodes:       node_1 <-> node_2 <-> node_3 <-> node_4 <-> node_0
             //
-            // where pe_ptr is prio_level_end_ptr, representing the pointer to the least prioritized node.
-            // node_0 is the idle node and also the end of the lined list.
-            // there should NOT be any other tasks with priority 0!
+            // where pe_ptr is prio_level_end_ptr, representing the pointer to
+            // the least prioritized node. node_0 is the idle node and also the
+            // end of the lined list. there should NOT be any other tasks with
+            // priority 0!
 
             /**
              * @brief nodes used in scheduler, nodes can form a linked list
@@ -180,13 +183,15 @@ namespace IR
             /**
              * @brief a array containing all (TX_type_max + 1) Scheduler_node
              *
-             * @note node_list[i] corresponds to Msg of type i
-             *       the order of nodes in this array is not related to the order of nodes in the linked list they form
+             * @note node_list[i] corresponds to Msg of type i undefined the
+             * order of nodes in this array is not related to the order of nodes
+             * in the linked list they form
              */
             Scheduler_node node_list[detail::Msg_type_max + 1];
 
             /**
-             * @brief starting pointer of the linked list, not the starting pointer of node_list!
+             * @brief starting pointer of the linked list, not the starting
+             * pointer of node_list!
              */
             Scheduler_node *start_ptr = nullptr;
 
@@ -204,8 +209,9 @@ namespace IR
         /**
          * @brief TX timer interrupt handler that transmit data though physical interface
          *
-         * @note this ISR should be run on core 0, leaving core 1 for RX tasks exclusively anyways.
-         *       TX_ISR will reset itself and fire based on timing.
+         * @note this ISR should be run on core 0, leaving core 1 for RX tasks
+         * exclusively anyways. TX_ISR will reset itself and fire based on
+         * timing.
          */
         void IRAM_ATTR TX_ISR();
 
@@ -322,7 +328,8 @@ namespace IR
         }
 
         /**
-         * @brief return the reference to the corresponding TX_data object, so you can manipulate it.
+         * @brief return the reference to the corresponding TX_data object, so
+         * you can manipulate it.
          *
          * @param ntype type of message
          * @return TX_data& reference to TX_data object
@@ -373,8 +380,9 @@ namespace IR
         namespace
         {
             /**
-             * @brief add a task of certain type from scheduler. Note that this task MUST have already been used and temporarily paused.
-             *
+             * @brief add a task of certain type from scheduler. Note that this
+             * task MUST have already been used and temporarily paused.
+             * 
              * @param ntype type of task
              */
             void Add_back_to_schedule(const uint32_t ntype)
@@ -420,7 +428,8 @@ namespace IR
                         high_ptr->next = temp_ptr;
                         temp_ptr->prev = high_ptr;
                     }
-                    // if not, this must be the highest priority msg, which makes it the starting point
+                    // if not, this must be the highest priority msg, which
+                    // makes it the starting point
                     else
                     {
                         start_ptr->prev = temp_ptr;
@@ -434,7 +443,8 @@ namespace IR
 
         void Add_to_schedule(const uint32_t type, const std::vector<uint16_t> &raw, uint32_t priority1, int32_t expiration_count, uint32_t period)
         {
-            // setup flag to skip the interrupt (interrupt still active, but will not transmit any data)
+            // setup flag to skip the interrupt (interrupt still active, but
+            // will not transmit any data)
             TX_enable_flag = false;
             // if current task is in operation, remove it first.
             Remove_from_schedule(type);
@@ -479,8 +489,9 @@ namespace IR
                 // if it should fire, and it's not default msg (type 0)
                 else if (type)
                 {
-                    // if the expiration counter is already 0, remove task by putting it at the back of priority 0.
-                    // note that this message will fire!
+                    // if the expiration counter is already 0, remove task by
+                    // putting it at the back of priority 0. note that this
+                    // message will fire!
                     if (temp_ptr->expiration_counter == 0)
                     {
                         Remove_from_schedule(type);
@@ -532,15 +543,15 @@ namespace IR
             // RMT TX only when data is not being modified.
             if (TX_enable_flag)
             {
-                // let the corresponding task write data to pool
-                // maybe we don't need a buffer anyways.
-                // just let blah blah blah return a starting pointer
-                // and we should make sure that no editing will happen on the content this pointer points to.
+                // let the corresponding task write data to pool maybe we don't
+                // need a buffer anyways. just let blah blah blah return a
+                // starting pointer and we should make sure that no editing will
+                // happen on the content this pointer points to.
                 rmt_item32_t *v = Schedule_next();
 
                 // write both register
-                for(auto i=0;i<RMT_TX_length;i++)
-                    RMTMEM.chan[RMT_TX_channel_2].data32[i].val= RMTMEM.chan[RMT_TX_channel_1].data32[i].val=(v+i)->val;
+                for (auto i = 0; i < RMT_TX_length; i++)
+                    RMTMEM.chan[RMT_TX_channel_2].data32[i].val = RMTMEM.chan[RMT_TX_channel_1].data32[i].val = (v + i)->val;
 
                 // edit channel 2 register
                 RMTMEM.chan[RMT_TX_channel_2].data32[0].duration0 -= detail::RMT_sync_ticks_num;

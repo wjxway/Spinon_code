@@ -1,6 +1,10 @@
+/**
+ * @file DebugDefs.hpp
+ * @brief macros used for debugging
+ */
 #ifndef _DEBUGDEFS_HPP_
 #define _DEBUGDEFS_HPP_
-#pragma once
+
 #include "Arduino.h"
 #include "FastIO.hpp"
 #include "../RobotDefs.hpp"

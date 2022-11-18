@@ -1,7 +1,6 @@
 // Global definition for robots.
 #ifndef _ROBOTDEFS_HPP_
 #define _ROBOTDEFS_HPP_
-#pragma once
 
 /**
  * @brief Robot's ID

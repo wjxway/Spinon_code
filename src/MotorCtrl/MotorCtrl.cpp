@@ -7,7 +7,7 @@ namespace Motor
 {
     uint32_t Last_set_speed=0;
 
-    uint8_t Init()
+    uint32_t Init()
     {
         // pin modes
         pinMode(MOTOR_ALERT_PIN, INPUT_PULLUP);
@@ -23,7 +23,7 @@ namespace Motor
         Wire.begin(MOTOR_SDA_PIN, MOTOR_SCL_PIN, 200000);
 
         // check if successful
-        uint8_t temp = 1;
+        uint32_t temp = 1;
         // initial config
         for (uint8_t addr = 0; addr < 23; addr++)
         {
@@ -41,9 +41,9 @@ namespace Motor
         return temp;
     }
 
-    uint8_t Config_register(uint8_t address, uint8_t value)
+    uint32_t Config_register(uint8_t address, uint8_t value)
     {
-        uint8_t state = 0;
+        uint32_t state = 0;
 
         // write i2c device address
         Wire.beginTransmission(Motor_address);

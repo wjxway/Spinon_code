@@ -1,7 +1,9 @@
-// RMT_TX
+/**
+ * @file IrTX.hpp
+ * @brief transmit data interface
+ */
 #ifndef _IRTX_HPP_
 #define _IRTX_HPP_
-#pragma once
 
 #include "Arduino.h"
 #include "RMTMessageDefs.hpp"
@@ -23,22 +25,27 @@ namespace IR
         void Init();
 
         /**
-         * @brief remove a task of certain type from scheduler (no longer transmit)
+         * @brief remove a task of certain type from scheduler (no longer
+         * transmit)
          *
          * @param type msg_type of data
          */
         void Remove_from_schedule(const uint32_t type);
 
         /**
-         * @brief Create or reset data, then add to schedule. If you are not sure, call this instead of Add_to_schedule
+         * @brief Create or reset data, then add to schedule.
          *
          * @param type msg_type of data
-         * @param raw raw data, each uint32_t should contain Msg_content_bits of data.
+         * @param raw raw data, each uint32_t should contain Msg_content_bits of
+         * data.
          * @param priority1 priority of this task
-         * @param expiration_count how much individual transmissions before this task is removed. note that it might take multiple individual transmissions to complete one complete transmission.
-         * @param period when no other task is presented, this data should be transmitted once per how many transmissions.
+         * @param expiration_count how much individual transmissions before this
+         * task is removed. note that it might take multiple individual
+         * transmissions to complete one complete transmission.
+         * @param period when no other task is presented, this data should be
+         * transmitted once per how many transmissions.
          *
-         * @note calling this will ALWAYS override the existing data.
+         * @warning calling this will ALWAYS override the existing data.
          */
         void Add_to_schedule(const uint32_t type, const std::vector<uint16_t> &raw, uint32_t priority1, int32_t expiration_count, uint32_t period);
     }

@@ -1,4 +1,7 @@
-// Global definition for pin and hardware resource mapping.
+/**
+ * @file PinDefs.hpp
+ * @brief global definition for pin and hardware resource mapping.
+ */
 #ifndef _PINDEFS_HPP_
 #define _PINDEFS_HPP_
 #pragma once

@@ -1,13 +1,14 @@
 #include <string>
 
-#include "Utilities/FeedTheDog.hpp"
-#include "Utilities/DebugDefs.hpp"
-#include "Utilities/FastIO.hpp"
-#include "MotorCtrl/MotorCtrl.hpp"
-#include "IrCommunication/IrTX.hpp"
-#include "Tasks.hpp"
+#include "src/Utilities/FeedTheDog.hpp"
+#include "src/Utilities/DebugDefs.hpp"
+#include "src/Utilities/FastIO.hpp"
+#include "src/MotorCtrl/MotorCtrl.hpp"
+#include "src/IrCommunication/IrCommunication.hpp"
+#include "src/Tasks.hpp"
 
 uint64_t rec_finish_time = 0;
+
 
 // Blink the LED
 void blink_led(int n)
@@ -84,7 +85,7 @@ void real_setup(void *pvParameters)
 
     DEBUG_C(Serial.println("Motor started"));
 
-    // IR::TX::Init();
+    IR::TX::Init();
 
     DEBUG_C(Serial.println("TX inited"));
 
@@ -92,6 +93,10 @@ void real_setup(void *pvParameters)
     IR::TX::Add_to_schedule(4, {0x0123, 0xFEDC}, 2, -1, 2);
 
     DEBUG_C(Serial.println("TX data set"));
+
+    IR::RX::Init();
+    
+    DEBUG_C(Serial.println("RX inited"));
 
     DEBUG_C(Serial.println("Init finished"));
 

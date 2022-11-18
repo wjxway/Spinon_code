@@ -8,9 +8,10 @@ namespace Motor
     /**
      * @brief resolution of the input PWM
      *
-     * @note there's no point of making it higher than 9 bits or even lower at higher output PWM frequency.
-     *       cause ultimately it will be restricted by the output PWM resolution of the motor driver IC.
-     *       for output PWM frequency vs resolution:
+     * @note there's no point of making it higher than 9 bits or even lower at
+     * higher output PWM frequency. cause ultimately it will be restricted by
+     * the output PWM resolution of the motor driver IC. for output PWM
+     * frequency vs resolution:
      *         <23.4kHz --- 9 bits
      *          46.8kHz --- 8 bits
      *          93.6kHz --- 7 bits
@@ -44,8 +45,9 @@ namespace Motor
     /**
      * @brief the last set speed or duty.
      *
-     * @note it is the value you set through Set_speed last time, and will be different from the actual motor speed.
-     *       to get the actual motor speed, use Measure_speed().
+     * @note it is the value you set through Set_speed last time, and will be
+     * different from the actual motor speed. to get the actual motor speed, use
+     * Measure_speed().
      */
     extern uint32_t Last_set_speed;
 
@@ -54,44 +56,49 @@ namespace Motor
      *
      * @return 1 for success, 0 for failure
      */
-    uint8_t Init();
+    uint32_t Init();
 
     /**
      * @brief config the registers
      *
      * @note you don't have to set default config. that's already initialized.
-     *       the default config should be used if there's no very special need.
+     * the default config should be used if there's no very special need.
      *
      * @param address the register's address
      * @param value the new value
      *
      * @return 1 for success, 0 for failure
      */
-    uint8_t Config_register(uint8_t address, uint8_t value);
+    uint32_t Config_register(uint8_t address, uint8_t value);
 
     /**
-     * @brief set motor speed. In open loop, the PWM duty cycle is duty/2^PWM_resolution
+     * @brief set motor speed. In open loop, the PWM duty cycle is
+     * duty/2^PWM_resolution
      *
-     * @param duty duty cycle (when in open loop mode) or motor speed (when in closed loop mode)
+     * @param duty duty cycle (when in open loop mode) or motor speed (when in
+     * closed loop mode)
      */
     void Set_speed(uint32_t duty);
 
     /**
      * @brief get motor speed
      *
-     * @return uint32_t speed in some form, maybe pulse width maybe something else. still haven't decided yet.
+     * @return uint32_t speed in some form, maybe pulse width maybe something
+     * else. still haven't decided yet.
      *
-     * @note DO NOT call this function frequently because it will halt this core and wait for pulses, potentially up to 10ms depending on the time_out settings.
-     *       if we ever need to, we can switch to an interrupt based, always on function, but I will keep it like this for now.
+     * @note DO NOT call this function frequently because it will halt this core
+     * and wait for pulses, potentially up to 10ms depending on the time_out
+     * settings. if we ever need to, we can switch to an interrupt based, always
+     * on function, but I will keep it like this for now.
      */
     uint32_t Measure_speed();
 
     /**
      * @brief forcefully brake (not break) the motor
      *
-     * @note this function is not the same as Motor_set_speed(0), where it's passively braked (coast).
-     *       this function actively brakes the motor faster.
-     *       But you will need to release brake manually using Active_brake_release().
+     * @note this function is not the same as Motor_set_speed(0), where it's
+     * passively braked (coast). this function actively brakes the motor faster.
+     * But you will need to release brake manually using Active_brake_release().
      */
     void Active_brake();
 

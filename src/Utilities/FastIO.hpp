@@ -1,6 +1,10 @@
+/**
+ * @file FastIO.hpp
+ * @brief fast IO macros
+ */
 #ifndef _FASTIO_HPP_
 #define _FASTIO_HPP_
-#pragma once
+
 #include "Arduino.h"
 
 // accurate delay functions
