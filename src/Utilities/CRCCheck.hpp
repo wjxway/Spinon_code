@@ -16,7 +16,7 @@
  * @param uint32_t input data (single transmission).
  * @return crc4 result as a uint16_t.
  */
-const uint16_t crc4_itu(uint16_t data) noexcept;
+uint16_t crc4_itu(const uint16_t data) noexcept;
 
 /**
  * @brief CRC function using CRC-8/Maxim standard
@@ -26,7 +26,7 @@ const uint16_t crc4_itu(uint16_t data) noexcept;
  * @param length input data length.
  * @return crc8 result as a uint16_t
  */
-const uint16_t crc8_maxim(const uint16_t *data, const size_t length) noexcept;
+uint16_t crc8_maxim(const uint16_t *const data, const size_t length) noexcept;
 
 /**
  * @brief CRC function using CRC-12/CDMA2000 standard
@@ -36,5 +36,5 @@ const uint16_t crc8_maxim(const uint16_t *data, const size_t length) noexcept;
  * @param length input data length.
  * @return crc12 result as a uint16_t
  */
-const uint16_t crc12_cdma(const uint16_t *data, const size_t length) noexcept;
+uint16_t crc12_cdma(const uint16_t *const data, const size_t length) noexcept;
 #endif

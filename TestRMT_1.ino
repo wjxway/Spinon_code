@@ -7,8 +7,7 @@
 #include "src/IrCommunication/IrCommunication.hpp"
 #include "src/Tasks.hpp"
 
-uint64_t rec_finish_time = 0;
-
+uint64_t rec_finish_time = 0; 
 
 // Blink the LED
 void blink_led(int n)
@@ -95,7 +94,7 @@ void real_setup(void *pvParameters)
     DEBUG_C(Serial.println("TX data set"));
 
     IR::RX::Init();
-    
+
     DEBUG_C(Serial.println("RX inited"));
 
     DEBUG_C(Serial.println("Init finished"));

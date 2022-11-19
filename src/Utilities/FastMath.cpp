@@ -1,19 +1,21 @@
 #include "FastMath.hpp"
 
-float math::fast::cos(float x) noexcept
+float math::fast::cos(const float x) noexcept
 {
+    float x1=x;
+
     constexpr float tp = 1.0f / (2.0f * M_PI);
 
-    x *= tp;
-    x -= 0.25f + (float)((int)(x + 0.25f));
-    x *= 16.0f * (abs(x) - 0.5f);
+    x1 *= tp;
+    x1 -= 0.25f + (float)((int)(x1 + 0.25f));
+    x1 *= 16.0f * (abs(x1) - 0.5f);
 #if EXTRA_PRECISION
-    x += 0.225f * x * (abs(x) - 1.0f);
+    x1 += 0.225f * x1 * (abs(x1) - 1.0f);
 #endif
-    return x;
+    return x1;
 }
 
-float math::fast::exp(float x) noexcept
+float math::fast::exp(const float x) noexcept
 {
     constexpr float DIVLN2 = 1.4426950408889634074f;
 

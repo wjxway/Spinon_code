@@ -126,16 +126,16 @@ constexpr rmt_channel_t RMT_RX_channel_3 = RMT_CHANNEL_6;
 /**
  * @brief Timer channel used for IR TX trigger
  */
-constexpr uint32_t IR_TX_trigger_timer_channel = 3;
+constexpr uint32_t IR_TX_trigger_timer_channel = 3u;
 
 /**
  * @brief motor's i2c address
  */
-constexpr uint8_t Motor_address = 0b0110010;
+constexpr uint8_t Motor_address = 0b0110010u;
 
 /**
  * @brief Motor LEDC channel
  */
-constexpr uint32_t Motor_LEDC_PWM_channel = 0;
+constexpr uint32_t Motor_LEDC_PWM_channel = 0u;
 
 #endif

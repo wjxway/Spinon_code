@@ -17,30 +17,36 @@ namespace math
     {
         // Accuracy @ 6%
         // sufficient for FFT usage
-        float cos(float x) noexcept;
+        float cos(const float x) noexcept;
 
         // T could be float or double
         template <class T>
-        int32_t floor_int(T x) noexcept
+        int32_t floor_int(const T x) noexcept
         {
-            int32_t val = (int32_t)x;
+            const int32_t val = (int32_t)x;
             if (val == x)
+            {
                 return x;
+            }
             else if (x > 0)
+            {
                 return val;
+            }
             else
+            {
                 return val - 1;
+            }
         }
 
         // T could be float or double
         template <class T>
-        T floor(T x) noexcept
+        T floor(const T x) noexcept
         {
             return T(floor_int(x));
         }
 
         // accuracy @ 0.4%
-        float exp(float x) noexcept;
+        float exp(const float x) noexcept;
     }
 }
 

@@ -6,17 +6,17 @@
 #define NDEBUG
 
 // modified 1+4ppm version
-bool IR::detail::Generate_RMT_item(rmt_item32_t *pointer, const uint32_t data) noexcept
+bool IR::detail::Generate_RMT_item(rmt_item32_t *const pointer, const uint32_t data) noexcept
 {
-    // temp zero length
-    uint32_t temp_len = 0, temp = 0;
-
     // delay and initial pulse
     pointer[0] = {{{1 + RMT_sync_ticks_num, 0, RMT_ticks_num, 1}}};
 
+    // temp zero length
+    uint32_t temp_len = 0;
+
     for (size_t i = 0; i < RMT_data_pulse_count; i++)
     {
-        temp = (((data >> (i * Bit_per_cycle)) & ((1 << Bit_per_cycle) - 1)));
+        const uint32_t temp = (((data >> (i * Bit_per_cycle)) & ((1 << Bit_per_cycle) - 1)));
         temp_len += temp;
         pointer[i + 1] = {{{RMT_ticks_num * temp_len + Pad_per_cycle, 0, RMT_ticks_num, 1}}};
         temp_len = ((1 << Bit_per_cycle) - 1) - temp;
@@ -29,7 +29,7 @@ bool IR::detail::Generate_RMT_item(rmt_item32_t *pointer, const uint32_t data) n
 }
 
 // modified 1+4ppm version
-bool IRAM_ATTR IR::detail::Parse_RMT_item(volatile rmt_item32_t *pointer, uint32_t *dataptr) noexcept
+bool IRAM_ATTR IR::detail::Parse_RMT_item(volatile rmt_item32_t *const pointer, uint32_t *const dataptr) noexcept
 {
     // just in case the idle_level isn't correct
     if (pointer[0].level1)
@@ -40,7 +40,7 @@ bool IRAM_ATTR IR::detail::Parse_RMT_item(volatile rmt_item32_t *pointer, uint32
     uint32_t val = 0, curr = 3;
     rmt_item32_t temp;
 
-    for (int i = 0; i < RMT_data_pulse_count; i++)
+    for (size_t i = 0; i < RMT_data_pulse_count; i++)
     {
         temp.val = pointer[i].val;
 

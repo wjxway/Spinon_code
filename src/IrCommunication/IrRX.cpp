@@ -14,23 +14,37 @@ namespace IR
     namespace RX
     {
         // global variables (especially buffers)
-        // in total we have 4 buffers (can add more in the future depending on need)
-        // 1. raw_msg_buffer    : the only one that's populate by ISR, stores individual, unparsed messages. Read by preprocess task.
+        // in total we have 4 buffers (can add more in the future depending on
+        // need)
+        // 1. raw_msg_buffer : the only one that's populate by ISR, stores
+        // individual, unparsed messages. Read by preprocess task.
         //
-        // 2.0 msg_buffer_dict  : dictionary for msg_buffer, msg_buffer_dict[robot_id] -> dict_id.
-        // 2.1 msg_buffer       : stores data in the form of msg_buffer[dict_id][msg_type][n] gives the nth oldest message of msg_type sent by robot_id.
-        //                        This buffer only provide information of content and last reception time, but not anything related to localization like emitter position or receiver position.
-        // 3. recent_msg_buffer : stores the most recent message that finished reception.
-        //                        This buffer only provide information of content and last reception time, but not anything related to localization like emitter position or receiver position.
-        // 4. timing_buffer     : stores the most recent first message in this rotation from different robots.
-        //                        This buffer only provide information of first message's timing and robot ID, but not data contents.
+        // 2.0 msg_buffer_dict : dictionary for msg_buffer,
+        // msg_buffer_dict[robot_id] -> dict_id.
+        // 2.1 msg_buffer : stores data in the form of
+        // something like msg_buffer[dict_id].msg_typed_data[n] gives the nth 
+        // oldest message of msg_type sent by robot_id.
+        // msg_buffer[dict_id].timing_dat[n] gives the nth oldest timing info
+        // coming from a certain robot.
+        // 3. recent_msg_buffer[msg_type] : stores the most recent message of
+        // a certain type that finished reception 
+        // This buffer only provide information of content and last reception
+        // time, but not anything related to localization like emitter position
+        // or receiver position.
+        // 4. timing_buffer : stores the most recent first message in this
+        // rotation from different robots.
+        // This buffer only provide information of first message's timing and
+        // robot ID, but not data contents.
         //
-        // I cannot think of any end user scenario where people need the raw data and cannot use a combination of buffer 2~4.
+        // I cannot think of any end user scenario where people need the raw 
+        // data and cannot use a combination of buffer 2~4.
         //
-        // To deal with concurrency, we require the priority of Preprocess task to always be higher than the user tasks.
-        // then we know that write task can never be preempted by read task, but read task can be preempted by write task.
-        // we also know that read is much faster than write, and write will occur at a fixed, non frequent interval.
-        // Now, we add a io_flag and increment it evertime we write, and in read, do:
+        // To deal with concurrency, we require the priority of Preprocess task
+        // to always be higher than the user tasks. then we know that write task
+        // can never be preempted by read task, but read task can be preempted
+        // by write task. we also know that read is much faster than write, and
+        // write will occur at a fixed, non frequent interval. Now, we add a
+        // io_flag and increment it evertime we write, and in read, do:
         //      do
         //      {
         //          curr_flag=io_flag;
@@ -39,11 +53,15 @@ namespace IR
         // so if the read is preempted by write, we will read again.
 
         /**
-         * @brief get raw uint32_t data from buffer(data comes from RX_ISR) and organize and store all parsed data packet.
-         *        this function shall be called at ~100Hz rate (just not very frequently).
+         * @brief get raw uint32_t data from buffer(data comes from RX_ISR) and
+         * organize and store all parsed data packet. this function shall be
+         * called at ~100Hz rate (just not very frequently).
          *
-         * @note I know that this function is too long, but it's still pretty structured and clear so I am not gonna split it into multiple functions.
-         * @note This task should not be preempted by other user tasks!!! or else read and write of buffer might get messy.
+         * @note I know that this function is too long, but it's still pretty
+         * structured and clear so I am not gonna split it into multiple
+         * functions.
+         * @warning This task should not be preempted by other user tasks!!! or
+         * else read and write of buffer might get messy.
          */
         void Preprocess_task(void *pvParameters);
 
@@ -56,19 +74,21 @@ namespace IR
             uint64_t last_RX_time = 0;
 
             /**
-             * @brief a circular buffer that stores all incoming, unprocessed raw messages and their meta data.
-             *        Once it's full, it will start to override the oldest data.
+             * @brief a circular buffer that stores all incoming, unprocessed
+             * raw messages and their meta data. Once it's full, it will start
+             * to override the oldest data.
              */
             Circbuffer<Trans_info, Raw_msg_buffer_size> raw_msg_buffer;
 
             // struct definitions
             /**
-             * @brief a general class for storing parsed messages
-             *        it has subclass Parsed_msg_single, Parsed_msg_multiple.
-             *        it is used by msg_buffer and recent_msg_buffer.
-             *        you can get the validity of msg, length of msg, the starting pointer for msg, and last time its received.
-             *        but except for these, there might be other relavent information inside the data structure,
-             *        those are for me to construct it, not for you to read directly!
+             * @brief a general class for storing parsed messages.
+             * it has subclass Parsed_msg_single, Parsed_msg_multiple. it is
+             * used by msg_buffer and recent_msg_buffer. you can get the
+             * validity of msg, length of msg, the starting pointer for msg, and
+             * last time its received. but except for these, there might be
+             * other relavent information inside the data structure, those are
+             * for me to construct it, not for you to read directly!
              */
             class Parsed_msg
             {
@@ -82,19 +102,19 @@ namespace IR
                  *
                  * @return uint32_t number of uint16_t, *2 is the number of bytes
                  */
-                virtual uint32_t Get_content_length() = 0;
+                virtual size_t Get_content_length() const = 0;
                 /**
                  * @brief get the starting pointer of the content
                  *
                  * @return uint16_t* starting pointer
                  */
-                virtual uint16_t *Get_content_pointer() = 0;
+                virtual const uint16_t *Get_content_pointer() const = 0;
                 /**
                  * @brief whether the content is valid right now
                  *
                  * @return bool validity
                  */
-                virtual bool Content_valid_Q() = 0;
+                virtual bool Content_valid_Q() const = 0;
 
                 friend void IR::RX::Preprocess_task(void *pvParameters);
 
@@ -109,15 +129,15 @@ namespace IR
             {
             public:
                 uint16_t content;
-                uint32_t Get_content_length()
+                virtual size_t Get_content_length() const override
                 {
                     return 1;
                 }
-                uint16_t *Get_content_pointer()
+                virtual const uint16_t *Get_content_pointer() const override
                 {
                     return &content;
                 }
-                bool Content_valid_Q()
+                virtual bool Content_valid_Q() const override
                 {
                     return 1;
                 }
@@ -129,15 +149,15 @@ namespace IR
             {
             public:
                 uint16_t content[Msg_memory_size];
-                uint32_t Get_content_length()
+                virtual size_t Get_content_length() const override
                 {
                     return msg_ID_max;
                 }
-                uint16_t *Get_content_pointer()
+                virtual const uint16_t * Get_content_pointer() const override
                 {
                     return content;
                 }
-                bool Content_valid_Q()
+                virtual bool Content_valid_Q() const override
                 {
                     return content_valid_flag;
                 }
@@ -156,7 +176,7 @@ namespace IR
                  *
                  * @note to call this function or Add_header is determined by Preprocess
                  */
-                uint32_t Add_content(Trans_info info);
+                uint32_t Add_content(const Trans_info info);
 
                 /**
                  * @brief Add header to the pool, do sanity checks, reset the
@@ -170,7 +190,7 @@ namespace IR
                  *
                  * @note to call this function or Add_content is determined by Preprocess
                  */
-                uint32_t Add_header(Trans_info info);
+                uint32_t Add_header(const Trans_info info);
 
                 /**
                  * @brief How many messages should there be in this pool,
@@ -257,7 +277,7 @@ namespace IR
              */
             rmt_isr_handle_t RX_ISR_handler;
 
-            uint32_t Parsed_msg_multiple::Add_content(Trans_info info)
+            uint32_t Parsed_msg_multiple::Add_content(const Trans_info info)
             {
                 // re-parse data
                 Msg_t msg;
@@ -356,7 +376,7 @@ namespace IR
                 }
             }
 
-            uint32_t Parsed_msg_multiple::Add_header(Trans_info info)
+            uint32_t Parsed_msg_multiple::Add_header(const Trans_info info)
             {
                 // re-parse data
                 Msg_header_t msg;
@@ -469,7 +489,7 @@ namespace IR
          * @param msg Parsed_msg_single message
          * @return Parsed_msg_completed completed form
          */
-        Parsed_msg_completed To_completed_form(uint32_t robot_ID, uint32_t msg_type, Parsed_msg_single msg)
+        Parsed_msg_completed To_completed_form(const uint32_t robot_ID, const uint32_t msg_type, const Parsed_msg_single msg)
         {
             Parsed_msg_completed res;
 
@@ -490,7 +510,7 @@ namespace IR
          *
          * @note if the message is not complete, the content length will be 0.
          */
-        Parsed_msg_completed To_completed_form(uint32_t robot_ID, uint32_t msg_type, Parsed_msg_multiple msg)
+        Parsed_msg_completed To_completed_form(const uint32_t robot_ID, const uint32_t msg_type, const Parsed_msg_multiple msg)
         {
             if (msg.Content_valid_Q())
             {
@@ -521,7 +541,7 @@ namespace IR
          * @note when robot_ID already exists in msg_buffer, then directly
          * return the corresponding pointer.
          */
-        Robot_RX *Add_new_robot(uint32_t robot_ID)
+        Robot_RX *Add_new_robot(const uint32_t robot_ID)
         {
             // return directly if the robot already exists in msg_buffer.
             if (msg_buffer_dict[robot_ID])
@@ -587,7 +607,7 @@ namespace IR
             return io_flag;
         }
 
-        Parsed_msg_completed Get_latest_msg_by_bot(uint32_t robot_ID, uint32_t msg_type, uint32_t age)
+        Parsed_msg_completed Get_latest_msg_by_bot(const uint32_t robot_ID, const uint32_t msg_type, const uint32_t age)
         {
             uint32_t curr_flag, empty = 0;
             Parsed_msg_completed res;
@@ -651,7 +671,7 @@ namespace IR
             return empty ? Parsed_msg_completed{} : res;
         }
 
-        Parsed_msg_completed Get_latest_msg_by_type(uint32_t msg_type, uint32_t age)
+        Parsed_msg_completed Get_latest_msg_by_type(const uint32_t msg_type, const uint32_t age)
         {
             auto buf = recent_msg_buffer[msg_type];
             uint32_t curr_flag, empty = 0;
@@ -674,12 +694,12 @@ namespace IR
             return empty ? Parsed_msg_completed{} : res;
         }
 
-        Circbuffer_copycat<Parsed_msg_completed, Recent_msg_buffer_history_size> Get_msg_buffer_by_type(uint32_t msg_type)
+        Circbuffer_copycat<Parsed_msg_completed, Recent_msg_buffer_history_size> Get_msg_buffer_by_type(const uint32_t msg_type)
         {
             return Circbuffer_copycat<Parsed_msg_completed, Recent_msg_buffer_history_size>{&recent_msg_buffer[msg_type]};
         }
 
-        // Msg_timing_t Get_timing_data(uint32_t age)
+        // Msg_timing_t Get_timing_data(const uint32_t age)
         // {
         //     uint32_t curr_flag;
         //     Msg_timing_t res;
@@ -695,7 +715,7 @@ namespace IR
         //     return res;
         // }
 
-        uint32_t Get_timing_data(Msg_timing_t *start)
+        uint32_t Get_timing_data(Msg_timing_t * const start)
         {
             uint32_t curr_flag;
             uint32_t len = 0;
@@ -716,7 +736,7 @@ namespace IR
             return len;
         }
 
-        uint32_t Get_neighboring_robots_ID(uint32_t *start, uint64_t history_time)
+        uint32_t Get_neighboring_robots_ID(uint32_t * const start, const uint64_t history_time)
         {
             uint32_t curr_flag;
 

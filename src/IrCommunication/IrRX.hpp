@@ -28,7 +28,7 @@ namespace IR
          * based on RX should have lower priority than this!
          */
         constexpr uint32_t Preprocess_task_priority = 10;
-        
+
         /**
          * @brief timing data's valid time
          *
@@ -152,7 +152,7 @@ namespace IR
          *        1. initialize RX RMT channels
          *        2. initialize RX ISR
          *        3. initialize preprocess data structures, routine, and timer
-         * 
+         *
          * @return whether init is successful
          */
         bool Init();
@@ -185,7 +185,7 @@ namespace IR
          * @note please check if data exists by checking the timing information
          * of the returned result. if it's 0 then no message.
          */
-        Parsed_msg_completed Get_latest_msg_by_bot(uint32_t robot_ID, uint32_t msg_type, uint32_t age = 0);
+        Parsed_msg_completed Get_latest_msg_by_bot(const uint32_t robot_ID, const uint32_t msg_type, const uint32_t age = 0);
 
         /**
          * @brief get the age th latest message
@@ -197,7 +197,7 @@ namespace IR
          * @note please check if data exists by checking the timing information
          * of the returned result. if it's 0 then no message.
          */
-        Parsed_msg_completed Get_latest_msg_by_type(uint32_t msg_type, uint32_t age = 0);
+        Parsed_msg_completed Get_latest_msg_by_type(const uint32_t msg_type, const uint32_t age = 0);
 
         /**
          * @brief get a queue of certain type of message which you can save as a
@@ -209,7 +209,7 @@ namespace IR
          * Circbuffer_copycat<Parsed_msg_completed,recent_msg_buffer_history_size>
          * the 'stream' circbuffer.
          */
-        Circbuffer_copycat<Parsed_msg_completed, Recent_msg_buffer_history_size> Get_msg_buffer_by_type(uint32_t msg_type);
+        Circbuffer_copycat<Parsed_msg_completed, Recent_msg_buffer_history_size> Get_msg_buffer_by_type(const uint32_t msg_type);
 
         // /**
         //  * @brief get the age th latest timing data
@@ -228,7 +228,7 @@ namespace IR
          * @param start starting pointer of array.
          * @return uint32_t length of Msg_timing_t array
          */
-        uint32_t Get_timing_data(Msg_timing_t *start);
+        uint32_t Get_timing_data(Msg_timing_t *const start);
 
         /**
          * @brief get all neighboring robot's ID
@@ -240,7 +240,7 @@ namespace IR
          *
          * @return uint32_t how many robots are there?
          */
-        uint32_t Get_neighboring_robots_ID(uint32_t *start, uint64_t history_time = 0);
+        uint32_t Get_neighboring_robots_ID(uint32_t *const start, const uint64_t history_time = 0);
     }
 }
 

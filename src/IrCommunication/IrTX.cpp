@@ -334,7 +334,7 @@ namespace IR
          * @param ntype type of message
          * @return TX_data& reference to TX_data object
          */
-        TX_data &Get_TX_data(uint32_t ntype)
+        TX_data &Get_TX_data(const uint32_t ntype)
         {
             return node_list[ntype].val;
         }
@@ -382,7 +382,7 @@ namespace IR
             /**
              * @brief add a task of certain type from scheduler. Note that this
              * task MUST have already been used and temporarily paused.
-             * 
+             *
              * @param ntype type of task
              */
             void Add_back_to_schedule(const uint32_t ntype)
@@ -441,7 +441,7 @@ namespace IR
             }
         }
 
-        void Add_to_schedule(const uint32_t type, const std::vector<uint16_t> &raw, uint32_t priority1, int32_t expiration_count, uint32_t period)
+        void Add_to_schedule(const uint32_t type, const std::vector<uint16_t> &raw, const uint32_t priority1, const int32_t expiration_count, const uint32_t period)
         {
             // setup flag to skip the interrupt (interrupt still active, but
             // will not transmit any data)

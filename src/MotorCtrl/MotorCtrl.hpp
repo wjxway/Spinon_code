@@ -35,21 +35,12 @@ namespace Motor
      */
     constexpr uint8_t Default_config[] = {
         // 0x00, 0x00,
-        0x01, 0x03, 0x00, 0xFE,              // 2~5
-        0x00, 0x00, 0x10, 0x20, 0x00,        // 6~10
-        0x01, 0x00, 0x00, 0x97, 0xD5,        // 11~15
-        0x00, 0xE6, 0x03, 0x16, 0x0A,        // 16~20
+        0x01, 0x03, 0x00, 0xFE,                       // 2~5
+        0x00, 0x00, 0x10, 0x20, 0x00,                 // 6~10
+        0x01, 0x00, 0x00, 0x97, 0xD5,                 // 11~15
+        0x00, 0xE6, 0x03, 0x16, 0x0A,                 // 16~20
         0x3F, /*0x2E*/ 0x32 + 4, /*0x2B*/ 0x3F, 0x40, // 21~24
     };
-
-    /**
-     * @brief the last set speed or duty.
-     *
-     * @note it is the value you set through Set_speed last time, and will be
-     * different from the actual motor speed. to get the actual motor speed, use
-     * Measure_speed().
-     */
-    extern uint32_t Last_set_speed;
 
     /**
      * @brief initialize motor
@@ -68,8 +59,11 @@ namespace Motor
      * @param value the new value
      *
      * @return 1 for success, 0 for failure
+     *
+     * @warning you shouldn't use this unless you know what registers really
+     * are!
      */
-    uint32_t Config_register(uint8_t address, uint8_t value);
+    uint32_t Config_register(const uint8_t address, const uint8_t value);
 
     /**
      * @brief set motor speed. In open loop, the PWM duty cycle is
@@ -78,7 +72,17 @@ namespace Motor
      * @param duty duty cycle (when in open loop mode) or motor speed (when in
      * closed loop mode)
      */
-    void Set_speed(uint32_t duty);
+    void Set_speed(const uint32_t duty);
+
+    /**
+     * @brief get last set speed
+     *
+     * @return uint32_t which is the speed you just set.
+     *
+     * @note this returns the speed you set last time, not the current actual
+     * speed! For that please call Measure_speed().
+     */
+    uint32_t Get_last_set_speed();
 
     /**
      * @brief get motor speed
@@ -106,13 +110,6 @@ namespace Motor
      * @brief release the brake
      */
     void Active_brake_release();
-
-    /**
-     * @brief an ISR that get triggered when alert is fired.
-     *
-     * @note actively brake the motor for now.
-     */
-    void IRAM_ATTR Alert_ISR();
 }
 
 #endif

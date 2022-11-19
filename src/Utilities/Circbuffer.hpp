@@ -175,7 +175,7 @@ public:
      * @note return incorrect result when n_elem=0, be sure to check before
      * call.
      */
-    T &peek_tail(size_t index = 0)
+    T &peek_tail(const size_t index = 0)
     {
         return *(start + (tail - start + max_size - index - 1) % max_size);
     }
@@ -203,7 +203,7 @@ public:
      *
      * @return uint32_t # of rounds
      */
-    constexpr uint32_t Get_head_rounds()
+    constexpr uint32_t Get_head_rounds() const
     {
         return head_rounds;
     }
@@ -370,7 +370,7 @@ public:
      *
      * @note no idea why anyone want to use this
      */
-    constexpr uint32_t Get_head_rounds()
+    constexpr uint32_t Get_head_rounds() const
     {
         return head_rounds;
     }
@@ -380,7 +380,7 @@ public:
      *
      * @return uint32_t io_flag
      */
-    constexpr uint32_t Get_io_flags()
+    constexpr uint32_t Get_io_flags() const
     {
         return orig->io_flag;
     }
@@ -405,7 +405,7 @@ private:
      *
      * @note it's invalid when: (head_rounds==orig->head_rounds&&head<orig->head)||(head_rounds<orig->head_rounds)
      */
-    constexpr bool head_invalid()
+    constexpr bool head_invalid() const
     {
         return (head_rounds == orig->head_rounds && head < orig->head) || (head_rounds < orig->head_rounds);
     }
