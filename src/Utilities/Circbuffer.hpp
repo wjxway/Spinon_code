@@ -130,6 +130,8 @@ public:
         // if something inside, pop!
         if (n_elem)
         {
+            temp = *head;
+            
             head = start + (head + 1 - start) % max_size;
 
             n_elem--;
@@ -410,6 +412,5 @@ private:
         return (head_rounds == orig->head_rounds && head < orig->head) || (head_rounds < orig->head_rounds);
     }
 };
-
 
 #endif

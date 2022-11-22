@@ -21,7 +21,7 @@ namespace IR
         /**
          * @brief how frequently will preprocess task be triggered, in ms.
          */
-        constexpr uint32_t Preprocess_trigger_period = 100;
+        constexpr uint32_t Preprocess_trigger_period = 50;
 
         /**
          * @brief priority of Preprocess task, note that all other user tasks
@@ -131,9 +131,12 @@ namespace IR
              */
             uint64_t time_arr[RMT_RX_CHANNEL_COUNT];
             /**
-             * @brief bit i represents whether message received by receiver i is
-             * sent by top/bottom emitter.
+             * @brief bit i represents whether message received is sent by
+             * top/bottom emitter.
              *        0 -> top, 1 -> bottom
+             * Note that we only care about which emitter we are getting message
+             * from if the message is received by the center receiver, because
+             * that's the only receiver related to elevation sensing.
              */
             uint32_t emitter_pos = 0;
             /**
@@ -178,12 +181,11 @@ namespace IR
          * @param msg_type which type of message?
          * @param age by default is 0 -> latest, 1 -> next latest, etc. max is
          * msg_buffer_history_size - 2
-         * @return Parsed_msg* the pointer to a Parsed_msg object. you can use
-         * relavent functions to access its content.
+         * @return Parsed_msg_completed corresponding data
          *
          * @note this will return the rank'th **completed** message!
-         * @note please check if data exists by checking the timing information
-         * of the returned result. if it's 0 then no message.
+         * @note please check if data exists by checking the length of data, if
+         * 0 then there's no returned message.
          */
         Parsed_msg_completed Get_latest_msg_by_bot(const uint32_t robot_ID, const uint32_t msg_type, const uint32_t age = 0);
 
@@ -194,8 +196,8 @@ namespace IR
          * @param age by default is 0 -> latest, 1 -> next latest, etc. max is
          * recent_msg_buffer_history_size - 1
          * @return Parsed_msg_completed corresponding data
-         * @note please check if data exists by checking the timing information
-         * of the returned result. if it's 0 then no message.
+         * @note please check if data exists by checking the length of data, if
+         * 0 then there's no returned message.
          */
         Parsed_msg_completed Get_latest_msg_by_type(const uint32_t msg_type, const uint32_t age = 0);
 

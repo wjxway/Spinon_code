@@ -78,7 +78,7 @@ namespace IR
                         Generate_RMT_item(data.data(), Msg_header_t{{This_robot_ID, msg_type, msg_ID_init, 0, n_msg, crc8_maxim(raw.data(), raw.size())}}.raw);
 
                         // cycle through data and generate data
-                        for (uint32_t msgid = 1; msgid <= n_msg; msgid++)
+                        for (size_t msgid = 1; msgid <= n_msg; msgid++)
                             Generate_RMT_item(data.data() + msgid * RMT_TX_length, Msg_t{{This_robot_ID, msg_type, msg_ID_init, msgid, raw[msgid - 1]}}.raw);
 
                         // setup pointers
@@ -292,7 +292,7 @@ namespace IR
 
             // scheduler init
             // initialize type
-            for (uint32_t i = 0; i <= detail::Msg_type_max; i++)
+            for (size_t i = 0; i <= detail::Msg_type_max; i++)
                 node_list[i].val.msg_type = i;
 
             // initialize idle msg
@@ -308,7 +308,7 @@ namespace IR
             // // Add_to_schedule(2, {2}, 2, -1, 1);
             // // Add_to_schedule(3, {3}, 3, -1, 4);
             // // Add_to_schedule(5, {5}, 2, -1, 5);
-            // for (int i = 0; i < 100000; i++)
+            // for (size_t i = 0; i < 100000; i++)
             //     Schedule_next();
             // Serial.println(micros() - t);
             // Serial.println("Schedule_next test successful!");
@@ -357,11 +357,13 @@ namespace IR
             if (temp_ptr == start_ptr)
             {
                 start_ptr = temp_ptr->next;
-                // if it's also the last message of this priority, it must be the last, remote this priority level!
+                // if it's also the last message of this priority, it must be
+                // the last, remote this priority level!
                 if (temp_ptr == prio_end_ptr)
                     prio_end_ptr = nullptr;
             }
-            // update the ending pointer of this category if this is the last message of this priority
+            // update the ending pointer of this category if this is the last
+            // message of this priority
             else if (temp_ptr == prio_end_ptr)
             {
                 // if this is not the only message left at this priority level
@@ -411,7 +413,7 @@ namespace IR
 
                     Scheduler_node *high_ptr = nullptr;
                     // find the first priority level higher than this
-                    for (int i = (temp_ptr->priority) + 1; i <= TX_priority_max; i++)
+                    for (size_t i = (temp_ptr->priority) + 1; i <= TX_priority_max; i++)
                     {
                         if (prio_level_end_ptr[i])
                         {
@@ -475,7 +477,7 @@ namespace IR
 
             // decrement all transmission counter, but stop at zero
             // only change back to counter_max at when fired!
-            for (int i = 0; i <= Msg_type_max; i++)
+            for (size_t i = 0; i <= Msg_type_max; i++)
                 if (node_list[i].transmission_counter)
                     node_list[i].transmission_counter--;
 

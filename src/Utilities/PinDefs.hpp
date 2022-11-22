@@ -29,17 +29,17 @@
 
 // If we enable all three RX channnels (as in our real hardware)
 // the convention will be:
-//      RMT_RX_PIN_1 -> left emitter
+//      RMT_RX_PIN_1 -> middle emitter
 //      RMT_RX_PIN_2 -> right emitter
-//      RMT_RX_PIN_3 -> middle emitter
+//      RMT_RX_PIN_3 -> left emitter
 #if RMT_RX_CHANNEL_COUNT >=1
-#define RMT_RX_PIN_1 22
+#define RMT_RX_PIN_1 23
 #endif
 #if RMT_RX_CHANNEL_COUNT >= 2
 #define RMT_RX_PIN_2 19
 #endif
 #if RMT_RX_CHANNEL_COUNT == 3
-#define RMT_RX_PIN_3 23
+#define RMT_RX_PIN_3 22
 #endif
 
 // // this is the old one
@@ -108,11 +108,20 @@ constexpr rmt_channel_t RMT_TX_channel_1 = RMT_CHANNEL_0;
 constexpr rmt_channel_t RMT_TX_channel_2 = RMT_CHANNEL_1;
 /**
  * @brief First RMT RX channel num (Highest priority)
+ * @note should be the middle emitter! because we only care about where the
+ * middle emitter's message is coming from.
  */
 constexpr rmt_channel_t RMT_RX_channel_1 = RMT_CHANNEL_2;
 #if RMT_RX_CHANNEL_COUNT >= 2
 /**
- * @brief Second RMT RX channel num
+ * @brief Second RMT RX channel num.
+ * 
+ * @note Make it right if the robot is rotating counter-clockwise when viewed
+ * from the top. Because we want to make sure that when left and right are
+ * beginning to receive message, their success rate is the same. we don't want
+ * to give one of the emitter advantage by considering it 'received' a proper
+ * message while it actually didn't receive the message but considered as
+ * received because another receiver received the message.
  */
 constexpr rmt_channel_t RMT_RX_channel_2 = RMT_CHANNEL_4;
 #endif

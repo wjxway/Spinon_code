@@ -7,12 +7,12 @@
 #include "src/IrCommunication/IrCommunication.hpp"
 #include "src/Tasks.hpp"
 
-uint64_t rec_finish_time = 0; 
+uint64_t rec_finish_time = 0;
 
 // Blink the LED
 void blink_led(int n)
 {
-    for (int i = 0; i < n; i++)
+    for (size_t i = 0; i < n; i++)
     {
         LIT_R;
         LIT_G;
@@ -28,23 +28,23 @@ void blink_led(int n)
     }
 }
 
-// void LED_off_task(void *pvParameters)
-// {
-//     while (1)
-//     {
-//         // still need to feed the dog
-//         Feed_the_dog();
+void LED_off_task(void *pvParameters)
+{
+    TickType_t prev_wake_time = xTaskGetTickCount();
+    
+    while (1)
+    {
+        // still need to feed the dog
+        Feed_the_dog();
 
-//         // turn off led if they haven't been refreshed for a while
-//         if (micros() - RMT_RX_TX::last_RX_time > 200)
-//         {
-//             QUENCH_R;
-//             QUENCH_G;
-//             QUENCH_B;
-//         }
-//         delayMicroseconds(50);
-//     }
-// }
+        // turn off led if they haven't been refreshed for a while
+        QUENCH_R;
+        QUENCH_G;
+        QUENCH_B;
+
+        vTaskDelayUntil(&prev_wake_time,pdMS_TO_TICKS(1));
+    }
+}
 
 void real_setup(void *pvParameters)
 {
@@ -79,19 +79,19 @@ void real_setup(void *pvParameters)
 
     DEBUG_C(Serial.println("Pin setup finished"));
 
-    Motor::Init();
-    Motor::Set_speed(30);
+    // Motor::Init();
+    // Motor::Set_speed(30);
 
-    DEBUG_C(Serial.println("Motor started"));
+    // DEBUG_C(Serial.println("Motor started"));
 
-    IR::TX::Init();
+    // IR::TX::Init();
 
-    DEBUG_C(Serial.println("TX inited"));
+    // DEBUG_C(Serial.println("TX inited"));
 
-    // this is the data task that has type 4 and transmit {0x1234, 0xFEDC}
-    IR::TX::Add_to_schedule(4, {0x0123, 0xFEDC}, 2, -1, 2);
+    // // this is the data task that has type 4 and transmit {0x1234, 0xFEDC}
+    // IR::TX::Add_to_schedule(4, {0x0123, 0xFEDC}, 2, -1, 2);
 
-    DEBUG_C(Serial.println("TX data set"));
+    // DEBUG_C(Serial.println("TX data set"));
 
     IR::RX::Init();
 
@@ -106,6 +106,26 @@ void real_setup(void *pvParameters)
         10000,
         NULL,
         1,
+        NULL,
+        0);
+
+    // quench LED!
+    xTaskCreatePinnedToCore(
+        Send_message_task,
+        "sendmsgtask",
+        20000,
+        NULL,
+        2,
+        NULL,
+        0);
+
+    // send me messages through serial!
+    xTaskCreatePinnedToCore(
+        Send_message_task,
+        "sendmsgtask",
+        20000,
+        NULL,
+        3,
         NULL,
         0);
 

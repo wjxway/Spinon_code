@@ -7,6 +7,8 @@
 #include "../Utilities/Circbuffer.hpp"
 #include "driver/rmt.h"
 
+// #define private public
+
 namespace IR
 {
     using namespace detail;
@@ -22,12 +24,12 @@ namespace IR
         // 2.0 msg_buffer_dict : dictionary for msg_buffer,
         // msg_buffer_dict[robot_id] -> dict_id.
         // 2.1 msg_buffer : stores data in the form of
-        // something like msg_buffer[dict_id].msg_typed_data[n] gives the nth 
+        // something like msg_buffer[dict_id].msg_typed_data[n] gives the nth
         // oldest message of msg_type sent by robot_id.
         // msg_buffer[dict_id].timing_dat[n] gives the nth oldest timing info
         // coming from a certain robot.
         // 3. recent_msg_buffer[msg_type] : stores the most recent message of
-        // a certain type that finished reception 
+        // a certain type that finished reception
         // This buffer only provide information of content and last reception
         // time, but not anything related to localization like emitter position
         // or receiver position.
@@ -36,7 +38,7 @@ namespace IR
         // This buffer only provide information of first message's timing and
         // robot ID, but not data contents.
         //
-        // I cannot think of any end user scenario where people need the raw 
+        // I cannot think of any end user scenario where people need the raw
         // data and cannot use a combination of buffer 2~4.
         //
         // To deal with concurrency, we require the priority of Preprocess task
@@ -153,7 +155,7 @@ namespace IR
                 {
                     return msg_ID_max;
                 }
-                virtual const uint16_t * Get_content_pointer() const override
+                virtual const uint16_t *Get_content_pointer() const override
                 {
                     return content;
                 }
@@ -170,7 +172,7 @@ namespace IR
                  *
                  * @param info complete information of transmission
                  * @return uint32_t there are two useful bits, bit 0 and bit 1.
-                 *         bit 0 indicates whether we should open a new structure 
+                 *         bit 0 indicates whether we should open a new structure
                  * for the new inquiry. 1 for yes.
                  *         bit 1 indicates whether we just finished a complete message.
                  *
@@ -245,7 +247,7 @@ namespace IR
 
             /**
              * @brief message buffer that stores data in the form of
-             * msg_buffer[dict_id][msg_type][n] 
+             * msg_buffer[dict_id][msg_type][n]
              * gives the nth oldest message of msg_type sent by robot_id.
              * This buffer only provide information of content and last
              * reception time, but not anything related to localization like
@@ -292,7 +294,8 @@ namespace IR
                 //      2. msg_ID_init is consistent (probably the same message).
                 //      3. msg_ID_max == 0 or msg_ID <= msg_ID_max (msg_ID out of bounds).
                 //      4. either the data is missing or the data is the same as previous (data consistency).
-                bool meta_consistency = (info.time - last_reception_time < Data_expire_time) && (msg.msg_ID_init == msg_ID_init) && (msg_ID_max == 0 || msg_ID_max >= msg.msg_ID);
+                // Furthermore, when the data structure is fresh, msg_count == 0, and we want to reset the pool. so we just say meta is inconsistent.
+                bool meta_consistency = msg_count && (info.time - last_reception_time < Data_expire_time) && (msg.msg_ID_init == msg_ID_init) && (msg_ID_max == 0 || msg_ID_max >= msg.msg_ID);
                 bool data_consistency = (this_filled == 0 || content[msg.msg_ID - 1] == msg.content);
                 bool consistency = meta_consistency && data_consistency;
 
@@ -391,7 +394,8 @@ namespace IR
                 //      2. msg_ID_init is consistent (probably the same message).
                 //      3. no message with msg_ID > msg_ID_max has been received, which means (filling_status >> msg.msg_ID_len) at max is 1 (msg_ID out of bounds).
                 //      4. either the header is missing or the header is the same as previous (data consistency).
-                bool meta_consistency = (info.time - last_reception_time < Data_expire_time) && (msg.msg_ID_init == msg_ID_init) && ((filling_status >> msg.msg_ID_len) < 2);
+                // Furthermore, when the data structure is fresh, msg_count == 0, and we want to reset the pool. so we just say meta is inconsistent.
+                bool meta_consistency = msg_count && (info.time - last_reception_time < Data_expire_time) && (msg.msg_ID_init == msg_ID_init) && ((filling_status >> msg.msg_ID_len) < 2);
                 bool data_consistency = (this_filled == 0 || (CRC == msg.CRC && msg_ID_max == msg.msg_ID_len));
                 bool consistency = meta_consistency && data_consistency;
 
@@ -545,7 +549,9 @@ namespace IR
         {
             // return directly if the robot already exists in msg_buffer.
             if (msg_buffer_dict[robot_ID])
+            {
                 return msg_buffer_dict[robot_ID];
+            }
 
             // minimum time
             uint64_t min_t = msg_buffer[0].last_reception_time, temp_t;
@@ -644,7 +650,9 @@ namespace IR
                         auto pool = ptr->multiple_dat[msg_type - Single_transmission_msg_type - 1];
 
                         if (pool.n_elem)
+                        {
                             empty = 1;
+                        }
                         // note that we need the latest "completed" element
                         else if (pool.peek_tail().Content_valid_Q())
                         {
@@ -655,6 +663,11 @@ namespace IR
                         }
                         else
                         {
+                            // Serial.println(pool.peek_tail().filling_status);
+                            // Serial.println(pool.peek_tail().msg_count);
+                            // Serial.println(pool.peek_tail().msg_ID_max);
+                            // Serial.println(pool.peek_tail().content[0]);
+
                             if (pool.n_elem > age + 1)
                                 res = To_completed_form(robot_ID, msg_type, pool.peek_tail(age + 1));
                             else
@@ -715,7 +728,7 @@ namespace IR
         //     return res;
         // }
 
-        uint32_t Get_timing_data(Msg_timing_t * const start)
+        uint32_t Get_timing_data(Msg_timing_t *const start)
         {
             uint32_t curr_flag;
             uint32_t len = 0;
@@ -725,7 +738,7 @@ namespace IR
                 curr_flag = io_flag;
 
                 len = recent_timing_buffer.n_elem;
-                for (int i = 0; i < recent_timing_buffer.n_elem; i++)
+                for (size_t i = 0; i < recent_timing_buffer.n_elem; i++)
                 {
                     start[i] = recent_timing_buffer.peek_tail(i);
                 }
@@ -736,15 +749,15 @@ namespace IR
             return len;
         }
 
-        uint32_t Get_neighboring_robots_ID(uint32_t * const start, const uint64_t history_time)
+        uint32_t Get_neighboring_robots_ID(uint32_t *const start, const uint64_t history_time)
         {
             uint32_t curr_flag;
 
-            uint64_t t_now = micros();
+            uint64_t t_now = esp_timer_get_time();
             // pointer to the current position in start array
             uint32_t *ptr;
             // number of robots
-            uint32_t count;
+            uint32_t count = 0;
 
             do
             {
@@ -756,9 +769,10 @@ namespace IR
                 {
                     ptr = start;
                 }
-                for (int i = 0; i < Max_robots_simultaneous; i++)
+                for (size_t i = 0; i < Max_robots_simultaneous; i++)
                 {
-                    if (history_time == 0 || (t_now - msg_buffer[i].last_reception_time < history_time))
+                    // check for data and time validity
+                    if (msg_buffer[i].last_reception_time != 0 && (history_time == 0 || (t_now - msg_buffer[i].last_reception_time < history_time)))
                     {
                         if (start)
                         {
@@ -780,9 +794,11 @@ namespace IR
          */
         void IRAM_ATTR RX_ISR(void *)
         {
-            // test start pulse
-            // delayhigh100ns(TEST_PIN);
-            // clrbit(TEST_PIN);
+            // // test start pulse
+            // DEBUG_C(
+            // delayhigh100ns(DEBUG_PIN_1);
+            // clrbit(DEBUG_PIN_1);
+            // )
 
             // delay for a bit to make sure all RMT channels finished receiving
             // I assume a identical signal's delay won't vary by 100ns which is
@@ -808,9 +824,9 @@ namespace IR
             volatile rmt_item32_t *item_1, *item_2, *item_3;
             // RMT_RX_1, corresponding to RMT channel 2
             // This channel has the highest priority when >1 channels received
-            // the signal. So make sure that this is the channel that received
-            // the signal later. Because the channel receiving the signal later
-            // will have higher received intensity.
+            // the signal. make sure that this is the center emitter, because we
+            // only care about where the center emitter's message is coming
+            // from.
             if (intr_st & (1 << (1 + 3 * RMT_RX_channel_1)))
             {
                 // change owner state, disable rx
@@ -940,6 +956,13 @@ namespace IR
             delay50ns;
             delay100ns;
 
+            // test valid pulse
+            // if(this_valid)
+            // {
+            //     delayhigh100ns(DEBUG_PIN_1);
+            //     clrbit(DEBUG_PIN_1);
+            // }
+
             // // test end pulse
             // delayhigh500ns(TEST_PIN);
             // clrbit(TEST_PIN);
@@ -1001,12 +1024,20 @@ namespace IR
                         // usually this is just 0, then we can skip all the rest.
                         if (new_pos != 0)
                         {
-                            for (int i = 0; i < RMT_RX_CHANNEL_COUNT; i++)
+                            // we only care about which emitter we are getting
+                            // message from if the message is received by the
+                            // center receiver, because that's the only receiver
+                            // related to elevation sensing.
+                            if (new_pos | 0b01u)
+                            {
+                                last_time.emitter_pos = emitter;
+                            }
+                            // but we do care about all the timing info
+                            for (size_t i = 0; i < RMT_RX_CHANNEL_COUNT; i++)
                             {
                                 if (new_pos | (1 << i))
                                 {
                                     last_time.time_arr[i] = info.time;
-                                    last_time.emitter_pos += (emitter << i);
                                 }
                             }
                             last_time.receiver |= info.receiver;
@@ -1026,12 +1057,21 @@ namespace IR
                         Msg_timing_t temp;
                         temp.receiver = info.receiver;
                         temp.robot_ID = robot_ID;
-                        for (int i = 0; i < RMT_RX_CHANNEL_COUNT; i++)
+
+                        // we only care about which emitter we are getting
+                        // message from if the message is received by the
+                        // center receiver, because that's the only receiver
+                        // related to elevation sensing.
+                        if (info.receiver | 0b01u)
+                        {
+                            temp.emitter_pos = emitter;
+                        }
+                        // but we do care about all the timing info
+                        for (size_t i = 0; i < RMT_RX_CHANNEL_COUNT; i++)
                         {
                             if (info.receiver | (1 << i))
                             {
                                 temp.time_arr[i] = info.time;
-                                temp.emitter_pos += (emitter << i);
                             }
                         }
                         if (info.receiver == ((1 << RMT_RX_CHANNEL_COUNT) - 1))
@@ -1060,10 +1100,12 @@ namespace IR
                         // update robot's timing info
                         robot_ptr->last_reception_time = info.time;
 
+                        auto &circbuf = robot_ptr->single_data[msg_type];
+
                         // fetch latest message if exist
-                        if (robot_ptr->single_data[msg_type].n_elem)
+                        if (circbuf.n_elem)
                         {
-                            Parsed_msg_single &tail = robot_ptr->single_data[msg_type].peek_tail();
+                            Parsed_msg_single &tail = circbuf.peek_tail();
                             // check if is the same and not obsolete, if so,
                             // simply change tail's reception time and continue.
                             if (tail.msg_ID_init == msg_ID_init && tail.content == content && (info.time - tail.last_reception_time) < Data_expire_time)
@@ -1083,7 +1125,7 @@ namespace IR
                         temp.msg_ID_init = msg_ID_init;
                         temp.last_reception_time = info.time;
 
-                        robot_ptr->single_data[msg_type].push(temp);
+                        circbuf.push(temp);
 
                         // because it's single transmission message, always add
                         // to the recent_msg_buffer
@@ -1100,7 +1142,7 @@ namespace IR
                         // will always update timing for robot time.
                         robot_ptr->last_reception_time = info.time;
                         // the corresponding typed circular buffer
-                        auto circbuf = robot_ptr->multiple_dat[msg_type - Single_transmission_msg_type - 1];
+                        auto &circbuf = robot_ptr->multiple_dat[msg_type - Single_transmission_msg_type - 1];
 
                         // bit 0 -> whether the data should be in a new bin
                         // bit 1 -> whether the data is just full
@@ -1129,6 +1171,7 @@ namespace IR
                             // recent_msg_buffer
                             if (flags | 2)
                             {
+                                circbuf.peek_tail().content_valid_flag = 1;
                                 recent_msg_buffer[msg_type].push(To_completed_form(robot_ID, msg_type, circbuf.peek_tail()));
                             }
                         }
@@ -1156,6 +1199,7 @@ namespace IR
                             // recent_msg_buffer
                             if (flags | 2)
                             {
+                                circbuf.peek_tail().content_valid_flag = 1;
                                 recent_msg_buffer[msg_type].push(To_completed_form(robot_ID, msg_type, circbuf.peek_tail()));
                             }
                         }
@@ -1168,6 +1212,8 @@ namespace IR
 
         bool Init()
         {
+            // initialize the dict array
+            msg_buffer_dict.fill(nullptr);
 
 #if RMT_RX_CHANNEL_COUNT >= 1
             pinMode(RMT_RX_PIN_1, INPUT);
