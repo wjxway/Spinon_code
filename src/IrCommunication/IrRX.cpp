@@ -7,8 +7,6 @@
 #include "../Utilities/Circbuffer.hpp"
 #include "driver/rmt.h"
 
-// #define private public
-
 namespace IR
 {
     using namespace detail;
@@ -636,7 +634,7 @@ namespace IR
                     // valid!
                     if (msg_type <= Single_transmission_msg_type)
                     {
-                        auto pool = ptr->single_data[msg_type];
+                        auto &pool = ptr->single_data[msg_type];
                         // if there's element of this particular type, check if
                         // the first message is finished. if peeked message is
                         // valid, then just take the age th message.
@@ -647,27 +645,19 @@ namespace IR
                     }
                     else
                     {
-                        auto pool = ptr->multiple_dat[msg_type - Single_transmission_msg_type - 1];
+                        auto &pool = ptr->multiple_dat[msg_type - Single_transmission_msg_type - 1];
 
-                        if (pool.n_elem)
+                        if (pool.n_elem <= age)
                         {
                             empty = 1;
                         }
                         // note that we need the latest "completed" element
                         else if (pool.peek_tail().Content_valid_Q())
                         {
-                            if (pool.n_elem > age)
-                                res = To_completed_form(robot_ID, msg_type, pool.peek_tail(age));
-                            else
-                                empty = 1;
+                            res = To_completed_form(robot_ID, msg_type, pool.peek_tail(age));
                         }
                         else
                         {
-                            // Serial.println(pool.peek_tail().filling_status);
-                            // Serial.println(pool.peek_tail().msg_count);
-                            // Serial.println(pool.peek_tail().msg_ID_max);
-                            // Serial.println(pool.peek_tail().content[0]);
-
                             if (pool.n_elem > age + 1)
                                 res = To_completed_form(robot_ID, msg_type, pool.peek_tail(age + 1));
                             else
@@ -686,7 +676,7 @@ namespace IR
 
         Parsed_msg_completed Get_latest_msg_by_type(const uint32_t msg_type, const uint32_t age)
         {
-            auto buf = recent_msg_buffer[msg_type];
+            auto& buf = recent_msg_buffer[msg_type];
             uint32_t curr_flag, empty = 0;
             Parsed_msg_completed res;
 
@@ -1009,7 +999,7 @@ namespace IR
                     // ignore this for now if there's a problem later, we can
                     // always add an additional CRC about the raw message in the
                     // future.
-                    auto timebuf = robot_ptr->timing_dat;
+                    auto& timebuf = robot_ptr->timing_dat;
                     // whether the message is from the top emitter
                     uint32_t emitter = info.data & (1 << (32 - 1));
                     // if there's element and the last time this robot received
@@ -1022,20 +1012,20 @@ namespace IR
                         auto &last_time = timebuf.peek_tail();
                         uint32_t new_pos = info.receiver & (~last_time.receiver);
                         // usually this is just 0, then we can skip all the rest.
-                        if (new_pos != 0)
+                        if (new_pos)
                         {
                             // we only care about which emitter we are getting
                             // message from if the message is received by the
                             // center receiver, because that's the only receiver
                             // related to elevation sensing.
-                            if (new_pos | 0b01u)
+                            if (new_pos & 0b01u)
                             {
                                 last_time.emitter_pos = emitter;
                             }
                             // but we do care about all the timing info
                             for (size_t i = 0; i < RMT_RX_CHANNEL_COUNT; i++)
                             {
-                                if (new_pos | (1 << i))
+                                if (new_pos & (1 << i))
                                 {
                                     last_time.time_arr[i] = info.time;
                                 }
@@ -1062,14 +1052,14 @@ namespace IR
                         // message from if the message is received by the
                         // center receiver, because that's the only receiver
                         // related to elevation sensing.
-                        if (info.receiver | 0b01u)
+                        if (info.receiver & 0b01u)
                         {
                             temp.emitter_pos = emitter;
                         }
                         // but we do care about all the timing info
                         for (size_t i = 0; i < RMT_RX_CHANNEL_COUNT; i++)
                         {
-                            if (info.receiver | (1 << i))
+                            if (info.receiver & (1 << i))
                             {
                                 temp.time_arr[i] = info.time;
                             }
@@ -1161,7 +1151,7 @@ namespace IR
                             }
                             // if requires to generate a new content (flags's
                             // first bit is 1)
-                            if (flags | 1)
+                            if (flags & 1)
                             {
                                 Parsed_msg_multiple temp;
                                 flags = temp.Add_content(info);
@@ -1169,9 +1159,8 @@ namespace IR
                             }
                             // if data has just been finished update
                             // recent_msg_buffer
-                            if (flags | 2)
+                            if (flags & 2)
                             {
-                                circbuf.peek_tail().content_valid_flag = 1;
                                 recent_msg_buffer[msg_type].push(To_completed_form(robot_ID, msg_type, circbuf.peek_tail()));
                             }
                         }
@@ -1189,7 +1178,7 @@ namespace IR
                             }
                             // if requires to generate a new content (flags's
                             // first bit is 1)
-                            if (flags | 1)
+                            if (flags & 1)
                             {
                                 Parsed_msg_multiple temp;
                                 flags = temp.Add_header(info);
@@ -1197,9 +1186,8 @@ namespace IR
                             }
                             // if data has just been finished update
                             // recent_msg_buffer
-                            if (flags | 2)
+                            if (flags & 2)
                             {
-                                circbuf.peek_tail().content_valid_flag = 1;
                                 recent_msg_buffer[msg_type].push(To_completed_form(robot_ID, msg_type, circbuf.peek_tail()));
                             }
                         }

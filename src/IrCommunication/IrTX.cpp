@@ -339,7 +339,11 @@ namespace IR
             return node_list[ntype].val;
         }
 
-        // remove an element from the list, ntype is the type number
+        /**
+         * @brief remove an element from the list, ntype is the type number
+         * 
+         * @param type type of message
+         */
         void Remove_from_schedule(const uint32_t type)
         {
             // temp pointer to the msg
@@ -552,7 +556,7 @@ namespace IR
                 rmt_item32_t *v = Schedule_next();
 
                 // write both register
-                for (auto i = 0; i < RMT_TX_length; i++)
+                for (size_t i = 0; i < RMT_TX_length; i++)
                     RMTMEM.chan[RMT_TX_channel_2].data32[i].val = RMTMEM.chan[RMT_TX_channel_1].data32[i].val = (v + i)->val;
 
                 // edit channel 2 register

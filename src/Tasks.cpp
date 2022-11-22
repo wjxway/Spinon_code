@@ -191,7 +191,7 @@ void IRAM_ATTR Send_message_task(void *pvParameters)
 
             for (size_t i = 0; i < min(time_count, 10u); i++)
             {
-                temp += "\n" + std::to_string(tarr[i].time_arr[0]) + "," + std::to_string(tarr[i].time_arr[1]) + "," + std::to_string(tarr[i].time_arr[2]);
+                temp += "\n" + std::to_string(tarr[i].robot_ID) + "@" + std::to_string(tarr[i].emitter_pos) + " : " + std::to_string(tarr[i].time_arr[0]) + "," + std::to_string(tarr[i].time_arr[1]) + "," + std::to_string(tarr[i].time_arr[2]);
             }
         }
         else

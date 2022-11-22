@@ -70,7 +70,7 @@ namespace IR
         /**
          * @brief maximum memory size for data.
          */
-        constexpr uint32_t Msg_memory_size = ((1 << (Msg_ID_bits - 1)) - 1) * Msg_content_bytes;
+        constexpr uint32_t Msg_memory_size = ((1 << (Msg_ID_bits - 1)) - 1);
 
         /**
          * @brief how many messages will we save per robot per type
