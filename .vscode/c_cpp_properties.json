@@ -192,7 +192,7 @@
                 "C:\\Users\\wjxwa\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\2.0.0\\tools\\sdk\\esp32\\include\\fb_gfx\\include",
                 "C:\\Users\\wjxwa\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\2.0.0\\cores\\esp32",
                 "C:\\Users\\wjxwa\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\2.0.0\\variants\\pico32",
-                "C:\\Users\\wjxwa\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\2.0.0\\libraries\\SPI\\src",
+                "C:\\Users\\wjxwa\\AppData\\Local\\Arduino15\\packages\\esp32\\hardware\\esp32\\2.0.0\\libraries\\Wire\\src",
                 "c:\\users\\wjxwa\\appdata\\local\\arduino15\\packages\\esp32\\tools\\xtensa-esp32-elf-gcc\\gcc8_4_0-esp-2021r1\\xtensa-esp32-elf\\include\\c++\\8.4.0",
                 "c:\\users\\wjxwa\\appdata\\local\\arduino15\\packages\\esp32\\tools\\xtensa-esp32-elf-gcc\\gcc8_4_0-esp-2021r1\\xtensa-esp32-elf\\include\\c++\\8.4.0\\xtensa-esp32-elf",
                 "c:\\users\\wjxwa\\appdata\\local\\arduino15\\packages\\esp32\\tools\\xtensa-esp32-elf-gcc\\gcc8_4_0-esp-2021r1\\xtensa-esp32-elf\\include\\c++\\8.4.0\\backward",

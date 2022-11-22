@@ -1,12 +1,19 @@
-#ifndef _FASTIO_
-#define _FASTIO_
-#pragma once
+/**
+ * @file FastIO.hpp
+ * @brief fast IO macros
+ */
+#ifndef _FASTIO_HPP_
+#define _FASTIO_HPP_
+
 #include "Arduino.h"
 
 // accurate delay functions
 #define delay25ns __asm__ __volatile__("nop;nop;nop;nop;nop;nop;")
 #define delay50ns __asm__ __volatile__("nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;")
 #define delay100ns __asm__ __volatile__("nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;")
+#define delay200ns delay100ns;delay100ns
+#define delay500ns delay100ns;delay100ns;delay100ns;delay100ns;delay100ns
+#define delay1us delay500ns;delay500ns
 
 // fast switching of output
 // set and unset
