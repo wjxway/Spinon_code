@@ -676,7 +676,7 @@ namespace IR
 
         Parsed_msg_completed Get_latest_msg_by_type(const uint32_t msg_type, const uint32_t age)
         {
-            auto& buf = recent_msg_buffer[msg_type];
+            auto &buf = recent_msg_buffer[msg_type];
             uint32_t curr_flag, empty = 0;
             Parsed_msg_completed res;
 
@@ -718,19 +718,28 @@ namespace IR
         //     return res;
         // }
 
-        uint32_t Get_timing_data(Msg_timing_t *const start)
+        uint32_t Get_timing_data(Msg_timing_t *const start, const uint64_t history_time)
         {
+            uint64_t curr_time;
             uint32_t curr_flag;
             uint32_t len = 0;
 
             do
             {
                 curr_flag = io_flag;
+                curr_time = esp_timer_get_time();
 
                 len = recent_timing_buffer.n_elem;
                 for (size_t i = 0; i < recent_timing_buffer.n_elem; i++)
                 {
                     start[i] = recent_timing_buffer.peek_tail(i);
+
+                    // break if time reached
+                    if (history_time && (curr_time - start[i].time_arr[0]) > history_time)
+                    {
+                        len = i;
+                        break;
+                    }
                 }
             }
             // repeat if write task preempted this task
@@ -999,7 +1008,7 @@ namespace IR
                     // ignore this for now if there's a problem later, we can
                     // always add an additional CRC about the raw message in the
                     // future.
-                    auto& timebuf = robot_ptr->timing_dat;
+                    auto &timebuf = robot_ptr->timing_dat;
                     // whether the message is from the top emitter
                     uint32_t emitter = info.data & (1 << (32 - 1));
                     // if there's element and the last time this robot received

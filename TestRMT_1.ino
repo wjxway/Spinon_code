@@ -28,24 +28,6 @@ void blink_led(int n)
     }
 }
 
-void LED_off_task(void *pvParameters)
-{
-    TickType_t prev_wake_time = xTaskGetTickCount();
-    
-    while (1)
-    {
-        // still need to feed the dog
-        Feed_the_dog();
-
-        // turn off led if they haven't been refreshed for a while
-        QUENCH_R;
-        QUENCH_G;
-        QUENCH_B;
-
-        vTaskDelayUntil(&prev_wake_time,pdMS_TO_TICKS(1));
-    }
-}
-
 void real_setup(void *pvParameters)
 {
 
@@ -111,8 +93,8 @@ void real_setup(void *pvParameters)
 
     // quench LED!
     xTaskCreatePinnedToCore(
-        Send_message_task,
-        "sendmsgtask",
+        LED_off_task,
+        "LED_off_task",
         20000,
         NULL,
         2,

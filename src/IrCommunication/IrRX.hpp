@@ -228,9 +228,12 @@ namespace IR
          * @brief copy all timing data into an array, **from newest to oldest**.
          *
          * @param start starting pointer of array.
+         * @param history_time get only the robots that has been seen within
+         * history_time us. when is 0, then access all. Note that here we use
+         * only time_arr[0] for timing.
          * @return uint32_t length of Msg_timing_t array
          */
-        uint32_t Get_timing_data(Msg_timing_t *const start);
+        uint32_t Get_timing_data(Msg_timing_t *const start, const uint64_t history_time=0);
 
         /**
          * @brief get all neighboring robot's ID
