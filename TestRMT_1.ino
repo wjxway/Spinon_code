@@ -30,10 +30,14 @@ void blink_led(int n)
 
 void real_setup(void *pvParameters)
 {
-
     // put your setup code here, to run once:
     Serial.begin(115200);
     DEBUG_C(Serial.println("Setup start"));
+    DEBUG_C(Serial.print("Robot #"));
+    DEBUG_C(Serial.println(This_robot_ID));
+
+    // please keep it here! or the RMT might be buggy!
+    delay(10);
 
     // test output
     pinMode(DEBUG_PIN_1, OUTPUT);
@@ -48,16 +52,7 @@ void real_setup(void *pvParameters)
     digitalWrite(LED_PIN_G, HIGH);
     digitalWrite(LED_PIN_B, HIGH);
 
-    // TX output
-    pinMode(RMT_TX_PIN_1, OUTPUT);
-    pinMode(RMT_TX_PIN_2, OUTPUT);
-    digitalWrite(RMT_TX_PIN_1, LOW);
-    digitalWrite(RMT_TX_PIN_2, LOW);
-
-    // RX input
-    pinMode(RMT_RX_PIN_1, INPUT);
-    pinMode(RMT_RX_PIN_2, INPUT);
-    pinMode(RMT_RX_PIN_3, INPUT);
+    blink_led(5);
 
     DEBUG_C(Serial.println("Pin setup finished"));
 

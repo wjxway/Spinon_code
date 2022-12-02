@@ -21,9 +21,9 @@
 #define LIT_R (GPIO.out1_w1tc.data = 1)
 #define QUENCH_R (GPIO.out1_w1ts.data = 1)
 #define LIT_G (GPIO.out1_w1tc.data = 2)
-#define QUENCH_G (GPIO.out1_w1tc.data = 2)
+#define QUENCH_G (GPIO.out1_w1ts.data = 2)
 #define LIT_B clrbit(LED_PIN_B)
-#define QUENCH_B clrbit(LED_PIN_B)
+#define QUENCH_B setbit(LED_PIN_B)
 #else
 #define LIT_R 0
 #define QUENCH_R 0

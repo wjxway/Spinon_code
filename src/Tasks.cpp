@@ -168,8 +168,8 @@ void Send_message_task(void *pvParameters)
             curr_flag = IR::RX::Get_io_flag();
 
             robot_count = IR::RX::Get_neighboring_robots_ID(idarr, 0);
-            msg_1 = IR::RX::Get_latest_msg_by_bot(idarr[0], 1);
-            msg_4 = IR::RX::Get_latest_msg_by_bot(idarr[0], 4);
+            msg_1 = IR::RX::Get_latest_msg_by_type(1);
+            msg_4 = IR::RX::Get_latest_msg_by_type(4);
             time_count = IR::RX::Get_timing_data(tarr);
         } while (IR::RX::Get_io_flag() != curr_flag);
 
@@ -193,8 +193,8 @@ void Send_message_task(void *pvParameters)
 
         if (msg_1.content_length)
         {
-            // print first robot's latest msg of type 1
-            temp += "\nFirst robot's latest type 1 message is: " + n2hexstr(msg_1.content[0]);
+            // print latest msg of type 1
+            temp += "\nLatest type 1 message is sent by robot " + std::to_string(msg_1.robot_ID) + " : " + n2hexstr(msg_1.content[0]);
             temp += "\n    last received at: " + std::to_string(msg_1.finish_reception_time);
         }
         else
@@ -205,7 +205,7 @@ void Send_message_task(void *pvParameters)
         if (msg_4.content_length)
         {
             // print first robot's latest msg of type 4
-            temp += "\nFirst robot's latest type 4 message has length of: " + std::to_string(msg_4.content_length) + "\n The contents are: ";
+            temp += "\nLatest type 4 message is sent by robot " + std::to_string(msg_4.robot_ID) + " and has length of: " + std::to_string(msg_4.content_length) + "\n The contents are: ";
 
             for (size_t i = 0; i < msg_4.content_length; i++)
             {

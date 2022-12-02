@@ -41,13 +41,15 @@ namespace IR
          * @param priority1 priority of this task
          * @param expiration_count how much individual transmissions before this
          * task is removed. note that it might take multiple individual
-         * transmissions to complete one complete transmission.
+         * transmissions to complete one complete transmission. By default this
+         * is -1, which means never expire.
          * @param period when no other task is presented, this data should be
-         * transmitted once per how many transmissions.
+         * transmitted once per how many transmissions. By default this is 1,
+         * which means fire every time.
          *
          * @warning calling this will ALWAYS override the existing data.
          */
-        void Add_to_schedule(const uint32_t type, const std::vector<uint16_t> &raw, const uint32_t priority1, const int32_t expiration_count, const uint32_t period);
+        void Add_to_schedule(const uint32_t type, const std::vector<uint16_t> &raw, const uint32_t priority1, const int32_t expiration_count = -1, const uint32_t period = 1);
     }
 }
 

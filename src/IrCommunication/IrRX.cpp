@@ -557,13 +557,15 @@ namespace IR
             uint32_t min_pos = 0;
 
             // if min_t == 0, that means the [0] place is free.
-            // min_t only =0 if it's completely fresh, so very light setup
+            // min_t only = 0 if it's completely fresh, so very light setup
             if (min_t == 0)
             {
                 // 3. make it the new robot's place
                 msg_buffer[0].robot_ID = robot_ID;
                 // 4. establish link for new robot in dict
                 msg_buffer_dict[robot_ID] = &msg_buffer[0];
+                
+                return &msg_buffer[0];
             }
 
             // 1. find the oldest robot
@@ -579,6 +581,8 @@ namespace IR
                     msg_buffer[i].robot_ID = robot_ID;
                     // 4. establish link for new robot in dict
                     msg_buffer_dict[robot_ID] = &msg_buffer[i];
+
+                    return &msg_buffer[i];
                 }
                 // if this is older
                 else if (temp_t < min_t)

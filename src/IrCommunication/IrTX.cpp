@@ -96,7 +96,7 @@ namespace IR
                  */
                 rmt_item32_t *Get_data()
                 {
-                    rmt_item32_t *ptr_temp = ptr;
+                    auto ptr_temp = ptr;
                     // increment pointer
                     if (ptr == end_ptr)
                         ptr = data.data();
@@ -225,6 +225,7 @@ namespace IR
             // RMT peripheral start
 #if RMT_TX_CHANNEL_COUNT >= 1
             pinMode(RMT_TX_PIN_1, OUTPUT);
+            clrbit(RMT_TX_PIN_1);
             // config TX
             rmt_config_t rmt_tx;
             rmt_tx.channel = RMT_TX_channel_1;
@@ -255,6 +256,7 @@ namespace IR
 // second emitter
 #if RMT_TX_CHANNEL_COUNT > 1
             pinMode(RMT_TX_PIN_2, OUTPUT);
+            clrbit(RMT_TX_PIN_2);
             // config TX
             rmt_config_t rmt_tx_2;
             rmt_tx_2.channel = RMT_TX_channel_2;
