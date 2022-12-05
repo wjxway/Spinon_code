@@ -742,6 +742,7 @@ void Simple_localization_task(void *pvParameters)
             // and we setup the LED to be always on to indicate that the data has been filled.
             if (Position_stack.n_elem < 295)
             {
+                // blink LED to indicate successful reception
                 LIT_R;
                 LIT_G;
                 LIT_B;
@@ -761,15 +762,21 @@ void Simple_localization_task(void *pvParameters)
             // if just finished reception
             else if (Data_finished == 0)
             {
-                LIT_R;
-                LIT_G;
-                LIT_B;
-                delayMicroseconds(10000);
-                QUENCH_R;
-                QUENCH_G;
-                QUENCH_B;
+                // blink LED to indicate this!
+                for (size_t i = 0; i < 100; i++)
+                {
+                    LIT_R;
+                    LIT_G;
+                    LIT_B;
+                    delayMicroseconds(5000);
+                    QUENCH_R;
+                    QUENCH_G;
+                    QUENCH_B;
+                    delayMicroseconds(5000);
+                }
 
                 Data_finished = 1;
+
                 xTaskCreatePinnedToCore(
                     Print_data_task,
                     "Print_data_task",
