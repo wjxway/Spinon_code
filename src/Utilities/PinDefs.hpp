@@ -33,10 +33,10 @@
 //      RMT_RX_PIN_2 -> right emitter
 //      RMT_RX_PIN_3 -> left emitter
 #if RMT_RX_CHANNEL_COUNT >=1
-#define RMT_RX_PIN_1 23
+#define RMT_RX_PIN_1 19
 #endif
 #if RMT_RX_CHANNEL_COUNT >= 2
-#define RMT_RX_PIN_2 19
+#define RMT_RX_PIN_2 23
 #endif
 #if RMT_RX_CHANNEL_COUNT == 3
 #define RMT_RX_PIN_3 22

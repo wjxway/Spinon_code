@@ -1,3 +1,7 @@
+/**
+ * @file Tasks.hpp
+ * @brief User defined tasks to run
+ */
 #ifndef _TASKS_HPP_
 #define _TASKS_HPP_
 #include "Arduino.h"
@@ -34,6 +38,6 @@ void FB_LED_Init();
 /**
  * @brief try localization (a fairly simple and messy solution)
  */
-void Localization_simple(void *pvParameters);
+void Simple_localization_task(void *pvParameters);
 
 #endif

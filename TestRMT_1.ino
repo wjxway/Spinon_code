@@ -1,3 +1,7 @@
+/**
+ * @file TestRMT_1.ino
+ * @brief main file
+ */
 #include <string>
 
 #include "src/Utilities/FeedTheDog.hpp"
@@ -74,37 +78,55 @@ void real_setup(void *pvParameters)
 
     DEBUG_C(Serial.println("RX inited"));
 
-    DEBUG_C(Serial.println("Init finished"));
+    DEBUG_C(Serial.println("Init finished, launching tasks!"));
 
-    // monitor the performance of cores
-    xTaskCreatePinnedToCore(
-        Idle_stats_task,
-        "idle0",
-        10000,
-        NULL,
-        1,
-        NULL,
-        0);
+    // // monitor the performance of cores
+    // xTaskCreatePinnedToCore(
+    //     Idle_stats_task,
+    //     "idle0",
+    //     10000,
+    //     NULL,
+    //     1,
+    //     NULL,
+    //     0);
 
     // quench LED!
     xTaskCreatePinnedToCore(
         LED_off_task,
         "LED_off_task",
-        20000,
+        10000,
         NULL,
         2,
         NULL,
         0);
 
-    // send me messages through serial!
-    xTaskCreatePinnedToCore(
-        Send_message_task,
-        "sendmsgtask",
-        20000,
+    // // send me messages through serial!
+    // xTaskCreatePinnedToCore(
+    //     Send_message_task,
+    //     "sendmsgtask",
+    //     20000,
+    //     NULL,
+    //     3,
+    //     NULL,
+    //     0);
+
+    auto task_status = xTaskCreatePinnedToCore(
+        Simple_localization_task,
+        "simploctask",
+        30000,
         NULL,
-        3,
+        5,
         NULL,
         0);
+
+    if (task_status == pdTRUE)
+    {
+        Serial.println("All tasks launched!");
+    }
+    else
+    {
+        Serial.println("Task cannot be allocated!");
+    }
 
     // remove this task after use
     vTaskDelete(NULL);

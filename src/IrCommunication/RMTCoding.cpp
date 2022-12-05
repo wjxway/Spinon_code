@@ -48,8 +48,12 @@ bool IRAM_ATTR IR::detail::Parse_RMT_item(volatile rmt_item32_t *const pointer, 
         if (!temp.duration1)
             return false;
 
+        // // add pulse length and pulse gap to the absolute starting time of last pulse to get the start time of this pulse.
+        // curr += 1 + ((temp.duration1 + RMT_ticks_tol - Pad_per_cycle) / RMT_ticks_num);
+
         // add pulse length and pulse gap to the absolute starting time of last pulse to get the start time of this pulse.
-        curr += 1 + ((temp.duration1 + RMT_ticks_tol - Pad_per_cycle) / RMT_ticks_num);
+        // This version is much much better!
+        curr += ((temp.duration0 + temp.duration1 + RMT_ticks_tol - Pad_per_cycle) / RMT_ticks_num);
 
         // discard if time gap between two messages are incorrect
         if (curr < (1 << Bit_per_cycle) || curr >= (2 << Bit_per_cycle))

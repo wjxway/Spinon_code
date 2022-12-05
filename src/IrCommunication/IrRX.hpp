@@ -21,7 +21,7 @@ namespace IR
         /**
          * @brief how frequently will preprocess task be triggered, in ms.
          */
-        constexpr uint32_t Preprocess_trigger_period = 50;
+        constexpr uint32_t Preprocess_trigger_period = 30;
 
         /**
          * @brief priority of Preprocess task, note that all other user tasks
@@ -33,9 +33,10 @@ namespace IR
          * @brief timing data's valid time
          *
          * @note A proper value for Timing_expire_time should be the time it
-         * takes for the robot to spin 1 rounds.
+         * takes for the robot to spin ~0.2 rounds, take lower limit, but should
+         * be larger than a few times of RMT_TX_trigger_period_max.
          */
-        constexpr uint64_t Timing_expire_time = 60000;
+        constexpr uint64_t Timing_expire_time = 10000;
 
         /**
          * @brief data's valid time
@@ -50,16 +51,6 @@ namespace IR
          * @brief how many messages are allowed to stay in the buffer
          */
         constexpr uint32_t Raw_msg_buffer_size = 200;
-
-        /**
-         * @brief how frequently we read data from buffer and process it (in ms)
-         *
-         * @note because we have low duty cycle, we can rest for a while and let
-         * other tasks work... the signal's period is 100us, and there's seldom
-         * >3 emitters so in 5ms, there's at most 150 messages we need to
-         * process.
-         */
-        constexpr uint32_t Msg_process_period = 5;
 
         /**
          * @brief maximum number of robots that can communicate with a single
@@ -149,6 +140,11 @@ namespace IR
              */
             uint32_t timing_valid_Q = 0;
         } Msg_timing_t;
+
+        /**
+         * @brief last time any message is received, regardless of correctness.
+         */
+        extern uint64_t Last_RX_time;
 
         /**
          * @brief initialize RX routine, including:

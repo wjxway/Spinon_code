@@ -1,4 +1,7 @@
-// Motor control functions
+/**
+ * @file MotorCtrl.hpp
+ * @brief Motor control functions
+ */
 #ifndef _MOTORCTRL_HPP_
 #define _MOTORCTRL_HPP_
 #include "Arduino.h"

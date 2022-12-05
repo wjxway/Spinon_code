@@ -30,6 +30,13 @@ namespace std
 }
 #endif
 
+// whether the data is finished
+// after finished, make LED always on.
+uint32_t Data_finished = 0;
+
+// utility circbuffer
+Circbuffer<float, 100> util_buf;
+
 void IRAM_ATTR Idle_stats_task(void *pvParameters)
 {
     // stats resolution in CPU cycles
@@ -78,9 +85,9 @@ void IRAM_ATTR Idle_stats_task(void *pvParameters)
         // if exceeding the update time, update all data
         if (curr_time - startup_time > stat_update_time)
         {
-            // debug print or something else
-            std::string temp_str = "CPU " + std::to_string(xPortGetCoreID()) + " usage: " + std::to_string(100.0f - 100.0f * float(execution_count * stat_time_resolution) / stat_update_time) + "%";
-            DEBUG_C(Serial.println(temp_str.c_str()));
+            // // debug print or something else
+            // std::string temp_str = "CPU " + std::to_string(xPortGetCoreID()) + " usage: " + std::to_string(100.0f - 100.0f * float(execution_count * stat_time_resolution) / stat_update_time) + "%";
+            // DEBUG_C(Serial.println(temp_str.c_str()));
 
             // feed the dog because idle task will never be invoked
             Feed_the_dog();
@@ -122,9 +129,12 @@ void LED_off_task(void *pvParameters)
         Feed_the_dog();
 
         // turn off led if they haven't been refreshed for a while
-        QUENCH_R;
-        QUENCH_G;
-        QUENCH_B;
+        if (esp_timer_get_time() - IR::RX::Last_RX_time >= 300)
+        {
+            QUENCH_R;
+            QUENCH_G;
+            QUENCH_B;
+        }
 
         vTaskDelayUntil(&prev_wake_time, pdMS_TO_TICKS(1));
     }
@@ -288,12 +298,13 @@ constexpr float Elevation_error(const float distance, const float elevation)
 // Note that here we assume that the position is accurate!
 typedef struct
 {
-    float pos[3];   // position of reference robot
-    float dist;     // horizontal distance between robots
-    float dist_err; // error of dist
-    float elev;     // vertical distance (h of this - h of reference)
-    float elev_err; // error of elev
-    float angle;    // angle computed by 2*Pi*(time%T_0)/T_0.
+    uint32_t Robot_ID; // ID of robot, should be redundant
+    float pos[3];      // position of reference robot
+    float dist;        // horizontal distance between robots
+    float dist_err;    // error of dist
+    float elev;        // vertical distance (h of this - h of reference)
+    float elev_err;    // error of elev
+    float angle;       // angle computed by 2*Pi*(time%T_0)/T_0.
     float angle_err;
 } Relative_position_data;
 
@@ -446,49 +457,88 @@ Position_data Execute_localization(Relative_position_data *const data, const siz
 }
 
 /**
- * @brief a stack of positions
- *
- * @note because element is filled before we increment tail, it's safe to access
- * tail at any time.
+ * @brief a stack of positions and relative measurements
  */
-Circbuffer<Position_data, 5> Position_stack;
-
-/**
- * @brief trigger timer for TX_ISR
- */
-hw_timer_t *Trigger_timer;
-
-/**
- * @brief a task that switch on and off LED based on robot's position
- */
-void IRAM_ATTR FB_LED_ISR()
+typedef struct
 {
+    Position_data pos_dat;
+    Relative_position_data rel_pos_dat[3];
+} All_PD;
+Circbuffer<All_PD, 300> Position_stack;
 
-    DEBUG_C(setbit(DEBUG_PIN_1));
+void Print_data_task(void *pvParameters)
+{
+    while (1)
+    {
+        vTaskDelay(50);
+        if (Serial.available())
+        {
+            delay(10);
+            // deplete serial buffer
+            while (Serial.available())
+            {
+                Serial.read();
+            }
 
-    // reset timer
-    timerRestart(Trigger_timer);
-    timerAlarmWrite(Trigger_timer, 1000000000ul, false);
-    timerAlarmEnable(Trigger_timer);
+            Serial.println("\nLocalization result:");
+            for (size_t i = 0; Position_stack.n_elem; i++)
+            {
+                auto temp = Position_stack.pop();
+                std::string v = "";
+                v.reserve(1000);
 
-    DEBUG_C(clrbit(DEBUG_PIN_1));
+                v += std::string("x: ") + std::to_string(temp.pos_dat.x) + ", y: " + std::to_string(temp.pos_dat.y) + ", z: " + std::to_string(temp.pos_dat.z) + ", omega: " + std::to_string(1000000.0f * temp.pos_dat.angular_velocity) + "\n";
+
+                for (size_t j = 0; j < 3; j++)
+                {
+                    v += std::string("  --ID: ") + std::to_string(temp.rel_pos_dat[j].Robot_ID) + ", x0: " + std::to_string(temp.rel_pos_dat[j].pos[0]) + ", y0: " + std::to_string(temp.rel_pos_dat[j].pos[1]) + ", z0: " + std::to_string(temp.rel_pos_dat[j].pos[2]) + ", dist: " + std::to_string(temp.rel_pos_dat[j].dist) + ", dist_err: " + std::to_string(temp.rel_pos_dat[j].dist_err) + ", elev: " + std::to_string(temp.rel_pos_dat[j].elev) + ", elev_err: " + std::to_string(temp.rel_pos_dat[j].elev_err) + ", ang: " + std::to_string(temp.rel_pos_dat[j].angle) + ", ang_err: " + std::to_string(temp.rel_pos_dat[j].angle_err) + "\n";
+                }
+
+                v += "\n";
+
+                Serial.println(v.c_str());
+            }
+        }
+    }
 }
 
-void FB_LED_Init()
-{
-    // config timer to transmit TX once in a while
-    // we are using timer 3 to prevent confiction
-    // timer ticks 1MHz
-    Trigger_timer = timerBegin(IR_TX_trigger_timer_channel, 80, true);
-    // add timer interrupt
-    timerAttachInterrupt(Trigger_timer, &FB_LED_ISR, true);
-    // trigger interrupt after some random time
-    timerAlarmWrite(Trigger_timer, 1000000000ul, false);
-    // timerAlarmWrite(Trigger_timer, 60, true);
-    timerAlarmEnable(Trigger_timer);
-}
+// /**
+//  * @brief trigger timer for TX_ISR
+//  */
+// hw_timer_t *Trigger_timer;
 
-void Localization_simple(void *pvParameters)
+// /**
+//  * @brief a task that switch on and off LED based on robot's position
+//  *
+//  * @note not finished!
+//  */
+// void IRAM_ATTR FB_LED_ISR()
+// {
+//     DEBUG_C(setbit(DEBUG_PIN_1));
+
+//     // reset timer
+//     timerRestart(Trigger_timer);
+//     timerAlarmWrite(Trigger_timer, 1000000000ul, false);
+//     timerAlarmEnable(Trigger_timer);
+
+//     DEBUG_C(clrbit(DEBUG_PIN_1));
+// }
+
+// void FB_LED_Init()
+// {
+//     // config timer to transmit TX once in a while
+//     // we are using timer 3 to prevent confiction
+//     // timer ticks 1MHz
+//     Trigger_timer = timerBegin(IR_TX_trigger_timer_channel, 80, true);
+//     // add timer interrupt
+//     timerAttachInterrupt(Trigger_timer, &FB_LED_ISR, true);
+//     // trigger interrupt after some random time
+//     timerAlarmWrite(Trigger_timer, 1000000000ul, false);
+//     // timerAlarmWrite(Trigger_timer, 60, true);
+//     timerAlarmEnable(Trigger_timer);
+// }
+
+void Simple_localization_task(void *pvParameters)
 {
     // max history time we fetch data from. should be slightly higher than 2 rotations.
     // please use higher limit for this number.
@@ -528,6 +578,14 @@ void Localization_simple(void *pvParameters)
 
             time_count = IR::RX::Get_timing_data(time_list, Max_history_time);
         } while (curr_flag != IR::RX::Get_io_flag());
+
+        // some quick tests to verify we have enough data, if not, directly
+        // continue.
+        if (robot_count < 3 || time_count < 4)
+        {
+            // DEBUG_C(Serial.println("Not sufficent timing data!");)
+            continue;
+        }
 
         // processing
 
@@ -601,13 +659,13 @@ void Localization_simple(void *pvParameters)
         // if we cannot determine the rotation speed, just quit this round!
         if (!rotation_count)
         {
-            DEBUG_C(Serial.println("Cannot determine the rotation speed."));
+            // DEBUG_C(Serial.println("Cannot determine the rotation speed."));
             continue;
         }
-        // if we can, compute the rotation speed.
-        float angular_velocity = 2.0f * float(M_PI) * float(rotation_count) / float(rotation_time);
-        // also record single round time.
+        // record single round time.
         rotation_time /= rotation_count;
+        // if we can, compute the rotation speed.
+        float angular_velocity = 2.0f * float(M_PI) / float(rotation_time);
 
         // the minimum tolerable timing is 5 degrees
         uint64_t Min_valid_time = rotation_time / 72;
@@ -630,15 +688,18 @@ void Localization_simple(void *pvParameters)
             bool position_found = 0;
             // robot ID
             uint32_t rid = time_list[i].robot_ID;
+            // this Loc_data
+            Relative_position_data &this_Loc_data = Loc_data[Loc_data_count];
             // search for robot ID in pos_list and check for its validity
             for (auto &msg : pos_list)
             {
                 // find robot and update content
                 if (msg.robot_ID == rid)
                 {
-                    Loc_data[Loc_data_count].pos[0] = std::bit_cast<int16_t>(msg.content[0]);
-                    Loc_data[Loc_data_count].pos[1] = std::bit_cast<int16_t>(msg.content[1]);
-                    Loc_data[Loc_data_count].pos[2] = std::bit_cast<int16_t>(msg.content[2]);
+                    this_Loc_data.Robot_ID = rid;
+                    this_Loc_data.pos[0] = std::bit_cast<int16_t>(msg.content[0]);
+                    this_Loc_data.pos[1] = std::bit_cast<int16_t>(msg.content[1]);
+                    this_Loc_data.pos[2] = std::bit_cast<int16_t>(msg.content[2]);
                     position_found = 1;
                     break;
                 }
@@ -647,30 +708,77 @@ void Localization_simple(void *pvParameters)
             if (position_found)
             {
                 // check if timing data is reasonable
-                uint64_t t_diff = time_list[i].time_arr[1] - time_list[i].time_arr[2];
-                // might need to change the sign here!
-                if (time_list[i].time_arr[1] > time_list[i].time_arr[2] && t_diff > Min_valid_time && t_diff < Max_valid_time)
+                uint64_t t_diff = time_list[i].time_arr[1] - time_list[i].time_arr[2] + IR::RX::Left_right_timing_offset;
+                // because the robot is rotating anti-clockwise when viewed from
+                // top, then left receiver will see the emitter first. thus the
+                // first reception time of the right receiver should be larger
+                // than the left.
+                if (t_diff > Min_valid_time && t_diff < Max_valid_time)
                 {
-                    Loc_data[Loc_data_count].angle = float(((time_list[i].time_arr[1] + time_list[i].time_arr[2]) >> 1) % rotation_time) * angular_velocity;
-                    Loc_data[Loc_data_count].angle_err = Relative_angle_error;
-                    Loc_data[Loc_data_count].dist = (Left_right_distance / (2.0f * sin(float(time_list[i].time_arr[1] - time_list[i].time_arr[2]) * angular_velocity * 0.5f)));
-                    Loc_data[Loc_data_count].dist_err = Distance_error(Loc_data[Loc_data_count].dist);
-                    Loc_data[Loc_data_count].elev = Loc_data[Loc_data_count].dist * tan((time_list[i].time_arr[0] - ((time_list[i].time_arr[1] + time_list[i].time_arr[2]) >> 1)) * angular_velocity * Tilting_angle_multiplyer);
-                    Loc_data[Loc_data_count].elev_err = Elevation_error(Loc_data[Loc_data_count].dist, Loc_data[Loc_data_count].elev);
-
+                    this_Loc_data.angle = float(((time_list[i].time_arr[1] + time_list[i].time_arr[2]) >> 1) % rotation_time) * angular_velocity;
+                    this_Loc_data.angle_err = Relative_angle_error;
+                    this_Loc_data.dist = (Left_right_distance / (2.0f * sin(float(t_diff) * angular_velocity * 0.5f)));
+                    this_Loc_data.dist_err = Distance_error(this_Loc_data.dist);
+                    this_Loc_data.elev = this_Loc_data.dist * tan((time_list[i].time_arr[0] - ((time_list[i].time_arr[1] + time_list[i].time_arr[2]) >> 1) + IR::RX::Center_timing_offset) * angular_velocity * Tilting_angle_multiplyer);
+                    this_Loc_data.elev_err = Elevation_error(this_Loc_data.dist, this_Loc_data.elev);
                     Loc_data_count++;
                 }
             }
         }
 
-        if (Loc_data_count > 1)
+        // for now we only localize for those with 3 beacons
+        if (Loc_data_count == 3)
         {
             Position_data res = Execute_localization(Loc_data, Loc_data_count);
             res.rotation_time = rotation_time;
             res.angular_velocity = angular_velocity;
             // do something with the res, add it to a queue or something else.
             // we can setup the interrupt here and let it turn on/off the lights.
-            Position_stack.push(res);
+
+            // turn on LED when appropriate.
+
+            // store and print out the data later.
+            // for now we end pushing after we have > 400 elements
+            // and we setup the LED to be always on to indicate that the data has been filled.
+            if (Position_stack.n_elem < 295)
+            {
+                LIT_R;
+                LIT_G;
+                LIT_B;
+                delayMicroseconds(500);
+                QUENCH_R;
+                QUENCH_G;
+                QUENCH_B;
+
+                All_PD tmp;
+                tmp.rel_pos_dat[0] = Loc_data[0];
+                tmp.rel_pos_dat[1] = Loc_data[1];
+                tmp.rel_pos_dat[2] = Loc_data[2];
+                tmp.pos_dat = res;
+
+                Position_stack.push(tmp);
+            }
+            // if just finished reception
+            else if (Data_finished == 0)
+            {
+                LIT_R;
+                LIT_G;
+                LIT_B;
+                delayMicroseconds(10000);
+                QUENCH_R;
+                QUENCH_G;
+                QUENCH_B;
+
+                Data_finished = 1;
+                xTaskCreatePinnedToCore(
+                    Print_data_task,
+                    "Print_data_task",
+                    20000,
+                    NULL,
+                    15,
+                    NULL,
+                    0);
+            }
         }
     }
 }

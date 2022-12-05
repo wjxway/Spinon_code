@@ -564,7 +564,7 @@ namespace IR
                 msg_buffer[0].robot_ID = robot_ID;
                 // 4. establish link for new robot in dict
                 msg_buffer_dict[robot_ID] = &msg_buffer[0];
-                
+
                 return &msg_buffer[0];
             }
 
@@ -792,6 +792,8 @@ namespace IR
             return count;
         }
 
+        uint64_t Last_RX_time = 0;
+
         /**
          * @brief RX ISR that handles input RMT transmissions and store them into a buffer.
          */
@@ -817,6 +819,8 @@ namespace IR
             // record time
             uint64_t rec_time;
             rec_time = esp_timer_get_time();
+
+            Last_RX_time = rec_time;
 
             // read RMT interrupt status.
             uint32_t intr_st = RMT.int_st.val;
@@ -1087,6 +1091,13 @@ namespace IR
                         timebuf.push(temp);
                     }
 
+                    // update robot's timing info note that the timing for robot
+                    // might be later than the timing for individual messages
+                    // because when faulty multiple message type message is
+                    // received, we will not update timing for individual pool
+                    // but we will always update timing for robot time.
+                    robot_ptr->last_reception_time = info.time;
+
                     // deal with data buffers
                     // check type, if single message
                     if (msg_type <= Single_transmission_msg_type)
@@ -1099,9 +1110,6 @@ namespace IR
                         // check for CRC, if cannot pass, discard message.
                         if (crc4_itu(content) != real_msg.CRC)
                             continue;
-
-                        // update robot's timing info
-                        robot_ptr->last_reception_time = info.time;
 
                         auto &circbuf = robot_ptr->single_data[msg_type];
 
@@ -1137,13 +1145,6 @@ namespace IR
                     // if not, must be multiple message type
                     else
                     {
-                        // update timing
-                        // note that the timing for robot might be later than
-                        // the timing for individual messages because when
-                        // faulty multiple message type message is received, we
-                        // will not update timing for individual pool but we
-                        // will always update timing for robot time.
-                        robot_ptr->last_reception_time = info.time;
                         // the corresponding typed circular buffer
                         auto &circbuf = robot_ptr->multiple_dat[msg_type - Single_transmission_msg_type - 1];
 
@@ -1358,16 +1359,25 @@ namespace IR
 #endif
 
             // create the preprocess task
-            xTaskCreatePinnedToCore(
+            auto task_status = xTaskCreatePinnedToCore(
                 Preprocess_task,
                 "RX_preprocess_task",
-                100000,
+                30000,
                 NULL,
                 Preprocess_task_priority,
                 NULL,
                 0);
 
-            DEBUG_C(Serial.println("RMT RX setup finished!"));
+            if (task_status == pdTRUE)
+            {
+                DEBUG_C(Serial.println("RMT RX setup finished!"));
+            }
+            else
+            {
+                DEBUG_C(Serial.println("RMT RX task startup failed!"));
+                return false;
+            }
+
 #endif
 
             return true;
