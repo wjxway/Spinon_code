@@ -543,27 +543,54 @@ void IRAM_ATTR FB_LED_ISR()
     // initially it should be 1, so we can setup the initial timing
     static bool LED_state = 1;
 
-    uint64_t delay_time = 100000;
+    // how long should we delay before next on
+    uint64_t delay_time;
+    // how long should next time be on
+    static uint64_t on_time = 0;
 
+    // this is for indication of XY position feedback.
     // if currently LED is on, then we should turn it off, and also setup the
     // time when it should be on again. Let's use green LED only here.
     if (LED_state)
     {
         QUENCH_G;
         LED_state = 0;
-
+    
         // get localization data
         Position_data res = Position_stack.peek_tail();
+        on_time = 0.01f * sqrtf(square(res.x) + square(res.y)) / res.angular_velocity;
         // determine next time
-        delay_time = (res.rotation_time * 3 - int64_t((LED_angle_offset + res.angle_0) / res.angular_velocity) - (esp_timer_get_time() % res.rotation_time)) % res.rotation_time;
+        delay_time = (res.rotation_time * 3 - int64_t(on_time / 2.0f + (LED_angle_offset + res.angle_0 - atan2f(res.y, res.x)) / res.angular_velocity) - (esp_timer_get_time() % res.rotation_time)) % res.rotation_time;
     }
     else
     {
         LIT_G;
         LED_state = 1;
         // we always lit LED for 1ms.
-        delay_time = 1000;
+        delay_time = on_time;
     }
+
+    // // this is for indication of X and Y direction.
+    // // if currently LED is on, then we should turn it off, and also setup the
+    // // time when it should be on again. Let's use green LED only here.
+    // if (LED_state)
+    // {
+    //     QUENCH_G;
+    //     LED_state = 0;
+    //
+    //     // get localization data
+    //     Position_data res = Position_stack.peek_tail();
+    //     on_time = int64_t(float(M_PI_2) / res.angular_velocity);
+    //     // determine next time
+    //     delay_time = (res.rotation_time * 3 - int64_t((LED_angle_offset + res.angle_0) / res.angular_velocity) - (esp_timer_get_time() % res.rotation_time)) % res.rotation_time;
+    // }
+    // else
+    // {
+    //     LIT_G;
+    //     LED_state = 1;
+    //     // we always lit LED for 1ms.
+    //     delay_time = on_time;
+    // }
 
     // reset timer
     timerRestart(LED_trigger_timer);
