@@ -85,9 +85,9 @@ void IRAM_ATTR Idle_stats_task(void *pvParameters)
         // if exceeding the update time, update all data
         if (curr_time - startup_time > stat_update_time)
         {
-            // // debug print or something else
-            // std::string temp_str = "CPU " + std::to_string(xPortGetCoreID()) + " usage: " + std::to_string(100.0f - 100.0f * float(execution_count * stat_time_resolution) / stat_update_time) + "%";
-            // DEBUG_C(Serial.println(temp_str.c_str()));
+            // debug print or something else
+            std::string temp_str = "CPU " + std::to_string(xPortGetCoreID()) + " usage: " + std::to_string(100.0f - 100.0f * float(execution_count * stat_time_resolution) / stat_update_time) + "%";
+            DEBUG_C(Serial.println(temp_str.c_str()));
 
             // feed the dog because idle task will never be invoked
             Feed_the_dog();
@@ -129,7 +129,7 @@ void LED_off_task(void *pvParameters)
         Feed_the_dog();
 
         // turn off led if they haven't been refreshed for a while
-        if (esp_timer_get_time() - IR::RX::Last_RX_time >= 300)
+        if (esp_timer_get_time() - IR::RX::Get_last_RX_time() >= 300)
         {
             QUENCH_R;
             QUENCH_G;
@@ -150,106 +150,106 @@ std::string n2hexstr(I w, size_t hex_len = sizeof(I) << 1)
     return rc;
 }
 
-void Send_message_task(void *pvParameters)
-{
-    TickType_t prev_wake_time = xTaskGetTickCount();
-
-    while (1)
-    {
-        uint32_t curr_flag;
-
-        uint32_t robot_count;
-        uint32_t idarr[IR::RX::Max_robots_simultaneous];
-        uint32_t time_count;
-        IR::RX::Msg_timing_t tarr[IR::RX::Raw_msg_buffer_size];
-        IR::RX::Parsed_msg_completed msg_1, msg_4;
-
-        bool repeat = 0;
-
-        do
-        {
-            if (repeat)
-                Serial.println("Oops, interrupted!");
-            else
-                repeat = 1;
-
-            std::fill_n(idarr, IR::RX::Max_robots_simultaneous, 0);
-
-            curr_flag = IR::RX::Get_io_flag();
-
-            robot_count = IR::RX::Get_neighboring_robots_ID(idarr, 0);
-            msg_1 = IR::RX::Get_latest_msg_by_type(1);
-            msg_4 = IR::RX::Get_latest_msg_by_type(4);
-            time_count = IR::RX::Get_timing_data(tarr);
-        } while (IR::RX::Get_io_flag() != curr_flag);
-
-        std::string temp = "";
-
-        if (robot_count)
-        {
-            // print robot number
-            temp = "\n# Robots: " + std::to_string(robot_count) + "\n There IDs are: ";
-
-            // print robot IDs
-            for (size_t i = 0; i < robot_count; i++)
-            {
-                temp += std::to_string(idarr[i]) + ",";
-            }
-        }
-        else
-        {
-            temp = "\nNo Robot here! :(";
-        }
-
-        if (msg_1.content_length)
-        {
-            // print latest msg of type 1
-            temp += "\nLatest type 1 message is sent by robot " + std::to_string(msg_1.robot_ID) + " : " + n2hexstr(msg_1.content[0]);
-            temp += "\n    last received at: " + std::to_string(msg_1.finish_reception_time);
-        }
-        else
-        {
-            temp += "\nNo message of type 1 received.";
-        }
-
-        if (msg_4.content_length)
-        {
-            // print first robot's latest msg of type 4
-            temp += "\nLatest type 4 message is sent by robot " + std::to_string(msg_4.robot_ID) + " and has length of: " + std::to_string(msg_4.content_length) + "\n The contents are: ";
-
-            for (size_t i = 0; i < msg_4.content_length; i++)
-            {
-                temp += n2hexstr(msg_4.content[i]) + ",";
-            }
-
-            temp += "\n    last received at: " + std::to_string(msg_4.finish_reception_time);
-        }
-        else
-        {
-            temp += "\nNo message of type 4 received.";
-        }
-
-        if (time_count)
-        {
-            temp += "\nTiming info: ";
-
-            for (size_t i = 0; i < min(time_count, 10u); i++)
-            {
-                temp += "\n" + std::to_string(tarr[i].robot_ID) + "@" + std::to_string(tarr[i].emitter_pos) + " : " + std::to_string(tarr[i].time_arr[0]) + "," + std::to_string(tarr[i].time_arr[1]) + "," + std::to_string(tarr[i].time_arr[2]);
-            }
-        }
-        else
-        {
-            temp += "\nNo timing info. :(";
-        }
-
-        temp += "\n\n";
-
-        Serial.print(temp.c_str());
-
-        vTaskDelayUntil(&prev_wake_time, pdMS_TO_TICKS(2000));
-    }
-}
+// void Send_message_task(void *pvParameters)
+// {
+//     TickType_t prev_wake_time = xTaskGetTickCount();
+//
+//     while (1)
+//     {
+//         uint32_t curr_flag;
+//
+//         uint32_t robot_count;
+//         uint32_t idarr[IR::RX::Max_robots_simultaneous];
+//         uint32_t time_count;
+//         IR::RX::Msg_timing_t tarr[IR::RX::Raw_msg_buffer_size];
+//         IR::RX::Parsed_msg_completed msg_1, msg_4;
+//
+//         bool repeat = 0;
+//
+//         do
+//         {
+//             if (repeat)
+//                 Serial.println("Oops, interrupted!");
+//             else
+//                 repeat = 1;
+//
+//             std::fill_n(idarr, IR::RX::Max_robots_simultaneous, 0);
+//
+//             curr_flag = IR::RX::Get_io_flag();
+//
+//             robot_count = IR::RX::Get_neighboring_robots_ID(idarr, 0);
+//             msg_1 = IR::RX::Get_latest_msg_by_type(1);
+//             msg_4 = IR::RX::Get_latest_msg_by_type(4);
+//             time_count = IR::RX::Get_timing_data(tarr);
+//         } while (IR::RX::Get_io_flag() != curr_flag);
+//
+//         std::string temp = "";
+//
+//         if (robot_count)
+//         {
+//             // print robot number
+//             temp = "\n# Robots: " + std::to_string(robot_count) + "\n There IDs are: ";
+//
+//             // print robot IDs
+//             for (size_t i = 0; i < robot_count; i++)
+//             {
+//                 temp += std::to_string(idarr[i]) + ",";
+//             }
+//         }
+//         else
+//         {
+//             temp = "\nNo Robot here! :(";
+//         }
+//
+//         if (msg_1.content_length)
+//         {
+//             // print latest msg of type 1
+//             temp += "\nLatest type 1 message is sent by robot " + std::to_string(msg_1.robot_ID) + " : " + n2hexstr(msg_1.content[0]);
+//             temp += "\n    last received at: " + std::to_string(msg_1.finish_reception_time);
+//         }
+//         else
+//         {
+//             temp += "\nNo message of type 1 received.";
+//         }
+//
+//         if (msg_4.content_length)
+//         {
+//             // print first robot's latest msg of type 4
+//             temp += "\nLatest type 4 message is sent by robot " + std::to_string(msg_4.robot_ID) + " and has length of: " + std::to_string(msg_4.content_length) + "\n The contents are: ";
+//
+//             for (size_t i = 0; i < msg_4.content_length; i++)
+//             {
+//                 temp += n2hexstr(msg_4.content[i]) + ",";
+//             }
+//
+//             temp += "\n    last received at: " + std::to_string(msg_4.finish_reception_time);
+//         }
+//         else
+//         {
+//             temp += "\nNo message of type 4 received.";
+//         }
+//
+//         if (time_count)
+//         {
+//             temp += "\nTiming info: ";
+//
+//             for (size_t i = 0; i < min(time_count, 10u); i++)
+//             {
+//                 temp += "\n" + std::to_string(tarr[i].robot_ID) + "@" + std::to_string(tarr[i].emitter_pos) + " : " + std::to_string(tarr[i].time_arr[0]) + "," + std::to_string(tarr[i].time_arr[1]) + "," + std::to_string(tarr[i].time_arr[2]);
+//             }
+//         }
+//         else
+//         {
+//             temp += "\nNo timing info. :(";
+//         }
+//
+//         temp += "\n\n";
+//
+//         Serial.print(temp.c_str());
+//
+//         vTaskDelayUntil(&prev_wake_time, pdMS_TO_TICKS(2000));
+//     }
+// }
 
 // type of message that carries localization data
 constexpr uint32_t Localization_Msg_type = 4;
@@ -456,87 +456,131 @@ Position_data Execute_localization(Relative_position_data *const data, const siz
     return temp;
 }
 
+// /**
+//  * @brief a stack of positions and relative measurements
+//  */
+// typedef struct
+// {
+//     Position_data pos_dat;
+//     Relative_position_data rel_pos_dat[3];
+// } All_PD;
+// Circbuffer<All_PD, 300> Position_stack;
+//
+// void Print_data_task(void *pvParameters)
+// {
+//     while (1)
+//     {
+//         vTaskDelay(50);
+//         if (Serial.available())
+//         {
+//             delay(10);
+//             // deplete serial buffer
+//             while (Serial.available())
+//             {
+//                 Serial.read();
+//             }
+//
+//             Serial.println("\nLocalization result:");
+//             while(Position_stack.n_elem)
+//             {
+//                 auto temp = Position_stack.pop();
+//                 std::string v = "";
+//                 v.reserve(1000);
+//
+//                 v += std::string("x: ") + std::to_string(temp.pos_dat.x) + ", y: " + std::to_string(temp.pos_dat.y) + ", z: " + std::to_string(temp.pos_dat.z) + ", omega: " + std::to_string(1000000.0f * temp.pos_dat.angular_velocity) + "\n";
+//
+//                 for (size_t j = 0; j < 3; j++)
+//                 {
+//                     v += std::string("  --ID: ") + std::to_string(temp.rel_pos_dat[j].Robot_ID) + ", x0: " + std::to_string(temp.rel_pos_dat[j].pos[0]) + ", y0: " + std::to_string(temp.rel_pos_dat[j].pos[1]) + ", z0: " + std::to_string(temp.rel_pos_dat[j].pos[2]) + ", dist: " + std::to_string(temp.rel_pos_dat[j].dist) + ", dist_err: " + std::to_string(temp.rel_pos_dat[j].dist_err) + ", elev: " + std::to_string(temp.rel_pos_dat[j].elev) + ", elev_err: " + std::to_string(temp.rel_pos_dat[j].elev_err) + ", ang: " + std::to_string(temp.rel_pos_dat[j].angle) + ", ang_err: " + std::to_string(temp.rel_pos_dat[j].angle_err) + "\n";
+//                 }
+//
+//                 v += "\n";
+//
+//                 Serial.println(v.c_str());
+//             }
+//         }
+//     }
+// }
+
 /**
- * @brief a stack of positions and relative measurements
+ * @brief trigger timer for LED indicator
  */
-typedef struct
-{
-    Position_data pos_dat;
-    Relative_position_data rel_pos_dat[3];
-} All_PD;
-Circbuffer<All_PD, 300> Position_stack;
+hw_timer_t *LED_trigger_timer;
 
-void Print_data_task(void *pvParameters)
+/**
+ * @brief a queue to store history localization data
+ */
+Circbuffer<Position_data, 10> Position_stack;
+
+/**
+ * @brief relative angle of LED
+ */
+constexpr float LED_angle_offset = 0.8818719385800353f;
+
+/**
+ * @brief a task that switch on and off LED based on robot's position
+ *
+ * @note not finished!
+ */
+void IRAM_ATTR FB_LED_ISR()
 {
-    while (1)
+    uint32_t cp0_regs[18];
+    // get FPU state
+    uint32_t cp_state = xthal_get_cpenable();
+
+    if (cp_state)
     {
-        vTaskDelay(50);
-        if (Serial.available())
-        {
-            delay(10);
-            // deplete serial buffer
-            while (Serial.available())
-            {
-                Serial.read();
-            }
+        // Save FPU registers
+        xthal_save_cp0(cp0_regs);
+    }
+    else
+    {
+        // enable FPU
+        xthal_set_cpenable(1);
+    }
 
-            Serial.println("\nLocalization result:");
-            for (size_t i = 0; Position_stack.n_elem; i++)
-            {
-                auto temp = Position_stack.pop();
-                std::string v = "";
-                v.reserve(1000);
+    // 0 for now off, 1 for now on
+    // initially it should be 1, so we can setup the initial timing
+    static bool LED_state = 1;
 
-                v += std::string("x: ") + std::to_string(temp.pos_dat.x) + ", y: " + std::to_string(temp.pos_dat.y) + ", z: " + std::to_string(temp.pos_dat.z) + ", omega: " + std::to_string(1000000.0f * temp.pos_dat.angular_velocity) + "\n";
+    uint64_t delay_time = 100000;
 
-                for (size_t j = 0; j < 3; j++)
-                {
-                    v += std::string("  --ID: ") + std::to_string(temp.rel_pos_dat[j].Robot_ID) + ", x0: " + std::to_string(temp.rel_pos_dat[j].pos[0]) + ", y0: " + std::to_string(temp.rel_pos_dat[j].pos[1]) + ", z0: " + std::to_string(temp.rel_pos_dat[j].pos[2]) + ", dist: " + std::to_string(temp.rel_pos_dat[j].dist) + ", dist_err: " + std::to_string(temp.rel_pos_dat[j].dist_err) + ", elev: " + std::to_string(temp.rel_pos_dat[j].elev) + ", elev_err: " + std::to_string(temp.rel_pos_dat[j].elev_err) + ", ang: " + std::to_string(temp.rel_pos_dat[j].angle) + ", ang_err: " + std::to_string(temp.rel_pos_dat[j].angle_err) + "\n";
-                }
+    // if currently LED is on, then we should turn it off, and also setup the
+    // time when it should be on again. Let's use green LED only here.
+    if (LED_state)
+    {
+        QUENCH_G;
+        LED_state = 0;
 
-                v += "\n";
+        // get localization data
+        Position_data res = Position_stack.peek_tail();
+        // determine next time
+        delay_time = (res.rotation_time * 3 - int64_t((LED_angle_offset + res.angle_0) / res.angular_velocity) - (esp_timer_get_time() % res.rotation_time)) % res.rotation_time;
+    }
+    else
+    {
+        LIT_G;
+        LED_state = 1;
+        // we always lit LED for 1ms.
+        delay_time = 1000;
+    }
 
-                Serial.println(v.c_str());
-            }
-        }
+    // reset timer
+    timerRestart(LED_trigger_timer);
+    timerAlarmWrite(LED_trigger_timer, delay_time, false);
+    timerAlarmEnable(LED_trigger_timer);
+
+    if (cp_state)
+    {
+        // Restore FPU registers
+        xthal_restore_cp0(cp0_regs);
+    }
+    else
+    {
+        // turn it back off
+        xthal_set_cpenable(0);
     }
 }
-
-// /**
-//  * @brief trigger timer for TX_ISR
-//  */
-// hw_timer_t *Trigger_timer;
-
-// /**
-//  * @brief a task that switch on and off LED based on robot's position
-//  *
-//  * @note not finished!
-//  */
-// void IRAM_ATTR FB_LED_ISR()
-// {
-//     DEBUG_C(setbit(DEBUG_PIN_1));
-
-//     // reset timer
-//     timerRestart(Trigger_timer);
-//     timerAlarmWrite(Trigger_timer, 1000000000ul, false);
-//     timerAlarmEnable(Trigger_timer);
-
-//     DEBUG_C(clrbit(DEBUG_PIN_1));
-// }
-
-// void FB_LED_Init()
-// {
-//     // config timer to transmit TX once in a while
-//     // we are using timer 3 to prevent confiction
-//     // timer ticks 1MHz
-//     Trigger_timer = timerBegin(IR_TX_trigger_timer_channel, 80, true);
-//     // add timer interrupt
-//     timerAttachInterrupt(Trigger_timer, &FB_LED_ISR, true);
-//     // trigger interrupt after some random time
-//     timerAlarmWrite(Trigger_timer, 1000000000ul, false);
-//     // timerAlarmWrite(Trigger_timer, 60, true);
-//     timerAlarmEnable(Trigger_timer);
-// }
 
 void Simple_localization_task(void *pvParameters)
 {
@@ -548,7 +592,7 @@ void Simple_localization_task(void *pvParameters)
     while (1)
     {
         // wait upfront, so we can use continue like return.
-        vTaskDelayUntil(&prev_wake_time, pdMS_TO_TICKS(100));
+        vTaskDelayUntil(&prev_wake_time, pdMS_TO_TICKS(50));
 
         uint32_t curr_flag;
 
@@ -735,50 +779,72 @@ void Simple_localization_task(void *pvParameters)
             // do something with the res, add it to a queue or something else.
             // we can setup the interrupt here and let it turn on/off the lights.
 
-            // turn on LED when appropriate.
+            // store data in stack
+            Position_stack.push(res);
 
-            // store and print out the data later.
-            // for now we end pushing after we have > 400 elements
-            // and we setup the LED to be always on to indicate that the data has been filled.
-            if (Position_stack.n_elem < 295)
+            // // indicate when position of robot is computed
+            // LIT_R;
+            // delayMicroseconds(1000);
+            // QUENCH_R;
+
+            static bool FB_LED_ISR_started = 0;
+
+            if (!FB_LED_ISR_started)
             {
-                LIT_R;
-                LIT_G;
-                LIT_B;
-                delayMicroseconds(500);
-                QUENCH_R;
-                QUENCH_G;
-                QUENCH_B;
+                FB_LED_ISR_started = 1;
 
-                All_PD tmp;
-                tmp.rel_pos_dat[0] = Loc_data[0];
-                tmp.rel_pos_dat[1] = Loc_data[1];
-                tmp.rel_pos_dat[2] = Loc_data[2];
-                tmp.pos_dat = res;
-
-                Position_stack.push(tmp);
+                // config timer to transmit TX once in a while
+                // we are using timer 1 to prevent confiction
+                // timer ticks 1MHz
+                LED_trigger_timer = timerBegin(1, 80, true);
+                // add timer interrupt
+                timerAttachInterrupt(LED_trigger_timer, &FB_LED_ISR, true);
+                timerAlarmWrite(LED_trigger_timer, 10000ul, false);
+                timerAlarmEnable(LED_trigger_timer);
             }
-            // if just finished reception
-            else if (Data_finished == 0)
-            {
-                LIT_R;
-                LIT_G;
-                LIT_B;
-                delayMicroseconds(10000);
-                QUENCH_R;
-                QUENCH_G;
-                QUENCH_B;
 
-                Data_finished = 1;
-                xTaskCreatePinnedToCore(
-                    Print_data_task,
-                    "Print_data_task",
-                    20000,
-                    NULL,
-                    15,
-                    NULL,
-                    0);
-            }
+            // // store and print out the data later.
+            // // for now we end pushing after we have > 400 elements
+            // // and we setup the LED to be always on to indicate that the data has been filled.
+            // if (Position_stack.n_elem < 295)
+            // {
+            //     LIT_R;
+            //     LIT_G;
+            //     LIT_B;
+            //     delayMicroseconds(500);
+            //     QUENCH_R;
+            //     QUENCH_G;
+            //     QUENCH_B;
+            //
+            //     All_PD tmp;
+            //     tmp.rel_pos_dat[0] = Loc_data[0];
+            //     tmp.rel_pos_dat[1] = Loc_data[1];
+            //     tmp.rel_pos_dat[2] = Loc_data[2];
+            //     tmp.pos_dat = res;
+            //
+            //     Position_stack.push(tmp);
+            // }
+            // // if just finished reception
+            // else if (Data_finished == 0)
+            // {
+            //     LIT_R;
+            //     LIT_G;
+            //     LIT_B;
+            //     delayMicroseconds(10000);
+            //     QUENCH_R;
+            //     QUENCH_G;
+            //     QUENCH_B;
+            //
+            //     Data_finished = 1;
+            //     xTaskCreatePinnedToCore(
+            //         Print_data_task,
+            //         "Print_data_task",
+            //         20000,
+            //         NULL,
+            //         15,
+            //         NULL,
+            //         0);
+            // }
         }
     }
 }

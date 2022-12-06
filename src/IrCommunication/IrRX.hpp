@@ -11,6 +11,11 @@
 #include "RMTMessageDefs.hpp"
 #include <array>
 
+/**
+ * @brief if we should turn on LED based on message received?
+ */
+// #define MSG_LED_ON 1
+
 namespace IR
 {
     using namespace detail;
@@ -142,11 +147,6 @@ namespace IR
         } Msg_timing_t;
 
         /**
-         * @brief last time any message is received, regardless of correctness.
-         */
-        extern uint64_t Last_RX_time;
-
-        /**
          * @brief initialize RX routine, including:
          *        1. initialize RX RMT channels
          *        2. initialize RX ISR
@@ -238,10 +238,16 @@ namespace IR
          * then only return the number of robot.
          * @param history_time get only the robots that has been seen within
          * history_time us. when is 0, then access all.
-         *
          * @return uint32_t how many robots are there?
          */
         uint32_t Get_neighboring_robots_ID(uint32_t *const start, const uint64_t history_time = 0);
+
+        /**
+         * @brief get the last time any message is received, regardless of correctness.
+         * 
+         * @return last RX time
+         */
+        uint64_t Get_last_RX_time();
     }
 }
 

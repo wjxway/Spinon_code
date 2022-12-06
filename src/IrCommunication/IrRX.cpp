@@ -792,7 +792,10 @@ namespace IR
             return count;
         }
 
-        uint64_t Last_RX_time = 0;
+        uint64_t Get_last_RX_time()
+        {
+            return last_RX_time;
+        }
 
         /**
          * @brief RX ISR that handles input RMT transmissions and store them into a buffer.
@@ -819,8 +822,6 @@ namespace IR
             // record time
             uint64_t rec_time;
             rec_time = esp_timer_get_time();
-
-            Last_RX_time = rec_time;
 
             // read RMT interrupt status.
             uint32_t intr_st = RMT.int_st.val;
@@ -874,14 +875,15 @@ namespace IR
             // parsing output buffer
             uint32_t raw;
 
-            // whether this transmission is valid
-            bool this_valid = false;
+            // // whether this transmission is valid
+            // bool this_valid = false;
 
             // setbit(TEST_PIN_2);
 
             // parse RMT item into a uint32_t
             if ((intr_st_1 & 1) && Parse_RMT_item(item_1, &raw))
             {
+#if MSG_LED_ON
                 LIT_R;
                 if (intr_st_1 & 2)
                     LIT_G;
@@ -891,45 +893,52 @@ namespace IR
                     LIT_B;
                 else
                     QUENCH_B;
+#endif
 
                 last_RX_time = rec_time;
                 // add element to the pool if parsing is successful
                 raw_msg_buffer.push(Trans_info{raw, intr_st_1, rec_time});
-                this_valid = true;
+                // this_valid = true;
             }
 #if RMT_RX_CHANNEL_COUNT >= 2
             else if ((intr_st_1 & 2) && Parse_RMT_item(item_2, &raw))
             {
+#if MSG_LED_ON
                 QUENCH_R;
                 LIT_G;
                 if (intr_st_1 & 4)
                     LIT_B;
                 else
                     QUENCH_B;
+#endif
 
                 last_RX_time = rec_time;
                 // add element to the pool if parsing is successful
                 raw_msg_buffer.push(Trans_info{raw, intr_st_1 & 0b110, rec_time});
-                this_valid = true;
+                // this_valid = true;
             }
 #endif
 #if RMT_RX_CHANNEL_COUNT == 3
             else if ((intr_st_1 & 4) && Parse_RMT_item(item_3, &raw))
             {
+#if MSG_LED_ON
                 QUENCH_R;
                 QUENCH_G;
                 LIT_B;
+#endif
                 last_RX_time = rec_time;
                 // add element to the pool if parsing is successful
                 raw_msg_buffer.push(Trans_info{raw, 0b100, rec_time});
-                this_valid = true;
+                // this_valid = true;
             }
 #endif
             else
             {
+#if MSG_LED_ON
                 QUENCH_R;
                 QUENCH_G;
                 QUENCH_B;
+#endif
             }
 
             // reset memory and owner state, enable rx

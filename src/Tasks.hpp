@@ -31,11 +31,6 @@ void LED_off_task(void *pvParameters);
 void Send_message_task(void *pvParameters);
 
 /**
- * @brief start LED based on robot's position
- */
-void FB_LED_Init();
-
-/**
  * @brief try localization (a fairly simple and messy solution)
  */
 void Simple_localization_task(void *pvParameters);
