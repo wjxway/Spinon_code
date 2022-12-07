@@ -548,6 +548,7 @@ void IRAM_ATTR FB_LED_ISR()
     // how long should next time be on
     static uint64_t on_time = 0;
 
+    // this is for indication of XY position feedback.
     // if currently LED is on, then we should turn it off, and also setup the
     // time when it should be on again. Let's use green LED only here.
     if (LED_state)
@@ -569,6 +570,28 @@ void IRAM_ATTR FB_LED_ISR()
         delay_time = on_time;
     }
 
+    // // this is for indication of X and Y direction.
+    // // if currently LED is on, then we should turn it off, and also setup the
+    // // time when it should be on again. Let's use green LED only here.
+    // if (LED_state)
+    // {
+    //     QUENCH_G;
+    //     LED_state = 0;
+    //
+    //     // get localization data
+    //     Position_data res = Position_stack.peek_tail();
+    //     on_time = int64_t(float(M_PI_2) / res.angular_velocity);
+    //     // determine next time
+    //     delay_time = (res.rotation_time * 3 - int64_t((LED_angle_offset + res.angle_0) / res.angular_velocity) - (esp_timer_get_time() % res.rotation_time)) % res.rotation_time;
+    // }
+    // else
+    // {
+    //     LIT_G;
+    //     LED_state = 1;
+    //     // we always lit LED for 1ms.
+    //     delay_time = on_time;
+    // }
+   
     // reset timer
     timerRestart(LED_trigger_timer);
     timerAlarmWrite(LED_trigger_timer, delay_time, false);
