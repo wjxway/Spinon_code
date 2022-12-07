@@ -1,5 +1,10 @@
-#ifndef _TASKS_HPP_
-#define _TASKS_HPP_
+/**
+ * @file Tasks.hpp
+ * @brief User defined tasks to run
+ */
+#ifndef TASKS_HPP__
+#define TASKS_HPP__
+
 #include "Arduino.h"
 
 /**
@@ -15,13 +20,20 @@ void IRAM_ATTR Idle_stats_task(void *pvParameters);
 void IRAM_ATTR Occupy_time_task(void *pvParameters);
 
 /**
+ * @brief turn off LED!
+ * 
+ * @param pvParameters 
+ */
+void LED_off_task(void *pvParameters);
+
+/**
  * @brief send me some messages!
  */
-void IRAM_ATTR Send_message_task(void *pvParameters);
+void Send_message_task(void *pvParameters);
 
 /**
  * @brief try localization (a fairly simple and messy solution)
  */
-void IRAM_ATTR Localization_simple(void *pvParameters);
+void Simple_localization_task(void *pvParameters);
 
 #endif

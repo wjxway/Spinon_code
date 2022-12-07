@@ -1,0 +1,4 @@
+All sorts of definitions goes here.
+
+- RobotDefs defines all global, robot specific properties, like Robot_ID, debug/LED enabling status or calibration information.
+- PinDefs defines the pin mapping of robot, and should be the same once the hardware is fixed.
