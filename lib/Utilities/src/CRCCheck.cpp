@@ -5,7 +5,7 @@ namespace
     // please synchronize it with IR::detail::Msg_content_bits as defined in
     // IrCommunication/RMTMessageDefs
     constexpr uint32_t Msg_content_bits = 16;
-}
+} // anonymous namespace
 
 uint16_t crc4_itu(const uint16_t data) noexcept
 {

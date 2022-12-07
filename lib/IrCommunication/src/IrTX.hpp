@@ -2,8 +2,8 @@
  * @file IrTX.hpp
  * @brief transmit data interface
  */
-#ifndef _IRTX_HPP_
-#define _IRTX_HPP_
+#ifndef IRTX_HPP__
+#define IRTX_HPP__
 
 #include "Arduino.h"
 #include "RMTMessageDefs.hpp"
@@ -50,7 +50,7 @@ namespace IR
          * @warning calling this will ALWAYS override the existing data.
          */
         void Add_to_schedule(const uint32_t type, const std::vector<uint16_t> &raw, const uint32_t priority1, const int32_t expiration_count = -1, const uint32_t period = 1);
-    }
-}
+    } // namespace TX
+} // namespace IR
 
 #endif

@@ -3,8 +3,8 @@
  * @brief compute CRC for data
  * @note should only be used by IrCommunication library.
  */
-#ifndef _CRCCHECK_HPP_
-#define _CRCCHECK_HPP_
+#ifndef CRCCHECK_HPP__
+#define CRCCHECK_HPP__
 
 #include <cstddef>
 #include <cstdint>

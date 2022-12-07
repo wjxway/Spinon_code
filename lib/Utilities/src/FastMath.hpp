@@ -2,8 +2,8 @@
  * @file FastMath.hpp
  * @brief Fast math functions
  */
-#ifndef _FASTMATH_HPP_
-#define _FASTMATH_HPP_
+#ifndef FASTMATH_HPP__
+#define FASTMATH_HPP__
 
 #define _USE_MATH_DEFINES
 #include <cmath>
@@ -47,7 +47,7 @@ namespace math
 
         // accuracy @ 0.4%
         float exp(const float x) noexcept;
-    }
-}
+    } // namespace fast
+} // namespace math
 
 #endif

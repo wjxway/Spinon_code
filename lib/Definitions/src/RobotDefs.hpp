@@ -2,8 +2,8 @@
  * @file RobotDefs.hpp
  * @brief Global definition for robots.
  */
-#ifndef _ROBOTDEFS_HPP_
-#define _ROBOTDEFS_HPP_
+#ifndef ROBOTDEFS_HPP__
+#define ROBOTDEFS_HPP__
 
 #include <cstdint>
 
@@ -12,7 +12,7 @@
  *
  * @note for valid range, please check RMTMessageDefs.hpp -> Robot_ID_bits
  */
-const uint32_t This_robot_ID = 12u;
+const uint32_t This_robot_ID = 12U;
 
 /**
  * @brief whether to enable led output
@@ -52,7 +52,7 @@ namespace IR
          * @note The actual center delay is T_center - T_avg + offset
          */
         constexpr int64_t Center_timing_offset = 0;
-    }
-}
+    } // namespace RX
+} // namespace IR
 
 #endif

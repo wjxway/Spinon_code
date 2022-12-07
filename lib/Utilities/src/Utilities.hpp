@@ -5,8 +5,8 @@
  *
  * @note nobody cares about what you include, really...
  */
-#ifndef _UTILITIES_HPP_
-#define _UTILITIES_HPP_
+#ifndef UTILITIES_HPP__
+#define UTILITIES_HPP__
 
 #include "Circbuffer.hpp"
 #include "CRCCheck.hpp"

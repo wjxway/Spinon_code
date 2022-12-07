@@ -10,7 +10,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <math.h>
+#include <cmath>
 
 // add the definition of bit_cast (a pretty unsafe version) if cpp version is
 // old.
@@ -27,7 +27,7 @@ namespace std
         memcpy(&dst, &src, sizeof(To));
         return dst;
     }
-}
+} // namespace std
 #endif
 
 // whether the data is finished
@@ -86,7 +86,7 @@ void IRAM_ATTR Idle_stats_task(void *pvParameters)
         if (curr_time - startup_time > stat_update_time)
         {
             // debug print or something else
-            std::string temp_str = "CPU " + std::to_string(xPortGetCoreID()) + " usage: " + std::to_string(100.0f - 100.0f * float(execution_count * stat_time_resolution) / stat_update_time) + "%";
+            std::string temp_str = "CPU " + std::to_string(xPortGetCoreID()) + " usage: " + std::to_string(100.0F - 100.0F * float(execution_count * stat_time_resolution) / stat_update_time) + "%";
             DEBUG_C(Serial.println(temp_str.c_str()));
 
             // feed the dog because idle task will never be invoked
@@ -107,12 +107,10 @@ void IRAM_ATTR Occupy_time_task(void *pvParameters)
     constexpr uint32_t t_active = 5;
     constexpr uint32_t t_idle = 5;
 
-    uint32_t t_start = micros();
-
     while (true)
     {
-        t_start = micros();
-        while (micros() - t_start < 1000 * t_active)
+        uint64_t t_start = esp_timer_get_time();
+        while (esp_timer_get_time() - t_start < 1000 * t_active)
         {
         }
         vTaskDelay(pdMS_TO_TICKS(t_idle));
@@ -255,19 +253,19 @@ std::string n2hexstr(I w, size_t hex_len = sizeof(I) << 1)
 constexpr uint32_t Localization_Msg_type = 4;
 
 // the angular standard deviation (of relative angle measurements)
-constexpr float Angle_error = 1.0f / 180.0f * M_PI;
+constexpr float Angle_error = 1.0F / 180.0F * M_PI;
 
 // error of relative angle (this is not the same as Angle_error, because we
 // use this for angle difference between robots, and this will be influenced by
 // the rotation speed variance.)
-constexpr float Relative_angle_error = 4.0f / 180.0f * M_PI;
+constexpr float Relative_angle_error = 4.0F / 180.0F * M_PI;
 
 // tilting angle of center emitter, 1 / tangent value.
 // it is 25deg right now, so we should put 1 / tan(25deg) here.
-constexpr float Tilting_angle_multiplyer = 2.14450692051f;
+constexpr float Tilting_angle_multiplyer = 2.14450692051F;
 
 // distance between left and right receiver
-constexpr float Left_right_distance = 51.562f;
+constexpr float Left_right_distance = 51.562F;
 // just a constant
 constexpr float Distance_error_mult = Angle_error / Left_right_distance;
 /**
@@ -296,7 +294,7 @@ constexpr float Elevation_error(const float distance, const float elevation)
 // information needed to compute the position and orientation of this robot.
 // Position, distance and elevation are all in unit of mm, angle in unit of rad.
 // Note that here we assume that the position is accurate!
-typedef struct
+struct Relative_position_data
 {
     uint32_t Robot_ID; // ID of robot, should be redundant
     float pos[3];      // position of reference robot
@@ -306,17 +304,18 @@ typedef struct
     float elev_err;    // error of elev
     float angle;       // angle computed by 2*Pi*(time%T_0)/T_0.
     float angle_err;
-} Relative_position_data;
+};
 
-typedef struct
+struct Position_data
 {
     int16_t x;
     int16_t y;
     int16_t z;
     float angle_0;
-    uint64_t rotation_time; // used to pre-treat the uint64_t to prevent clipping.
+    uint64_t
+        rotation_time; // used to pre-treat the uint64_t to prevent clipping.
     float angular_velocity;
-} Position_data;
+};
 
 /**
  * @brief round an angle to [-Pi, Pi) range
@@ -326,9 +325,9 @@ typedef struct
  */
 float Angle_diff(const float v) noexcept
 {
-    float v1 = v / float(2.0f * M_PI);
+    float v1 = v / float(2.0F * M_PI);
     v1 = v1 - math::fast::floor(v1 + 0.5f);
-    return v1 * float(2.0f * M_PI);
+    return v1 * float(2.0F * M_PI);
 }
 
 constexpr float square(const float x) noexcept
@@ -376,17 +375,20 @@ Position_data Execute_localization(Relative_position_data *const data, const siz
     Position_data temp;
 
     // determine the height, because it's independent from others, it's simple.
-    float deno = 0.0f, nume = 0.0f;
+    float deno = 0.0F;
+    float nume = 0.0F;
     for (size_t i = 0; i < data_len; i++)
     {
-        float c = 1.0f / (data[i].elev_err * data[i].elev_err);
+        float c = 1.0F / (data[i].elev_err * data[i].elev_err);
         deno += c;
         nume += data[i].elev * c;
     }
     temp.z = nume / deno;
 
     // estimated {X,Y}
-    float x = 0.0f, y = 0.0f, theta = 0.0f;
+    float x = 0.0F;
+    float y = 0.0F;
+    float theta = 0.0F;
 
     // determine starting {X,Y} point by averaging all beacon position
     for (size_t i = 0; i < data_len; i++)
@@ -400,7 +402,7 @@ Position_data Execute_localization(Relative_position_data *const data, const siz
     // maximum iterations we do
     constexpr size_t Max_Position_Iterations = 10;
     // when step size dropped below this, we quit!
-    constexpr float Error_tolerance = 1.0f;
+    constexpr float Error_tolerance = 1.0F;
     // determine the rest iteratively, max 10 times
     for (size_t step = 0; step < Max_Position_Iterations; step++)
     {
@@ -409,11 +411,14 @@ Position_data Execute_localization(Relative_position_data *const data, const siz
         // angsum is the summation of all angles between [-Pi, Pi), ang1sum is
         // the summation [0, 2Pi)
         // ang2sum is the summation of square of all angles ...
-        float angsum = 0.0f, ang2sum = 0.0f, ang1sum = 0.0f, ang12sum = 0.0f;
+        float angsum = 0.0F;
+        float ang2sum = 0.0F;
+        float ang1sum = 0.0F;
+        float ang12sum = 0.0F;
         for (size_t i = 0; i < data_len; i++)
         {
             float ang = Angle_diff(atan2f(data[i].pos[1] - y, data[i].pos[0] - x) - data[i].angle);
-            float ang1 = (ang < 0) ? (ang + 2.0f * float(M_PI)) : ang;
+            float ang1 = (ang < 0) ? (ang + 2.0F * float(M_PI)) : ang;
             angsum += ang;
             ang2sum += square(ang);
             ang1sum += ang1;
@@ -429,29 +434,41 @@ Position_data Execute_localization(Relative_position_data *const data, const siz
         // now let's work on X,Y based on the rule that the optimal point should be at Inverse[Hessian].Grad(f)
         // we have an simple assumption of Hessian matrix, a constant diagonal matrix: a I
         // how much should we move this time and the Hessian value
-        float Deltax = 0.0f, Deltay = 0.0f, Hessian = 0.0f;
+        float Deltax = 0.0F;
+        float Deltay = 0.0F;
+        float Hessian = 0.0F;
 
         for (size_t i = 0; i < data_len; i++)
         {
-            float dx = data[i].pos[0] - x, dy = data[i].pos[1] - y;
+            float dx = data[i].pos[0] - x;
+            float dy = data[i].pos[1] - y;
             float dr = sqrtf(square(dx) + square(dy));
             float angdiff = Angle_diff(atan2f(dy, dx) - theta - data[i].angle);
 
-            float isq1 = 1.0f / square(data[i].dist_err), isq2 = 1.0f / square(data[i].dist_err);
+            float isq1 = 1.0F / square(data[i].dist_err);
+            float isq2 = 1.0F / square(data[i].dist_err);
 
-            Hessian += 1.0f / square(data[i].angle_err * dr) + isq2;
+            Hessian += 1.0F / square(data[i].angle_err * dr) + isq2;
 
-            Deltax += 2.0f * dx * (1 - data[i].dist / dr) * isq1 - 2.0f * dy * angdiff * isq2;
-            Deltay += 2.0f * dy * (1 - data[i].dist / dr) * isq1 + 2.0f * dx * angdiff * isq2;
+            Deltax += 2.0F * dx * (1 - data[i].dist / dr) * isq1 -
+                      2.0F * dy * angdiff * isq2;
+            Deltay += 2.0F * dy * (1 - data[i].dist / dr) * isq1 +
+                      2.0F * dx * angdiff * isq2;
         }
         x += Deltax / Hessian;
         y += Deltay / Hessian;
-        if (abs(Deltax) <= Error_tolerance * Hessian && abs(Deltax) <= Error_tolerance * Hessian)
+        if (abs(Deltax) <= Error_tolerance * Hessian &&
+            abs(Deltay) <= Error_tolerance * Hessian)
+        {
             break;
+        }
     }
     temp.x = x;
     temp.y = y;
     temp.angle_0 = theta;
+
+    temp.rotation_time = 0;
+    temp.angular_velocity = 0;
 
     return temp;
 }
@@ -515,7 +532,7 @@ Circbuffer<Position_data, 10> Position_stack;
 /**
  * @brief relative angle of LED
  */
-constexpr float LED_angle_offset = 0.8818719385800353f;
+constexpr float LED_angle_offset = 0.8818719385800353F;
 
 /**
  * @brief a task that switch on and off LED based on robot's position
@@ -558,9 +575,9 @@ void IRAM_ATTR FB_LED_ISR()
 
         // get localization data
         Position_data res = Position_stack.peek_tail();
-        on_time = 0.01f * sqrtf(square(res.x) + square(res.y)) / res.angular_velocity;
+        on_time = 0.01F * sqrtf(square(res.x) + square(res.y)) / res.angular_velocity;
         // determine next time
-        delay_time = (res.rotation_time * 3 - int64_t(on_time / 2.0f + (LED_angle_offset + res.angle_0 - atan2f(res.y, res.x)) / res.angular_velocity) - (esp_timer_get_time() % res.rotation_time)) % res.rotation_time;
+        delay_time = (res.rotation_time * 3 - int64_t(on_time / 2.0F + (LED_angle_offset + res.angle_0 - atan2f(res.y, res.x)) / res.angular_velocity) - (esp_timer_get_time() % res.rotation_time)) % res.rotation_time;
     }
     else
     {
@@ -577,7 +594,7 @@ void IRAM_ATTR FB_LED_ISR()
     // {
     //     QUENCH_G;
     //     LED_state = 0;
-    //
+    
     //     // get localization data
     //     Position_data res = Position_stack.peek_tail();
     //     on_time = int64_t(float(M_PI_2) / res.angular_velocity);
@@ -591,7 +608,7 @@ void IRAM_ATTR FB_LED_ISR()
     //     // we always lit LED for 1ms.
     //     delay_time = on_time;
     // }
-   
+
     // reset timer
     timerRestart(LED_trigger_timer);
     timerAlarmWrite(LED_trigger_timer, delay_time, false);
@@ -736,7 +753,7 @@ void Simple_localization_task(void *pvParameters)
         // record single round time.
         rotation_time /= rotation_count;
         // if we can, compute the rotation speed.
-        float angular_velocity = 2.0f * float(M_PI) / float(rotation_time);
+        float angular_velocity = 2.0F * float(M_PI) / float(rotation_time);
 
         // the minimum tolerable timing is 5 degrees
         uint64_t Min_valid_time = rotation_time / 72;
@@ -826,7 +843,7 @@ void Simple_localization_task(void *pvParameters)
                 LED_trigger_timer = timerBegin(1, 80, true);
                 // add timer interrupt
                 timerAttachInterrupt(LED_trigger_timer, &FB_LED_ISR, true);
-                timerAlarmWrite(LED_trigger_timer, 10000ul, false);
+                timerAlarmWrite(LED_trigger_timer, 10000UL, false);
                 timerAlarmEnable(LED_trigger_timer);
             }
 

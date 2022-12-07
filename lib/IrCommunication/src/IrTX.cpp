@@ -40,7 +40,7 @@ namespace IR
                 /**
                  * @brief default constructor
                  */
-                TX_data() {}
+                TX_data() = default;
 
                 /**
                  * @brief update tx data object with data and complete settings.
@@ -126,12 +126,12 @@ namespace IR
                 /**
                  * @brief a pointer to the next group of data to be sent
                  */
-                rmt_item32_t *ptr;
+                rmt_item32_t *ptr = nullptr;
 
                 /**
                  * @brief end pointer that points to the starting of the last transmission!
                  */
-                rmt_item32_t *end_ptr;
+                rmt_item32_t *end_ptr = nullptr;
             };
 
             // here we construct a scheduler to help us determine which type of
@@ -157,10 +157,11 @@ namespace IR
             /**
              * @brief nodes used in scheduler, nodes can form a linked list
              */
-            struct Scheduler_node
+            class Scheduler_node
             {
-                Scheduler_node(){};
-                Scheduler_node(TX_data v1, Scheduler_node *v2, Scheduler_node *v3) : val(v1), prev(v2), next(v3) {}
+            public:
+                Scheduler_node() = default;
+                Scheduler_node(const TX_data &v1, Scheduler_node *v2, Scheduler_node *v3) : val(v1), prev(v2), next(v3) {}
 
                 // class used to handle data
                 TX_data val{};
@@ -204,7 +205,7 @@ namespace IR
              * @brief whether to enable reading/transmitting data in TX_ISR
              */
             bool TX_enable_flag = true;
-        }
+        } // anonymous namespace
 
         /**
          * @brief TX timer interrupt handler that transmit data though physical interface
@@ -295,7 +296,9 @@ namespace IR
             // scheduler init
             // initialize type
             for (size_t i = 0; i <= detail::Msg_type_max; i++)
+            {
                 node_list[i].val.msg_type = i;
+            }
 
             // initialize idle msg
             node_list[0].val.TX_update({0});
@@ -343,7 +346,7 @@ namespace IR
 
         /**
          * @brief remove an element from the list, ntype is the type number
-         * 
+         *
          * @param type type of message
          */
         void Remove_from_schedule(const uint32_t type)
@@ -355,9 +358,13 @@ namespace IR
 
             // remove this element from list if it's in list
             if (temp_ptr->prev)
+            {
                 temp_ptr->prev->next = temp_ptr->next;
+            }
             if (temp_ptr->next)
+            {
                 temp_ptr->next->prev = temp_ptr->prev;
+            }
 
             // if it's the starting pointer, move the starting pointer to the next
             if (temp_ptr == start_ptr)
@@ -366,7 +373,9 @@ namespace IR
                 // if it's also the last message of this priority, it must be
                 // the last, remote this priority level!
                 if (temp_ptr == prio_end_ptr)
+                {
                     prio_end_ptr = nullptr;
+                }
             }
             // update the ending pointer of this category if this is the last
             // message of this priority
@@ -375,10 +384,14 @@ namespace IR
                 // if this is not the only message left at this priority level
                 // shift the level end pointer to the previous message
                 if (temp_ptr->priority == (temp_ptr->prev->priority))
+                {
                     prio_end_ptr = temp_ptr->prev;
-                // if this is, then remove this priority level
+                    // if this is, then remove this priority level
+                }
                 else
+                {
                     prio_end_ptr = nullptr;
+                }
             }
 
             // remove its own prev and next
@@ -479,22 +492,26 @@ namespace IR
         {
             Scheduler_node *temp_ptr = start_ptr;
 
-            uint32_t type;
-
             // decrement all transmission counter, but stop at zero
             // only change back to counter_max at when fired!
             for (size_t i = 0; i <= Msg_type_max; i++)
+            {
                 if (node_list[i].transmission_counter)
+                {
                     node_list[i].transmission_counter--;
+                }
+            }
 
             // check which to transmit
             while (temp_ptr)
             {
-                type = temp_ptr->val.msg_type;
+                uint32_t type = temp_ptr->val.msg_type;
                 // skip to next when this message shouldn't fire
                 if (temp_ptr->transmission_counter)
+                {
                     temp_ptr = temp_ptr->next;
-                // if it should fire, and it's not default msg (type 0)
+                    // if it should fire, and it's not default msg (type 0)
+                }
                 else if (type)
                 {
                     // if the expiration counter is already 0, remove task by
@@ -508,13 +525,16 @@ namespace IR
                     {
                         // decrease the expiration counter if it's not -1
                         if (temp_ptr->expiration_counter >= 0)
+                        {
                             temp_ptr->expiration_counter--;
+                        }
 
                         // reset the transmission counter
-                        temp_ptr->transmission_counter = temp_ptr->transmission_counter_max;
+                        temp_ptr->transmission_counter =
+                            temp_ptr->transmission_counter_max;
 
                         // ptr of the end of this priority
-                        auto prio_end_ptr = prio_level_end_ptr[temp_ptr->priority];
+                        auto *prio_end_ptr = prio_level_end_ptr[temp_ptr->priority];
                         // move this msg to the end of this priority if it's not
                         if (temp_ptr != prio_end_ptr)
                         {
@@ -578,5 +598,5 @@ namespace IR
 
             DEBUG_C(clrbit(DEBUG_PIN_1));
         }
-    }
-}
+    } // namespace TX
+} // namespace IR

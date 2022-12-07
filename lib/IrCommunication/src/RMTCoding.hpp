@@ -2,8 +2,8 @@
  * @file RMTCoding.hpp
  * @brief Encoding & decoding of RMT signal
  */
-#ifndef _RMTCODING_HPP_
-#define _RMTCODING_HPP_
+#ifndef RMTCODING_HPP__
+#define RMTCODING_HPP__
 
 #include "Arduino.h"
 #include "soc/rmt_struct.h"
@@ -50,7 +50,7 @@ namespace IR
          * @note each call takes ~2.2us
          */
         bool IRAM_ATTR Parse_RMT_item(volatile rmt_item32_t *const pointer, uint32_t *const dataptr) noexcept;
-    }
-}
+    } // namespace detail
+} // namespace IR
 
 #endif

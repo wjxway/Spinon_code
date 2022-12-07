@@ -2,8 +2,8 @@
  * @file IrRX.hpp
  * @brief receive and process data & timing interface.
  */
-#ifndef _IRRX_HPP_
-#define _IRRX_HPP_
+#ifndef IRRX_HPP__
+#define IRRX_HPP__
 
 #include "Arduino.h"
 #include <Circbuffer.hpp>
@@ -87,7 +87,7 @@ namespace IR
          * @brief Parsed_msg_completed can be shorter because it's always
          * finished so we can get rid of some metadata.
          */
-        typedef struct
+        struct Parsed_msg_completed
         {
             /**
              * @brief type of msg, determines what is inside the union,
@@ -114,12 +114,12 @@ namespace IR
              * @brief content of message
              */
             uint16_t content[Msg_memory_size];
-        } Parsed_msg_completed;
+        };
 
         /**
          * @brief timing structure
          */
-        typedef struct
+        struct Msg_timing_t
         {
             uint32_t robot_ID;
             /**
@@ -141,10 +141,11 @@ namespace IR
              */
             uint32_t receiver = 0;
             /**
-             * @brief byte channel represents whether timing for channel i is valid.
+             * @brief byte channel represents whether timing for channel i is
+             * valid.
              */
             uint32_t timing_valid_Q = 0;
-        } Msg_timing_t;
+        };
 
         /**
          * @brief initialize RX routine, including:
@@ -229,7 +230,7 @@ namespace IR
          * only time_arr[0] for timing.
          * @return uint32_t length of Msg_timing_t array
          */
-        uint32_t Get_timing_data(Msg_timing_t *const start, const uint64_t history_time=0);
+        uint32_t Get_timing_data(Msg_timing_t *const start, const uint64_t history_time = 0);
 
         /**
          * @brief get all neighboring robot's ID
@@ -244,11 +245,11 @@ namespace IR
 
         /**
          * @brief get the last time any message is received, regardless of correctness.
-         * 
+         *
          * @return last RX time
          */
         uint64_t Get_last_RX_time();
-    }
-}
+    } // namespace RX
+} // namespace IR
 
 #endif

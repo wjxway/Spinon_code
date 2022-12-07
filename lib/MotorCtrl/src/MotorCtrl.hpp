@@ -2,8 +2,8 @@
  * @file MotorCtrl.hpp
  * @brief Motor control functions
  */
-#ifndef _MOTORCTRL_HPP_
-#define _MOTORCTRL_HPP_
+#ifndef MOTORCTRL_HPP__
+#define MOTORCTRL_HPP__
 
 #include <cstdint>
 
@@ -21,7 +21,7 @@ namespace Motor
      *          93.6kHz --- 7 bits
      *         187.2kHz --- 6 bits
      */
-    constexpr uint32_t PWM_resolution = 7;
+    constexpr uint32_t PWM_resolution = 7U;
 
     /**
      * @brief set so that it fits the PWM resolution.
@@ -32,7 +32,7 @@ namespace Motor
      *         100kHz --- 7 bits
      *       cannot be higher than 100kHz
      */
-    constexpr uint32_t PWM_frequency = 40000;
+    constexpr uint32_t PWM_frequency = 40000U;
 
     /**
      * @brief default register configuration
@@ -114,6 +114,6 @@ namespace Motor
      * @brief release the brake
      */
     void Active_brake_release();
-}
+} // namespace Motor
 
 #endif

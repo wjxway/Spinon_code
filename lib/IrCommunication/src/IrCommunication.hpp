@@ -2,8 +2,8 @@
  * @file IrCommunication.hpp
  * @brief header for Ir communication and localization
  */
-#ifndef _IRCOMMUNICATION_HPP_
-#define _IRCOMMUNICATION_HPP_
+#ifndef IRCOMMUNICATION_HPP__
+#define IRCOMMUNICATION_HPP__
 
 #include "IrRX.hpp"
 #include "IrTX.hpp"

@@ -2,8 +2,8 @@
  * @file DebugDefs.hpp
  * @brief macros used for debugging
  */
-#ifndef _DEBUGDEFS_HPP_
-#define _DEBUGDEFS_HPP_
+#ifndef DEBUGDEFS_HPP__
+#define DEBUGDEFS_HPP__
 
 #include "Arduino.h"
 #include "FastIO.hpp"

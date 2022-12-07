@@ -137,10 +137,7 @@ namespace IR
                 {
                     return &content;
                 }
-                virtual bool Content_valid_Q() const override
-                {
-                    return 1;
-                }
+                virtual bool Content_valid_Q() const override { return true; }
                 friend void IR::RX::Preprocess_task(void *pvParameters);
                 ;
             };
@@ -307,74 +304,71 @@ namespace IR
                         last_reception_time = info.time;
                         return 0;
                     }
-                    else
-                        return 1;
+
+                    return 1;
                 }
                 // if not full...
-                else
-                {
-                    // if consistent
-                    if (consistency)
-                    {
-                        // if the data is filled, then data is a duplicate,
-                        // update time and quit.
-                        if (this_filled)
-                        {
-                            last_reception_time = info.time;
-                            return 0;
-                        }
-                        // if not, then the data is new, add it to the list
-                        else
-                        {
-                            last_reception_time = info.time;
-                            msg_count++;
-                            filling_status |= 1 << (msg.msg_ID);
-                            content[msg.msg_ID - 1] = msg.content;
 
-                            // check if full now at least header should present
-                            // to complete the message, so msg_count > 1.
-                            // if full, check if valid
-                            if (msg_count > 1 && msg_count == msg_ID_max + 1)
-                            {
-                                // if data is valid, set content_valid_flag
-                                // if not, do nothing and we will reset the whole structure later.
-                                if (crc8_maxim(content, msg_ID_max) == CRC)
-                                {
-                                    content_valid_flag = 1;
-                                    return 2;
-                                }
-                            }
-                            else
-                            {
-                                return 0;
-                            }
+                // if consistent
+                if (consistency)
+                {
+                    // if the data is filled, then data is a duplicate,
+                    // update time and quit.
+                    if (this_filled)
+                    {
+                        last_reception_time = info.time;
+                        return 0;
+                    }
+                    // if not, then the data is new, add it to the list
+
+                    last_reception_time = info.time;
+                    msg_count++;
+                    filling_status |= 1 << (msg.msg_ID);
+                    content[msg.msg_ID - 1] = msg.content;
+
+                    // check if full now at least header should present
+                    // to complete the message, so msg_count > 1.
+                    // if full, check if valid
+                    if (msg_count > 1 && msg_count == msg_ID_max + 1)
+                    {
+                        // if data is valid, set content_valid_flag
+                        // if not, do nothing and we will reset the whole
+                        // structure later.
+                        if (crc8_maxim(content, msg_ID_max) == CRC)
+                        {
+                          content_valid_flag = true;
+                          return 2;
                         }
                     }
-                    // if not consistent, but meta is consistent, then data must
-                    // be inconsistent, we just ignore the new data. we do so
-                    // instead of replacing the old with the new is that do
-                    // nothing is faster, and these two data has equal chance of
-                    // being wrong. depending on the requirement, we can either
-                    // update timing or not. Here we do not.
-                    else if (meta_consistency)
+                    else
                     {
                         return 0;
                     }
-
-                    // if meta is not consistent or if CRC check failed, the old
-                    // data will never be completed, so we discard it directly
-                    // and re-start the pool.
-                    last_reception_time = info.time;
-                    msg_ID_init = msg.msg_ID_init;
-                    msg_ID_max = 0;
-                    msg_count = 1;
-                    filling_status = 1 << (msg.msg_ID);
-                    CRC = 0;
-                    content_valid_flag = 0;
-                    content[msg.msg_ID - 1] = msg.content;
-
+                }
+                // if not consistent, but meta is consistent, then data must
+                // be inconsistent, we just ignore the new data. we do so
+                // instead of replacing the old with the new is that do
+                // nothing is faster, and these two data has equal chance of
+                // being wrong. depending on the requirement, we can either
+                // update timing or not. Here we do not.
+                else if (meta_consistency)
+                {
                     return 0;
                 }
+
+                // if meta is not consistent or if CRC check failed, the old
+                // data will never be completed, so we discard it directly
+                // and re-start the pool.
+                last_reception_time = info.time;
+                msg_ID_init = msg.msg_ID_init;
+                msg_ID_max = 0;
+                msg_count = 1;
+                filling_status = 1 << (msg.msg_ID);
+                CRC = 0;
+                content_valid_flag = false;
+                content[msg.msg_ID - 1] = msg.content;
+
+                return 0;
             }
 
             uint32_t Parsed_msg_multiple::Add_header(const Trans_info info)
@@ -406,84 +400,83 @@ namespace IR
                         last_reception_time = info.time;
                         return 0;
                     }
-                    else
-                        return 1;
+
+                    return 1;
                 }
                 // if not full...
-                else
-                {
-                    // if meta data is consistent
-                    // note that here it's slightly different than the
-                    // Add_content case because when we meet new, inconsistent
-                    // metadata, we always OVERRIDE. consider a case where
-                    // msg_ID_len is incorrect and is larger than the actual
-                    // value. if we never replace the old one, the content will
-                    // never be full, thus it will never check CRC. but at the
-                    // same time, duplicated data will come in at all times, so
-                    // refreshing last_reception_time to keep the pool fresh.
-                    // this means that the pool will always be incorrect yet
-                    // never reset. by replacing the metadata whenever there's
-                    // inconsistency between the old and the new, we can ensure
-                    // that even if the initial metadata is wrong it will be
-                    // overriden at some point, fixing the structure.
-                    if (meta_consistency)
-                    {
-                        // if the header is filled and data is consistent, then header is a duplicate, update time and quit.
-                        if (this_filled && data_consistency)
-                        {
-                            last_reception_time = info.time;
-                            return 0;
-                        }
-                        // if not, then either
-                        //      1. the header is new or
-                        //      2. we have a inconsistency between old and new header
-                        // in either case, we have to update the information
-                        else
-                        {
-                            last_reception_time = info.time;
-                            // only add msg_count when not filled
-                            if (!this_filled)
-                                msg_count++;
-                            filling_status |= 1;
-                            CRC = msg.CRC;
-                            msg_ID_max = msg.msg_ID_len;
 
-                            // check if full now
-                            // at least header should present to complete the
-                            // message, so msg_count > 1. if full, check if
-                            // valid
-                            if (msg_count == msg_ID_max + 1)
-                            {
-                                // if data is valid, set content_valid_flag
-                                // if not, do nothing and we will reset the whole structure later.
-                                if (crc8_maxim(content, msg_ID_max) == CRC)
-                                {
-                                    content_valid_flag = 1;
-                                    return 2;
-                                }
-                            }
-                            else
-                            {
-                                return 0;
-                            }
+                // if meta data is consistent
+                // note that here it's slightly different than the
+                // Add_content case because when we meet new, inconsistent
+                // metadata, we always OVERRIDE. consider a case where
+                // msg_ID_len is incorrect and is larger than the actual
+                // value. if we never replace the old one, the content will
+                // never be full, thus it will never check CRC. but at the
+                // same time, duplicated data will come in at all times, so
+                // refreshing last_reception_time to keep the pool fresh.
+                // this means that the pool will always be incorrect yet
+                // never reset. by replacing the metadata whenever there's
+                // inconsistency between the old and the new, we can ensure
+                // that even if the initial metadata is wrong it will be
+                // overriden at some point, fixing the structure.
+                if (meta_consistency)
+                {
+                    // if the header is filled and data is consistent, then header
+                    // is a duplicate, update time and quit.
+                    if (this_filled && data_consistency)
+                    {
+                        last_reception_time = info.time;
+                        return 0;
+                    }
+                    // if not, then either
+                    //      1. the header is new or
+                    //      2. we have a inconsistency between old and new header
+                    // in either case, we have to update the information
+
+                    last_reception_time = info.time;
+                    // only add msg_count when not filled
+                    if (!this_filled) {
+                      msg_count++;
+                    }
+                    filling_status |= 1;
+                    CRC = msg.CRC;
+                    msg_ID_max = msg.msg_ID_len;
+
+                    // check if full now
+                    // at least header should present to complete the
+                    // message, so msg_count > 1. if full, check if
+                    // valid
+                    if (msg_count == msg_ID_max + 1)
+                    {
+                        // if data is valid, set content_valid_flag
+                        // if not, do nothing and we will reset the whole
+                        // structure later.
+                        if (crc8_maxim(content, msg_ID_max) == CRC)
+                        {
+                          content_valid_flag = true;
+                          return 2;
                         }
                     }
-
-                    // if meta is not consistent or if CRC check failed, the old
-                    // data will never be completed, so we discard it directly
-                    // and re-start the pool.
-                    last_reception_time = info.time;
-                    msg_ID_init = msg.msg_ID_init;
-                    msg_ID_max = msg.msg_ID_len;
-                    msg_count = 1;
-                    filling_status = 1;
-                    CRC = msg.CRC;
-                    content_valid_flag = 0;
-
-                    return 0;
+                    else
+                    {
+                        return 0;
+                    }
                 }
+
+                // if meta is not consistent or if CRC check failed, the old
+                // data will never be completed, so we discard it directly
+                // and re-start the pool.
+                last_reception_time = info.time;
+                msg_ID_init = msg.msg_ID_init;
+                msg_ID_max = msg.msg_ID_len;
+                msg_count = 1;
+                filling_status = 1;
+                CRC = msg.CRC;
+                content_valid_flag = false;
+
+                return 0;
             }
-        }
+        } // anonymous namespace
 
         /**
          * @brief convert a regular message to msg_completed form
@@ -491,7 +484,7 @@ namespace IR
          * @param msg Parsed_msg_single message
          * @return Parsed_msg_completed completed form
          */
-        Parsed_msg_completed To_completed_form(const uint32_t robot_ID, const uint32_t msg_type, const Parsed_msg_single msg)
+        Parsed_msg_completed To_completed_form(const uint32_t robot_ID, const uint32_t msg_type, const Parsed_msg_single &msg)
         {
             Parsed_msg_completed res;
 
@@ -512,7 +505,7 @@ namespace IR
          *
          * @note if the message is not complete, the content length will be 0.
          */
-        Parsed_msg_completed To_completed_form(const uint32_t robot_ID, const uint32_t msg_type, const Parsed_msg_multiple msg)
+        Parsed_msg_completed To_completed_form(const uint32_t robot_ID, const uint32_t msg_type, const Parsed_msg_multiple &msg)
         {
             if (msg.Content_valid_Q())
             {
@@ -526,8 +519,8 @@ namespace IR
 
                 return res;
             }
-            else
-                return Parsed_msg_completed{};
+
+            return Parsed_msg_completed{};
         }
 
         /**
@@ -552,7 +545,7 @@ namespace IR
             }
 
             // minimum time
-            uint64_t min_t = msg_buffer[0].last_reception_time, temp_t;
+            uint64_t min_t = msg_buffer[0].last_reception_time;
             // position corresponding to the minimum time
             uint32_t min_pos = 0;
 
@@ -571,6 +564,7 @@ namespace IR
             // 1. find the oldest robot
             for (uint32_t i = 1; i < Max_robots_simultaneous; i++)
             {
+                uint64_t temp_t;
                 temp_t = msg_buffer[i].last_reception_time;
 
                 // if temp_t == 0, that means the [i] place is free.
@@ -599,10 +593,13 @@ namespace IR
             Robot_RX *res = &msg_buffer[min_pos];
             res->last_reception_time = 0;
             res->robot_ID = robot_ID;
-            for (uint32_t i = 0; i <= Single_transmission_msg_type; i++)
-                res->single_data[i].clear();
-            for (uint32_t i = 0; i < Msg_type_max - Single_transmission_msg_type; i++)
-                res->multiple_dat[i].clear();
+            for (uint32_t i = 0; i <= Single_transmission_msg_type; i++) {
+              res->single_data[i].clear();
+            }
+            for (uint32_t i = 0;
+                 i < Msg_type_max - Single_transmission_msg_type; i++) {
+              res->multiple_dat[i].clear();
+            }
 
             // 4. establish link for new robot in dict
             msg_buffer_dict[robot_ID] = res;
@@ -617,7 +614,8 @@ namespace IR
 
         Parsed_msg_completed Get_latest_msg_by_bot(const uint32_t robot_ID, const uint32_t msg_type, const uint32_t age)
         {
-            uint32_t curr_flag, empty = 0;
+            uint32_t curr_flag;
+            uint32_t empty = 0;
             Parsed_msg_completed res;
 
             do
@@ -643,13 +641,16 @@ namespace IR
                         // the first message is finished. if peeked message is
                         // valid, then just take the age th message.
                         if (pool.n_elem > age)
-                            res = To_completed_form(robot_ID, msg_type, pool.peek_tail(age));
+                            res = To_completed_form(robot_ID, msg_type,
+                                                    pool.peek_tail(age));
                         else
                             empty = 1;
                     }
                     else
                     {
-                        auto &pool = ptr->multiple_dat[msg_type - Single_transmission_msg_type - 1];
+                        auto &pool =
+                            ptr->multiple_dat[msg_type - Single_transmission_msg_type -
+                                              1];
 
                         if (pool.n_elem <= age)
                         {
@@ -658,19 +659,21 @@ namespace IR
                         // note that we need the latest "completed" element
                         else if (pool.peek_tail().Content_valid_Q())
                         {
-                            res = To_completed_form(robot_ID, msg_type, pool.peek_tail(age));
+                            res = To_completed_form(robot_ID, msg_type,
+                                                    pool.peek_tail(age));
                         }
                         else
                         {
                             if (pool.n_elem > age + 1)
-                                res = To_completed_form(robot_ID, msg_type, pool.peek_tail(age + 1));
+                                res = To_completed_form(robot_ID, msg_type,
+                                                        pool.peek_tail(age + 1));
                             else
                                 empty = 1;
                         }
                     }
+                } else {
+                  empty = 1;
                 }
-                else
-                    empty = 1;
             }
             // repeat if write task preempted this task
             while (io_flag != curr_flag);
@@ -681,7 +684,8 @@ namespace IR
         Parsed_msg_completed Get_latest_msg_by_type(const uint32_t msg_type, const uint32_t age)
         {
             auto &buf = recent_msg_buffer[msg_type];
-            uint32_t curr_flag, empty = 0;
+            uint32_t curr_flag;
+            uint32_t empty = 0;
             Parsed_msg_completed res;
 
             do
@@ -724,14 +728,13 @@ namespace IR
 
         uint32_t Get_timing_data(Msg_timing_t *const start, const uint64_t history_time)
         {
-            uint64_t curr_time;
             uint32_t curr_flag;
             uint32_t len = 0;
 
             do
             {
                 curr_flag = io_flag;
-                curr_time = esp_timer_get_time();
+                uint64_t curr_time = esp_timer_get_time();
 
                 len = recent_timing_buffer.n_elem;
                 for (size_t i = 0; i < recent_timing_buffer.n_elem; i++)
@@ -1391,5 +1394,5 @@ namespace IR
 
             return true;
         }
-    }
-}
+    } // namespace RX
+} // namespace IR

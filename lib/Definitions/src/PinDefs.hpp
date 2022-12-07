@@ -2,9 +2,8 @@
  * @file PinDefs.hpp
  * @brief global definition for pin and hardware resource mapping.
  */
-#ifndef _PINDEFS_HPP_
-#define _PINDEFS_HPP_
-#pragma once
+#ifndef PINDEFS_HPP__
+#define PINDEFS_HPP__
 
 #include "RobotDefs.hpp"
 #include "hal/rmt_types.h"
@@ -20,7 +19,7 @@
 //      RMT_TX_PIN_1 -> bottom emitter (shorter pulses at the end)
 //      RMT_TX_PIN_2 -> top emitter (longer pulses at the end)
 // Note that please make sure that when both can be seen, the top emitter will be seen FIRST.
-#if RMT_TX_CHANNEL_COUNT >=1
+#if RMT_TX_CHANNEL_COUNT >= 1
 #define RMT_TX_PIN_1 18
 #endif
 #if RMT_TX_CHANNEL_COUNT == 2
@@ -32,7 +31,7 @@
 //      RMT_RX_PIN_1 -> middle emitter
 //      RMT_RX_PIN_2 -> right emitter
 //      RMT_RX_PIN_3 -> left emitter
-#if RMT_RX_CHANNEL_COUNT >=1
+#if RMT_RX_CHANNEL_COUNT >= 1
 #define RMT_RX_PIN_1 19
 #endif
 #if RMT_RX_CHANNEL_COUNT >= 2
@@ -51,7 +50,6 @@
 // #endif
 // #if RMT_RX_CHANNEL_COUNT == 3
 // #define RMT_IN_PIN_3 21
-
 
 // test pins
 #define DEBUG_PIN_1 4
@@ -115,7 +113,7 @@ constexpr rmt_channel_t RMT_RX_channel_1 = RMT_CHANNEL_2;
 #if RMT_RX_CHANNEL_COUNT >= 2
 /**
  * @brief Second RMT RX channel num.
- * 
+ *
  * @note Make it right if the robot is rotating counter-clockwise when viewed
  * from the top. Because we want to make sure that when left and right are
  * beginning to receive message, their success rate is the same. we don't want
@@ -135,16 +133,16 @@ constexpr rmt_channel_t RMT_RX_channel_3 = RMT_CHANNEL_6;
 /**
  * @brief Timer channel used for IR TX trigger
  */
-constexpr uint32_t IR_TX_trigger_timer_channel = 3u;
+constexpr uint32_t IR_TX_trigger_timer_channel = 3U;
 
 /**
  * @brief motor's i2c address
  */
-constexpr uint8_t Motor_address = 0b0110010u;
+constexpr uint8_t Motor_address = 0b0110010U;
 
 /**
  * @brief Motor LEDC channel
  */
-constexpr uint32_t Motor_LEDC_PWM_channel = 0u;
+constexpr uint32_t Motor_LEDC_PWM_channel = 0U;
 
 #endif

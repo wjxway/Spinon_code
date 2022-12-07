@@ -2,8 +2,8 @@
  * @file FastIO.hpp
  * @brief fast IO macros
  */
-#ifndef _FASTIO_HPP_
-#define _FASTIO_HPP_
+#ifndef FASTIO_HPP__
+#define FASTIO_HPP__
 
 #include "Arduino.h"
 

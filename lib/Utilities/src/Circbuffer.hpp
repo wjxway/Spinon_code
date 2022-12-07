@@ -18,8 +18,8 @@
  * with no extra copy cost. and they won't interfere with each other. perfect
  * for duplicating streams of commands.
  */
-#ifndef _CIRCBUFFER_HPP_
-#define _CIRCBUFFER_HPP_
+#ifndef CIRCBUFFER_HPP__
+#define CIRCBUFFER_HPP__
 
 #include <cstdint>
 
@@ -265,7 +265,7 @@ public:
      *
      * @param orig1 a pointer to what it's gonna copy
      */
-    Circbuffer_copycat(Circbuffer<T, msize> *orig1) : orig{orig1}, start{orig1->start}, end{orig1->end}, max_size{orig1->max_size}
+    explicit Circbuffer_copycat(Circbuffer<T, msize> *orig1) : orig{orig1}, start{orig1->start}, end{orig1->end}, max_size{orig1->max_size}
     {
         uint32_t curr_flag;
         do
@@ -290,7 +290,7 @@ public:
     T pop()
     {
         T temp{};
-        uint32_t curr_flag, empty = 0;
+        uint32_t empty = 0;
 
         bool not_first_time = 0;
 
@@ -334,7 +334,7 @@ public:
     T peek()
     {
         T temp{};
-        uint32_t curr_flag, empty = 0;
+        uint32_t empty = 0;
 
         bool not_first_time = 0;
 

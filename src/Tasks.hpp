@@ -2,8 +2,8 @@
  * @file Tasks.hpp
  * @brief User defined tasks to run
  */
-#ifndef _TASKS_HPP_
-#define _TASKS_HPP_
+#ifndef TASKS_HPP__
+#define TASKS_HPP__
 
 #include "Arduino.h"
 
