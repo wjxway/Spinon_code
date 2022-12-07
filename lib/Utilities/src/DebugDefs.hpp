@@ -7,7 +7,7 @@
 
 #include "Arduino.h"
 #include "FastIO.hpp"
-#include "../RobotDefs.hpp"
+#include <RobotDefs.hpp>
 
 // wrap DEBUG_C around all debug code.
 #if DEBUG_ENABLED

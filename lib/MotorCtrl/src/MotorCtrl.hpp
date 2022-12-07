@@ -4,7 +4,8 @@
  */
 #ifndef _MOTORCTRL_HPP_
 #define _MOTORCTRL_HPP_
-#include "Arduino.h"
+
+#include <cstdint>
 
 namespace Motor
 {

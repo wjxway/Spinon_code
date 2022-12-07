@@ -1,0 +1,2 @@
+This is the library for control of infrared communication and localization via our custom hardware.
+IrRX.hpp is the interface for reception, and IrTX is the interface for transmission.

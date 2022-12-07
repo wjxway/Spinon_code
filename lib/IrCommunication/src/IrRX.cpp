@@ -1,10 +1,10 @@
 #include "IrRX.hpp"
 #include "RMTCoding.hpp"
 #include "RMTMessageDefs.hpp"
-#include "../Utilities/FastIO.hpp"
-#include "../Utilities/DebugDefs.hpp"
-#include "../Utilities/CRCCheck.hpp"
-#include "../Utilities/Circbuffer.hpp"
+#include <FastIO.hpp>
+#include <DebugDefs.hpp>
+#include <CRCCheck.hpp>
+#include <Circbuffer.hpp>
 #include "driver/rmt.h"
 
 namespace IR

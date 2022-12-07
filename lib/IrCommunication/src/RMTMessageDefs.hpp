@@ -45,7 +45,7 @@
 #ifndef _RMTMESSAGEDEFS_HPP_
 #define _RMTMESSAGEDEFS_HPP_
 
-#include "../Utilities/PinDefs.hpp"
+#include <PinDefs.hpp>
 
 /**
  * @brief IR communication and localization

@@ -6,7 +6,7 @@
 #define _PINDEFS_HPP_
 #pragma once
 
-#include "../RobotDefs.hpp"
+#include "RobotDefs.hpp"
 #include "hal/rmt_types.h"
 
 // pins def

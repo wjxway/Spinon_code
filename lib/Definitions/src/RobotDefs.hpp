@@ -5,6 +5,8 @@
 #ifndef _ROBOTDEFS_HPP_
 #define _ROBOTDEFS_HPP_
 
+#include <cstdint>
+
 /**
  * @brief Robot's ID
  *

@@ -6,8 +6,8 @@
 #define _IRRX_HPP_
 
 #include "Arduino.h"
-#include "../Utilities/Circbuffer.hpp"
-#include "../RobotDefs.hpp"
+#include <Circbuffer.hpp>
+#include <RobotDefs.hpp>
 #include "RMTMessageDefs.hpp"
 #include <array>
 

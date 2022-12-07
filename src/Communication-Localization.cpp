@@ -4,12 +4,11 @@
  */
 #include <string>
 
-#include "src/Utilities/FeedTheDog.hpp"
-#include "src/Utilities/DebugDefs.hpp"
-#include "src/Utilities/FastIO.hpp"
-#include "src/MotorCtrl/MotorCtrl.hpp"
-#include "src/IrCommunication/IrCommunication.hpp"
-#include "src/Tasks.hpp"
+#include <DebugDefs.hpp>
+#include <FastIO.hpp>
+#include <MotorCtrl.hpp>
+#include <IrCommunication.hpp>
+#include "Tasks.hpp"
 
 uint64_t rec_finish_time = 0;
 
