@@ -47,6 +47,12 @@ namespace math
 
         // accuracy @ 0.4%
         float exp(const float x) noexcept;
+
+        template <class T>
+        constexpr T square(const T x) noexcept
+        {
+            return x * x;
+        }
     } // namespace fast
 } // namespace math
 

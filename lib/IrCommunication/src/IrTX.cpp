@@ -205,18 +205,199 @@ namespace IR
              * @brief whether to enable reading/transmitting data in TX_ISR
              */
             bool TX_enable_flag = true;
+
+            /**
+             * @brief return the reference to the corresponding TX_data object, so
+             * you can manipulate it.
+             *
+             * @param ntype type of message
+             * @return TX_data& reference to TX_data object
+             */
+            TX_data &Get_TX_data(const uint32_t ntype)
+            {
+                return node_list[ntype].val;
+            }
+
+            /**
+             * @brief add a task of certain type from scheduler. Note that this
+             * task MUST have already been used and temporarily paused.
+             *
+             * @param ntype type of task
+             */
+            void Add_back_to_schedule(const uint32_t ntype)
+            {
+                // temp pointer to the msg
+                Scheduler_node *temp_ptr = node_list + ntype;
+                // ptr of the end of the new priority
+                Scheduler_node *&prio_end_ptr = prio_level_end_ptr[temp_ptr->priority];
+                // if there are previous messages of this priority
+                if (prio_end_ptr)
+                {
+                    // add this element to the end of this priority
+                    prio_end_ptr->next->prev = temp_ptr;
+                    temp_ptr->next = prio_end_ptr->next;
+                    prio_end_ptr->next = temp_ptr;
+                    temp_ptr->prev = prio_end_ptr;
+
+                    // set the end pointer to this msg
+                    prio_end_ptr = temp_ptr;
+                }
+                // if this is brand new priority level
+                else
+                {
+                    // this new priority level's end pointer is this msg's pointer
+                    prio_end_ptr = temp_ptr;
+
+                    Scheduler_node *high_ptr = nullptr;
+                    // find the first priority level higher than this
+                    for (size_t i = (temp_ptr->priority) + 1; i <= TX_priority_max; i++)
+                    {
+                        if (prio_level_end_ptr[i])
+                        {
+                            high_ptr = prio_level_end_ptr[i];
+                            break;
+                        }
+                    }
+
+                    // if found, then add after this
+                    if (high_ptr)
+                    {
+                        high_ptr->next->prev = temp_ptr;
+                        temp_ptr->next = high_ptr->next;
+                        high_ptr->next = temp_ptr;
+                        temp_ptr->prev = high_ptr;
+                    }
+                    // if not, this must be the highest priority msg, which
+                    // makes it the starting point
+                    else
+                    {
+                        start_ptr->prev = temp_ptr;
+                        temp_ptr->next = start_ptr;
+                        temp_ptr->prev = nullptr;
+                        start_ptr = temp_ptr;
+                    }
+                }
+            }
+
+            rmt_item32_t *Schedule_next()
+            {
+                Scheduler_node *temp_ptr = start_ptr;
+
+                // decrement all transmission counter, but stop at zero
+                // only change back to counter_max at when fired!
+                for (size_t i = 0; i <= Msg_type_max; i++)
+                {
+                    if (node_list[i].transmission_counter)
+                    {
+                        node_list[i].transmission_counter--;
+                    }
+                }
+
+                // check which to transmit
+                while (temp_ptr)
+                {
+                    uint32_t type = temp_ptr->val.msg_type;
+                    // skip to next when this message shouldn't fire
+                    if (temp_ptr->transmission_counter)
+                    {
+                        temp_ptr = temp_ptr->next;
+                        // if it should fire, and it's not default msg (type 0)
+                    }
+                    else if (type)
+                    {
+                        // if the expiration counter is already 0, remove task by
+                        // putting it at the back of priority 0. note that this
+                        // message will fire!
+                        if (temp_ptr->expiration_counter == 0)
+                        {
+                            Remove_from_schedule(type);
+                        }
+                        else
+                        {
+                            // decrease the expiration counter if it's not -1
+                            if (temp_ptr->expiration_counter >= 0)
+                            {
+                                temp_ptr->expiration_counter--;
+                            }
+
+                            // reset the transmission counter
+                            temp_ptr->transmission_counter =
+                                temp_ptr->transmission_counter_max;
+
+                            // ptr of the end of this priority
+                            auto *prio_end_ptr = prio_level_end_ptr[temp_ptr->priority];
+                            // move this msg to the end of this priority if it's not
+                            if (temp_ptr != prio_end_ptr)
+                            {
+                                Remove_from_schedule(type);
+                                Add_back_to_schedule(type);
+                            }
+                        }
+
+                        // Serial.println(temp_ptr->val.msg_type);
+                        // return the data
+                        return temp_ptr->val.Get_data();
+                    }
+                    // if it's default msg (type 0) return without anything else
+                    else
+                    {
+                        // Serial.println(0);
+                        return node_list[0].val.Get_data();
+                    }
+                }
+
+                DEBUG_C(Serial.println("While loop broken @ IR::TX::<unnamed>::Schedule_next: This shouldn't happen!"));
+                return node_list[0].val.Get_data();
+            }
+
+            /**
+             * @brief TX timer interrupt handler that transmit data though physical interface
+             *
+             * @note this ISR should be run on core 0, leaving core 1 for RX tasks
+             * exclusively anyways. TX_ISR will reset itself and fire based on
+             * timing.
+             */
+            void IRAM_ATTR TX_ISR()
+            {
+                DEBUG_C(setbit(DEBUG_PIN_1));
+
+                // reset timer
+                timerRestart(Trigger_timer);
+                timerAlarmWrite(Trigger_timer, Generate_trigger_time(), false);
+                timerAlarmEnable(Trigger_timer);
+
+                // RMT TX only when data is not being modified.
+                if (TX_enable_flag)
+                {
+                    // let the corresponding task write data to pool maybe we don't
+                    // need a buffer anyways. just let blah blah blah return a
+                    // starting pointer and we should make sure that no editing will
+                    // happen on the content this pointer points to.
+                    rmt_item32_t *v = Schedule_next();
+
+                    // write both register
+                    for (size_t i = 0; i < RMT_TX_length; i++)
+                        RMTMEM.chan[RMT_TX_channel_2].data32[i].val = RMTMEM.chan[RMT_TX_channel_1].data32[i].val = (v + i)->val;
+
+                    // edit channel 2 register
+                    RMTMEM.chan[RMT_TX_channel_2].data32[0].duration0 -= detail::RMT_sync_ticks_num;
+                    RMTMEM.chan[RMT_TX_channel_2].data32[RMT_data_pulse_count].duration1 = CH2_final_pulse_duration;
+
+                    // reset pointers
+                    rmt_ll_tx_reset_pointer(&RMT, RMT_TX_channel_1);
+                    rmt_ll_tx_reset_pointer(&RMT, RMT_TX_channel_2);
+
+                    // start RMT as fast as possible by directly manipulating the registers
+                    RMT.conf_ch[RMT_TX_channel_1].conf1.tx_start = 1;
+                    // (maybe) a tiny delay to sync the channels
+                    // __asm__ __volatile__("nop;");
+                    RMT.conf_ch[RMT_TX_channel_2].conf1.tx_start = 1;
+                }
+
+                DEBUG_C(clrbit(DEBUG_PIN_1));
+            }
+
         } // anonymous namespace
-
-        /**
-         * @brief TX timer interrupt handler that transmit data though physical interface
-         *
-         * @note this ISR should be run on core 0, leaving core 1 for RX tasks
-         * exclusively anyways. TX_ISR will reset itself and fire based on
-         * timing.
-         */
-        void IRAM_ATTR TX_ISR();
-
-        rmt_item32_t *Schedule_next();
 
         void Init()
         {
@@ -333,18 +514,6 @@ namespace IR
         }
 
         /**
-         * @brief return the reference to the corresponding TX_data object, so
-         * you can manipulate it.
-         *
-         * @param ntype type of message
-         * @return TX_data& reference to TX_data object
-         */
-        TX_data &Get_TX_data(const uint32_t ntype)
-        {
-            return node_list[ntype].val;
-        }
-
-        /**
          * @brief remove an element from the list, ntype is the type number
          *
          * @param type type of message
@@ -398,70 +567,6 @@ namespace IR
             temp_ptr->prev = temp_ptr->next = nullptr;
         }
 
-        namespace
-        {
-            /**
-             * @brief add a task of certain type from scheduler. Note that this
-             * task MUST have already been used and temporarily paused.
-             *
-             * @param ntype type of task
-             */
-            void Add_back_to_schedule(const uint32_t ntype)
-            {
-                // temp pointer to the msg
-                Scheduler_node *temp_ptr = node_list + ntype;
-                // ptr of the end of the new priority
-                Scheduler_node *&prio_end_ptr = prio_level_end_ptr[temp_ptr->priority];
-                // if there are previous messages of this priority
-                if (prio_end_ptr)
-                {
-                    // add this element to the end of this priority
-                    prio_end_ptr->next->prev = temp_ptr;
-                    temp_ptr->next = prio_end_ptr->next;
-                    prio_end_ptr->next = temp_ptr;
-                    temp_ptr->prev = prio_end_ptr;
-
-                    // set the end pointer to this msg
-                    prio_end_ptr = temp_ptr;
-                }
-                // if this is brand new priority level
-                else
-                {
-                    // this new priority level's end pointer is this msg's pointer
-                    prio_end_ptr = temp_ptr;
-
-                    Scheduler_node *high_ptr = nullptr;
-                    // find the first priority level higher than this
-                    for (size_t i = (temp_ptr->priority) + 1; i <= TX_priority_max; i++)
-                    {
-                        if (prio_level_end_ptr[i])
-                        {
-                            high_ptr = prio_level_end_ptr[i];
-                            break;
-                        }
-                    }
-
-                    // if found, then add after this
-                    if (high_ptr)
-                    {
-                        high_ptr->next->prev = temp_ptr;
-                        temp_ptr->next = high_ptr->next;
-                        high_ptr->next = temp_ptr;
-                        temp_ptr->prev = high_ptr;
-                    }
-                    // if not, this must be the highest priority msg, which
-                    // makes it the starting point
-                    else
-                    {
-                        start_ptr->prev = temp_ptr;
-                        temp_ptr->next = start_ptr;
-                        temp_ptr->prev = nullptr;
-                        start_ptr = temp_ptr;
-                    }
-                }
-            }
-        }
-
         void Add_to_schedule(const uint32_t type, const std::vector<uint16_t> &raw, const uint32_t priority1, const int32_t expiration_count, const uint32_t period)
         {
             // setup flag to skip the interrupt (interrupt still active, but
@@ -486,117 +591,6 @@ namespace IR
             Add_back_to_schedule(type);
             // reset flag to enable regular interrupt
             TX_enable_flag = true;
-        }
-
-        rmt_item32_t *Schedule_next()
-        {
-            Scheduler_node *temp_ptr = start_ptr;
-
-            // decrement all transmission counter, but stop at zero
-            // only change back to counter_max at when fired!
-            for (size_t i = 0; i <= Msg_type_max; i++)
-            {
-                if (node_list[i].transmission_counter)
-                {
-                    node_list[i].transmission_counter--;
-                }
-            }
-
-            // check which to transmit
-            while (temp_ptr)
-            {
-                uint32_t type = temp_ptr->val.msg_type;
-                // skip to next when this message shouldn't fire
-                if (temp_ptr->transmission_counter)
-                {
-                    temp_ptr = temp_ptr->next;
-                    // if it should fire, and it's not default msg (type 0)
-                }
-                else if (type)
-                {
-                    // if the expiration counter is already 0, remove task by
-                    // putting it at the back of priority 0. note that this
-                    // message will fire!
-                    if (temp_ptr->expiration_counter == 0)
-                    {
-                        Remove_from_schedule(type);
-                    }
-                    else
-                    {
-                        // decrease the expiration counter if it's not -1
-                        if (temp_ptr->expiration_counter >= 0)
-                        {
-                            temp_ptr->expiration_counter--;
-                        }
-
-                        // reset the transmission counter
-                        temp_ptr->transmission_counter =
-                            temp_ptr->transmission_counter_max;
-
-                        // ptr of the end of this priority
-                        auto *prio_end_ptr = prio_level_end_ptr[temp_ptr->priority];
-                        // move this msg to the end of this priority if it's not
-                        if (temp_ptr != prio_end_ptr)
-                        {
-                            Remove_from_schedule(type);
-                            Add_back_to_schedule(type);
-                        }
-                    }
-
-                    // Serial.println(temp_ptr->val.msg_type);
-                    // return the data
-                    return temp_ptr->val.Get_data();
-                }
-                // if it's default msg (type 0) return without anything else
-                else
-                {
-                    // Serial.println(0);
-                    return node_list[0].val.Get_data();
-                }
-            }
-
-            DEBUG_C(Serial.println("While loop broken @ IR::TX::<unnamed>::Schedule_next: This shouldn't happen!"));
-            return node_list[0].val.Get_data();
-        }
-
-        void IRAM_ATTR TX_ISR()
-        {
-            DEBUG_C(setbit(DEBUG_PIN_1));
-
-            // reset timer
-            timerRestart(Trigger_timer);
-            timerAlarmWrite(Trigger_timer, Generate_trigger_time(), false);
-            timerAlarmEnable(Trigger_timer);
-
-            // RMT TX only when data is not being modified.
-            if (TX_enable_flag)
-            {
-                // let the corresponding task write data to pool maybe we don't
-                // need a buffer anyways. just let blah blah blah return a
-                // starting pointer and we should make sure that no editing will
-                // happen on the content this pointer points to.
-                rmt_item32_t *v = Schedule_next();
-
-                // write both register
-                for (size_t i = 0; i < RMT_TX_length; i++)
-                    RMTMEM.chan[RMT_TX_channel_2].data32[i].val = RMTMEM.chan[RMT_TX_channel_1].data32[i].val = (v + i)->val;
-
-                // edit channel 2 register
-                RMTMEM.chan[RMT_TX_channel_2].data32[0].duration0 -= detail::RMT_sync_ticks_num;
-                RMTMEM.chan[RMT_TX_channel_2].data32[RMT_data_pulse_count].duration1 = CH2_final_pulse_duration;
-
-                // reset pointers
-                rmt_ll_tx_reset_pointer(&RMT, RMT_TX_channel_1);
-                rmt_ll_tx_reset_pointer(&RMT, RMT_TX_channel_2);
-
-                // start RMT as fast as possible by directly manipulating the registers
-                RMT.conf_ch[RMT_TX_channel_1].conf1.tx_start = 1;
-                // (maybe) a tiny delay to sync the channels
-                // __asm__ __volatile__("nop;");
-                RMT.conf_ch[RMT_TX_channel_2].conf1.tx_start = 1;
-            }
-
-            DEBUG_C(clrbit(DEBUG_PIN_1));
         }
     } // namespace TX
 } // namespace IR

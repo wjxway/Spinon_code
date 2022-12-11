@@ -10,6 +10,7 @@
             "includePath": [
                 "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/include",
                 "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/src",
+                "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/lib/Localization/src",
                 "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/lib/IrCommunication/src",
                 "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/lib/MotorCtrl/src",
                 "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
@@ -241,6 +242,7 @@
                 "path": [
                     "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/include",
                     "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/src",
+                    "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/lib/Localization/src",
                     "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/lib/IrCommunication/src",
                     "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/lib/MotorCtrl/src",
                     "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",

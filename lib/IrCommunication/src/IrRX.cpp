@@ -5,6 +5,7 @@
 #include <DebugDefs.hpp>
 #include <CRCCheck.hpp>
 #include <Circbuffer.hpp>
+#include <vector>
 #include "driver/rmt.h"
 
 namespace IR
@@ -52,26 +53,50 @@ namespace IR
         //      } while(curr_flag!=io_flag)
         // so if the read is preempted by write, we will read again.
 
-        /**
-         * @brief get raw uint32_t data from buffer(data comes from RX_ISR) and
-         * organize and store all parsed data packet. this function shall be
-         * called at ~100Hz rate (just not very frequently).
-         *
-         * @note I know that this function is too long, but it's still pretty
-         * structured and clear so I am not gonna split it into multiple
-         * functions.
-         * @warning This task should not be preempted by other user tasks!!! or
-         * else read and write of buffer might get messy.
-         */
-        void Preprocess_task(void *pvParameters);
-
         namespace
         {
+            // constants that the user probably don't need to know about
+            /**
+             * @brief timing data's valid time
+             *
+             * @note A proper value for Timing_expire_time should be the time it
+             * takes for the robot to spin ~0.2 rounds, take lower limit, but should
+             * be larger than a few times of RMT_TX_trigger_period_max.
+             */
+            constexpr int64_t Timing_expire_time = 10000;
+
+            /**
+             * @brief data's valid time
+             * @note Data_expire_time should be larger than Timing_expire_time.
+             * A proper value for Data_expire_time should be 1.5 times the minimum
+             * span between two consecutive TX_load(...) So that it's not too short,
+             * but still can prevent msg_ID_init from duplication.
+             */
+            constexpr int64_t Data_expire_time = 1000000;
+
+            /**
+             * @brief how many messages are allowed to stay in the buffer
+             */
+            constexpr uint32_t Raw_msg_buffer_size = 200;
+
+            /**
+             * @brief get raw uint32_t data from buffer(data comes from RX_ISR) and
+             * organize and store all parsed data packet. this function shall be
+             * called at ~100Hz rate (just not very frequently).
+             *
+             * @note I know that this function is too long, but it's still pretty
+             * structured and clear so I am not gonna split it into multiple
+             * functions.
+             * @warning This task should not be preempted by other user tasks!!! or
+             * else read and write of buffer might get messy.
+             */
+            void Preprocess_task(void *pvParameters);
+
             // variable definitions
             /**
              * @brief time of last message reception
              */
-            uint64_t last_RX_time = 0;
+            int64_t last_RX_time = 0;
 
             /**
              * @brief a circular buffer that stores all incoming, unprocessed
@@ -96,7 +121,7 @@ namespace IR
                 /**
                  * @brief last time this message is received.
                  */
-                uint64_t last_reception_time;
+                int64_t last_reception_time;
                 /**
                  * @brief get how many elements are there in the content
                  *
@@ -116,7 +141,7 @@ namespace IR
                  */
                 virtual bool Content_valid_Q() const = 0;
 
-                friend void IR::RX::Preprocess_task(void *pvParameters);
+                friend void Preprocess_task(void *pvParameters);
 
             protected:
                 /**
@@ -138,7 +163,7 @@ namespace IR
                     return &content;
                 }
                 virtual bool Content_valid_Q() const override { return true; }
-                friend void IR::RX::Preprocess_task(void *pvParameters);
+                friend void Preprocess_task(void *pvParameters);
                 ;
             };
 
@@ -158,7 +183,7 @@ namespace IR
                 {
                     return content_valid_flag;
                 }
-                friend void IR::RX::Preprocess_task(void *pvParameters);
+                friend void Preprocess_task(void *pvParameters);
 
             private:
                 /**
@@ -224,7 +249,7 @@ namespace IR
             {
             public:
                 uint32_t robot_ID;
-                uint64_t last_reception_time;
+                int64_t last_reception_time;
 
                 std::array<Circbuffer<Parsed_msg_single, Msg_buffer_history_size>, Single_transmission_msg_type + 1> single_data;
                 std::array<Circbuffer<Parsed_msg_multiple, Msg_buffer_history_size>, Msg_type_max - Single_transmission_msg_type> multiple_dat;
@@ -238,7 +263,7 @@ namespace IR
              * if it's nullptr, then Robot_ID do not exist in msg_buffer should
              * be initialized all to nullptr
              */
-            std::array<Robot_RX *, 1 << Robot_ID_bits> msg_buffer_dict;
+            std::array<Robot_RX *, 1U << Robot_ID_bits> msg_buffer_dict;
 
             /**
              * @brief message buffer that stores data in the form of
@@ -281,7 +306,7 @@ namespace IR
                 msg.raw = info.data;
 
                 // filling status of corresponding position
-                bool this_filled = filling_status & (1 << (msg.msg_ID));
+                bool this_filled = filling_status & (1U << (msg.msg_ID));
 
                 // check if the new data is consistent
                 // consistency is determind by three factors:
@@ -291,7 +316,7 @@ namespace IR
                 //      4. either the data is missing or the data is the same as previous (data consistency).
                 // Furthermore, when the data structure is fresh, msg_count == 0, and we want to reset the pool. so we just say meta is inconsistent.
                 bool meta_consistency = msg_count && (info.time - last_reception_time < Data_expire_time) && (msg.msg_ID_init == msg_ID_init) && (msg_ID_max == 0 || msg_ID_max >= msg.msg_ID);
-                bool data_consistency = (this_filled == 0 || content[msg.msg_ID - 1] == msg.content);
+                bool data_consistency = ((!this_filled) || content[msg.msg_ID - 1U] == msg.content);
                 bool consistency = meta_consistency && data_consistency;
 
                 // check if data is full and checked
@@ -323,8 +348,8 @@ namespace IR
 
                     last_reception_time = info.time;
                     msg_count++;
-                    filling_status |= 1 << (msg.msg_ID);
-                    content[msg.msg_ID - 1] = msg.content;
+                    filling_status |= 1U << (msg.msg_ID);
+                    content[msg.msg_ID - 1U] = msg.content;
 
                     // check if full now at least header should present
                     // to complete the message, so msg_count > 1.
@@ -336,8 +361,8 @@ namespace IR
                         // structure later.
                         if (crc8_maxim(content, msg_ID_max) == CRC)
                         {
-                          content_valid_flag = true;
-                          return 2;
+                            content_valid_flag = true;
+                            return 2;
                         }
                     }
                     else
@@ -363,10 +388,10 @@ namespace IR
                 msg_ID_init = msg.msg_ID_init;
                 msg_ID_max = 0;
                 msg_count = 1;
-                filling_status = 1 << (msg.msg_ID);
+                filling_status = 1U << (msg.msg_ID);
                 CRC = 0;
                 content_valid_flag = false;
-                content[msg.msg_ID - 1] = msg.content;
+                content[msg.msg_ID - 1U] = msg.content;
 
                 return 0;
             }
@@ -435,8 +460,9 @@ namespace IR
 
                     last_reception_time = info.time;
                     // only add msg_count when not filled
-                    if (!this_filled) {
-                      msg_count++;
+                    if (!this_filled)
+                    {
+                        msg_count++;
                     }
                     filling_status |= 1;
                     CRC = msg.CRC;
@@ -453,8 +479,8 @@ namespace IR
                         // structure later.
                         if (crc8_maxim(content, msg_ID_max) == CRC)
                         {
-                          content_valid_flag = true;
-                          return 2;
+                            content_valid_flag = true;
+                            return 2;
                         }
                     }
                     else
@@ -476,136 +502,574 @@ namespace IR
 
                 return 0;
             }
-        } // anonymous namespace
 
-        /**
-         * @brief convert a regular message to msg_completed form
-         *
-         * @param msg Parsed_msg_single message
-         * @return Parsed_msg_completed completed form
-         */
-        Parsed_msg_completed To_completed_form(const uint32_t robot_ID, const uint32_t msg_type, const Parsed_msg_single &msg)
-        {
-            Parsed_msg_completed res;
+            /**
+             * @brief RX ISR that handles input RMT transmissions and store them into a buffer.
+             */
+            void IRAM_ATTR RX_ISR(void *)
+            {
+                // // test start pulse
+                // DEBUG_C(
+                // delayhigh100ns(DEBUG_PIN_1);
+                // clrbit(DEBUG_PIN_1);
+                // )
 
-            res.robot_ID = robot_ID;
-            res.msg_type = msg_type;
-            res.finish_reception_time = msg.last_reception_time;
-            res.content_length = 1;
-            res.content[0] = msg.content;
+                // delay for a bit to make sure all RMT channels finished receiving
+                // I assume a identical signal's delay won't vary by 100ns which is
+                // more than half the RMT pulse width. It is highly unlikely that
+                // two valid yet different signal received within such a short time
+                // is different. If each cycle is 250us, that's a 1/1000 chance that
+                // two valid yet different signal will collide, and this still
+                // haven't take into consideration of geometric configuration.
+                // delay100ns;
+                delay100ns;
+                delay100ns;
 
-            return res;
-        }
+                // record time
+                int64_t rec_time = esp_timer_get_time();
 
-        /**
-         * @brief convert a regular message to msg_completed form
-         *
-         * @param msg Parsed_msg_multiple message
-         * @return Parsed_msg_completed completed form
-         *
-         * @note if the message is not complete, the content length will be 0.
-         */
-        Parsed_msg_completed To_completed_form(const uint32_t robot_ID, const uint32_t msg_type, const Parsed_msg_multiple &msg)
-        {
-            if (msg.Content_valid_Q())
+                // read RMT interrupt status.
+                uint32_t intr_st = RMT.int_st.val;
+                // interrupt state, with order modified so that its 0,1,2 bits represent interrupt state for ch0, ch1, ch2.
+                uint32_t intr_st_1 = 0;
+
+                // rmt item
+                volatile rmt_item32_t *item_1, *item_2, *item_3;
+                // RMT_RX_1, corresponding to RMT channel 2
+                // This channel has the highest priority when >1 channels received
+                // the signal. make sure that this is the center emitter, because we
+                // only care about where the center emitter's message is coming
+                // from.
+                if (intr_st & (1U << (1U + 3U * RMT_RX_channel_1)))
+                {
+                    // change owner state, disable rx
+                    RMT.conf_ch[RMT_RX_channel_1].conf1.rx_en = 0;
+                    RMT.conf_ch[RMT_RX_channel_1].conf1.mem_owner = RMT_MEM_OWNER_TX;
+                    intr_st_1 += 1;
+
+                    // RMT storage pointer
+                    item_1 = RMTMEM.chan[RMT_RX_channel_1].data32;
+                }
+#if RMT_RX_CHANNEL_COUNT >= 2
+                // RMT_RX_2, corresponding to RMT channel 4
+                if (intr_st & (1U << (1U + 3U * RMT_RX_channel_2)))
+                {
+                    // change owner state, disable rx
+                    RMT.conf_ch[RMT_RX_channel_2].conf1.rx_en = 0;
+                    RMT.conf_ch[RMT_RX_channel_2].conf1.mem_owner = RMT_MEM_OWNER_TX;
+                    intr_st_1 += 2;
+
+                    // RMT storage pointer
+                    item_2 = RMTMEM.chan[RMT_RX_channel_2].data32;
+                }
+#endif
+#if RMT_RX_CHANNEL_COUNT == 3
+                // RMT_RX_3, corresponding to RMT channel 6
+                if (intr_st & (1U << (1U + 3U * RMT_RX_channel_3)))
+                {
+                    // change owner state, disable rx
+                    RMT.conf_ch[RMT_RX_channel_3].conf1.rx_en = 0;
+                    RMT.conf_ch[RMT_RX_channel_3].conf1.mem_owner = RMT_MEM_OWNER_TX;
+                    intr_st_1 += 4;
+
+                    // RMT storage pointer
+                    item_3 = RMTMEM.chan[RMT_RX_channel_3].data32;
+                }
+#endif
+
+                // parsing output buffer
+                uint32_t raw;
+
+                // // whether this transmission is valid
+                // bool this_valid = false;
+
+                // setbit(TEST_PIN_2);
+
+                // parse RMT item into a uint32_t
+                if ((intr_st_1 & 1) && Parse_RMT_item(item_1, &raw))
+                {
+#if MSG_LED_ON
+                    LIT_R;
+                    if (intr_st_1 & 2)
+                        LIT_G;
+                    else
+                        QUENCH_G;
+                    if (intr_st_1 & 4)
+                        LIT_B;
+                    else
+                        QUENCH_B;
+#endif
+
+                    last_RX_time = rec_time;
+                    // add element to the pool if parsing is successful
+                    raw_msg_buffer.push(Trans_info{raw, intr_st_1, rec_time});
+                    // this_valid = true;
+                }
+#if RMT_RX_CHANNEL_COUNT >= 2
+                else if ((intr_st_1 & 2) && Parse_RMT_item(item_2, &raw))
+                {
+#if MSG_LED_ON
+                    QUENCH_R;
+                    LIT_G;
+                    if (intr_st_1 & 4)
+                        LIT_B;
+                    else
+                        QUENCH_B;
+#endif
+
+                    last_RX_time = rec_time;
+                    // add element to the pool if parsing is successful
+                    raw_msg_buffer.push(Trans_info{raw, intr_st_1 & 0b110, rec_time});
+                    // this_valid = true;
+                }
+#endif
+#if RMT_RX_CHANNEL_COUNT == 3
+                else if ((intr_st_1 & 4) && Parse_RMT_item(item_3, &raw))
+                {
+#if MSG_LED_ON
+                    QUENCH_R;
+                    QUENCH_G;
+                    LIT_B;
+#endif
+                    last_RX_time = rec_time;
+                    // add element to the pool if parsing is successful
+                    raw_msg_buffer.push(Trans_info{raw, 0b100, rec_time});
+                    // this_valid = true;
+                }
+#endif
+                else
+                {
+#if MSG_LED_ON
+                    QUENCH_R;
+                    QUENCH_G;
+                    QUENCH_B;
+#endif
+                }
+
+                // reset memory and owner state, enable rx
+                if (intr_st_1 & 1)
+                {
+                    RMT.conf_ch[RMT_RX_channel_1].conf1.mem_wr_rst = 1;
+                    RMT.conf_ch[RMT_RX_channel_1].conf1.mem_owner = RMT_MEM_OWNER_RX;
+                    RMT.conf_ch[RMT_RX_channel_1].conf1.rx_en = 1;
+                }
+#if RMT_RX_CHANNEL_COUNT >= 2
+                if (intr_st_1 & 2)
+                {
+                    RMT.conf_ch[RMT_RX_channel_2].conf1.mem_wr_rst = 1;
+                    RMT.conf_ch[RMT_RX_channel_2].conf1.mem_owner = RMT_MEM_OWNER_RX;
+                    RMT.conf_ch[RMT_RX_channel_2].conf1.rx_en = 1;
+                }
+#endif
+#if RMT_RX_CHANNEL_COUNT == 3
+                if (intr_st_1 & 4)
+                {
+                    RMT.conf_ch[RMT_RX_channel_3].conf1.mem_wr_rst = 1;
+                    RMT.conf_ch[RMT_RX_channel_3].conf1.mem_owner = RMT_MEM_OWNER_RX;
+                    RMT.conf_ch[RMT_RX_channel_3].conf1.rx_en = 1;
+                }
+#endif
+
+                // clear RMT interrupt status.
+                RMT.int_clr.val = intr_st;
+
+                // delay for a bit so that the interrupt status could be cleared
+                delay50ns;
+                delay100ns;
+
+                // test valid pulse
+                // if(this_valid)
+                // {
+                //     delayhigh100ns(DEBUG_PIN_1);
+                //     clrbit(DEBUG_PIN_1);
+                // }
+
+                // // test end pulse
+                // delayhigh500ns(TEST_PIN);
+                // clrbit(TEST_PIN);
+                // clrbit(TEST_PIN_2);
+            }
+
+            /**
+             * @brief convert a regular message to msg_completed form
+             *
+             * @param msg Parsed_msg_single message
+             * @return Parsed_msg_completed completed form
+             */
+            Parsed_msg_completed To_completed_form(const uint32_t robot_ID, const uint32_t msg_type, const Parsed_msg_single &msg)
             {
                 Parsed_msg_completed res;
 
                 res.robot_ID = robot_ID;
                 res.msg_type = msg_type;
                 res.finish_reception_time = msg.last_reception_time;
-                res.content_length = msg.Get_content_length();
-                std::copy(msg.Get_content_pointer(), msg.Get_content_pointer() + msg.Get_content_length(), res.content);
+                res.content_length = 1;
+                res.content[0] = msg.content;
 
                 return res;
             }
 
-            return Parsed_msg_completed{};
-        }
-
-        /**
-         * @brief find a place in msg_buffer to place a new robot.
-         *          1. find the oldest robot
-         *          2. delete the link of old robot in dict
-         *          3. reset that place and make it the new robot's
-         *          4. establish link for new robot in dict
-         *
-         * @param robot_ID new robot's ID
-         * @return Robot_RX* pointer to the place corresponding to the robot_ID
-         *
-         * @note when robot_ID already exists in msg_buffer, then directly
-         * return the corresponding pointer.
-         */
-        Robot_RX *Add_new_robot(const uint32_t robot_ID)
-        {
-            // return directly if the robot already exists in msg_buffer.
-            if (msg_buffer_dict[robot_ID])
+            /**
+             * @brief convert a regular message to msg_completed form
+             *
+             * @param msg Parsed_msg_multiple message
+             * @return Parsed_msg_completed completed form
+             *
+             * @note if the message is not complete, the content length will be 0.
+             */
+            Parsed_msg_completed To_completed_form(const uint32_t robot_ID, const uint32_t msg_type, const Parsed_msg_multiple &msg)
             {
-                return msg_buffer_dict[robot_ID];
+                if (msg.Content_valid_Q())
+                {
+                    Parsed_msg_completed res;
+
+                    res.robot_ID = robot_ID;
+                    res.msg_type = msg_type;
+                    res.finish_reception_time = msg.last_reception_time;
+                    res.content_length = msg.Get_content_length();
+                    std::copy(msg.Get_content_pointer(), msg.Get_content_pointer() + msg.Get_content_length(), res.content);
+
+                    return res;
+                }
+
+                return Parsed_msg_completed{};
             }
 
-            // minimum time
-            uint64_t min_t = msg_buffer[0].last_reception_time;
-            // position corresponding to the minimum time
-            uint32_t min_pos = 0;
-
-            // if min_t == 0, that means the [0] place is free.
-            // min_t only = 0 if it's completely fresh, so very light setup
-            if (min_t == 0)
+            /**
+             * @brief find a place in msg_buffer to place a new robot.
+             *          1. find the oldest robot
+             *          2. delete the link of old robot in dict
+             *          3. reset that place and make it the new robot's
+             *          4. establish link for new robot in dict
+             *
+             * @param robot_ID new robot's ID
+             * @return Robot_RX* pointer to the place corresponding to the robot_ID
+             *
+             * @note when robot_ID already exists in msg_buffer, then directly
+             * return the corresponding pointer.
+             */
+            Robot_RX *Add_new_robot(const uint32_t robot_ID)
             {
-                // 3. make it the new robot's place
-                msg_buffer[0].robot_ID = robot_ID;
-                // 4. establish link for new robot in dict
-                msg_buffer_dict[robot_ID] = &msg_buffer[0];
+                // return directly if the robot already exists in msg_buffer.
+                if (msg_buffer_dict[robot_ID])
+                {
+                    return msg_buffer_dict[robot_ID];
+                }
 
-                return &msg_buffer[0];
-            }
+                // minimum time
+                int64_t min_t = msg_buffer[0].last_reception_time;
+                // position corresponding to the minimum time
+                uint32_t min_pos = 0;
 
-            // 1. find the oldest robot
-            for (uint32_t i = 1; i < Max_robots_simultaneous; i++)
-            {
-                uint64_t temp_t;
-                temp_t = msg_buffer[i].last_reception_time;
-
-                // if temp_t == 0, that means the [i] place is free.
-                // temp_t only =0 if it's completely fresh, so very light setup
-                if (temp_t == 0)
+                // if min_t == 0, that means the [0] place is free.
+                // min_t only = 0 if it's completely fresh, so very light setup
+                if (min_t == 0)
                 {
                     // 3. make it the new robot's place
-                    msg_buffer[i].robot_ID = robot_ID;
+                    msg_buffer[0].robot_ID = robot_ID;
                     // 4. establish link for new robot in dict
-                    msg_buffer_dict[robot_ID] = &msg_buffer[i];
+                    msg_buffer_dict[robot_ID] = &msg_buffer[0];
 
-                    return &msg_buffer[i];
+                    return &msg_buffer[0];
                 }
-                // if this is older
-                else if (temp_t < min_t)
+
+                // 1. find the oldest robot
+                for (uint32_t i = 1; i < Max_robots_simultaneous; i++)
                 {
-                    min_t = temp_t;
-                    min_pos = i;
+                    int64_t temp_t;
+                    temp_t = msg_buffer[i].last_reception_time;
+
+                    // if temp_t == 0, that means the [i] place is free.
+                    // temp_t only =0 if it's completely fresh, so very light setup
+                    if (temp_t == 0)
+                    {
+                        // 3. make it the new robot's place
+                        msg_buffer[i].robot_ID = robot_ID;
+                        // 4. establish link for new robot in dict
+                        msg_buffer_dict[robot_ID] = &msg_buffer[i];
+
+                        return &msg_buffer[i];
+                    }
+                    // if this is older
+                    else if (temp_t < min_t)
+                    {
+                        min_t = temp_t;
+                        min_pos = i;
+                    }
+                }
+
+                // 2. delete the link of old robot in dict
+                msg_buffer_dict[msg_buffer[min_pos].robot_ID] = nullptr;
+
+                // 3. reset that place and make it the new robot's
+                Robot_RX *res = &msg_buffer[min_pos];
+                res->last_reception_time = 0;
+                res->robot_ID = robot_ID;
+                for (uint32_t i = 0; i <= Single_transmission_msg_type; i++)
+                {
+                    res->single_data[i].clear();
+                }
+                for (uint32_t i = 0;
+                     i < Msg_type_max - Single_transmission_msg_type; i++)
+                {
+                    res->multiple_dat[i].clear();
+                }
+
+                // 4. establish link for new robot in dict
+                msg_buffer_dict[robot_ID] = res;
+
+                return res;
+            }
+
+            /**
+             * @brief a vector of all tasks to be notified when new data is processed.
+             */
+            std::vector<TaskHandle_t> TaskHandle_list;
+
+            void Preprocess_task(void *pvParameters)
+            {
+                TickType_t prev_wake_time = xTaskGetTickCount();
+                while (true)
+                {
+                    // increment io_flag as a coarse lock
+                    // all read task should have lower priority than preprocess task
+                    // and they should check io_flag to determine whether the read
+                    // has been preempted by Preprocess
+                    io_flag++;
+
+                    // keep doing till the buffer is empty
+                    while (raw_msg_buffer.n_elem)
+                    {
+                        // fetch message from buffer
+                        Trans_info info = raw_msg_buffer.pop();
+
+                        // setup a temporary value and extract some basic properties
+                        // of the message.
+                        Msg_t temp_msg;
+                        temp_msg.raw = info.data;
+                        uint32_t robot_ID = temp_msg.robot_ID, msg_type = temp_msg.msg_type, msg_ID = temp_msg.msg_ID;
+
+                        // obtain pointer to buffer, create Robot_RX instance if needed.
+                        Robot_RX *robot_ptr = Add_new_robot(robot_ID);
+
+                        // deal with timing buffer
+                        // note that we always update timing buffer regardless of
+                        // message's validity I am fully aware that incorrect
+                        // messages with incorrect robot_ID might disrupt this
+                        // routine, but I don't have a choice right now. because we
+                        // do not have a way of verifying whether the message is
+                        // error free for multiple-transmission messages if we are
+                        // gonna do this, we have to add CRC to all messages
+                        // regardless of type, which is kinda expensive. but anyway,
+                        // now just a sanity check about pulse count and pulse width
+                        // should be quite enough for most scenarios, so we will
+                        // ignore this for now if there's a problem later, we can
+                        // always add an additional CRC about the raw message in the
+                        // future.
+                        auto &timebuf = robot_ptr->timing_dat;
+                        // whether the message is from the top emitter
+                        uint32_t emitter = info.data & (1 << (32 - 1));
+                        // if there's element and the last time this robot received
+                        // any message is close, then we should not add a new
+                        // instance. We should only update the timing info when
+                        // needed.
+                        if (timebuf.n_elem && (info.time - robot_ptr->last_reception_time) < Timing_expire_time)
+                        {
+                            // peek the latest one
+                            auto &last_time = timebuf.peek_tail();
+                            uint32_t new_pos = info.receiver & (~last_time.receiver);
+                            // usually this is just 0, then we can skip all the rest.
+                            if (new_pos)
+                            {
+                                // we only care about which emitter we are getting
+                                // message from if the message is received by the
+                                // center receiver, because that's the only receiver
+                                // related to elevation sensing.
+                                if (new_pos & 0b01u)
+                                {
+                                    last_time.emitter_pos = emitter;
+                                }
+                                // but we do care about all the timing info
+                                for (size_t i = 0; i < RMT_RX_CHANNEL_COUNT; i++)
+                                {
+                                    if (new_pos & (1 << i))
+                                    {
+                                        last_time.time_arr[i] = info.time;
+                                    }
+                                }
+                                last_time.receiver |= info.receiver;
+
+                                if (last_time.receiver == ((1 << RMT_RX_CHANNEL_COUNT) - 1))
+                                {
+                                    last_time.timing_valid_Q = 1;
+                                    // add to recent_timing_buffer if finished
+                                    recent_timing_buffer.push(last_time);
+                                }
+                            }
+                        }
+                        // add new instance and push inside buffer if we cannot
+                        // merge with the last instance
+                        else
+                        {
+                            Msg_timing_t temp;
+                            temp.receiver = info.receiver;
+                            temp.robot_ID = robot_ID;
+
+                            // we only care about which emitter we are getting
+                            // message from if the message is received by the
+                            // center receiver, because that's the only receiver
+                            // related to elevation sensing.
+                            if (info.receiver & 0b01u)
+                            {
+                                temp.emitter_pos = emitter;
+                            }
+                            // but we do care about all the timing info
+                            for (size_t i = 0; i < RMT_RX_CHANNEL_COUNT; i++)
+                            {
+                                if (info.receiver & (1 << i))
+                                {
+                                    temp.time_arr[i] = info.time;
+                                }
+                            }
+                            if (info.receiver == ((1 << RMT_RX_CHANNEL_COUNT) - 1))
+                            {
+                                temp.timing_valid_Q = 1;
+                                // add to recent_timing_buffer if finished
+                                recent_timing_buffer.push(temp);
+                            }
+
+                            timebuf.push(temp);
+                        }
+
+                        // update robot's timing info note that the timing for robot
+                        // might be later than the timing for individual messages
+                        // because when faulty multiple message type message is
+                        // received, we will not update timing for individual pool
+                        // but we will always update timing for robot time.
+                        robot_ptr->last_reception_time = info.time;
+
+                        // deal with data buffers
+                        // check type, if single message
+                        if (msg_type <= Single_transmission_msg_type)
+                        {
+                            // parse msg correctly
+                            Msg_single_t real_msg;
+                            real_msg.raw = info.data;
+                            uint32_t content = real_msg.content, msg_ID_init = real_msg.msg_ID_init;
+
+                            // check for CRC, if cannot pass, discard message.
+                            if (crc4_itu(content) != real_msg.CRC)
+                                continue;
+
+                            auto &circbuf = robot_ptr->single_data[msg_type];
+
+                            // fetch latest message if exist
+                            if (circbuf.n_elem)
+                            {
+                                Parsed_msg_single &tail = circbuf.peek_tail();
+                                // check if is the same and not obsolete, if so,
+                                // simply change tail's reception time and continue.
+                                if (tail.msg_ID_init == msg_ID_init && tail.content == content && (info.time - tail.last_reception_time) < Data_expire_time)
+                                {
+                                    tail.last_reception_time = info.time;
+                                    continue;
+                                }
+                            }
+
+                            // if one of the following is true
+                            //  1. buffer is empty
+                            //  2. the messages are not the same
+                            //  3. the old message is just too old
+                            // construct Parsed_msg_single and push it inside pool
+                            Parsed_msg_single temp;
+                            temp.content = content;
+                            temp.msg_ID_init = msg_ID_init;
+                            temp.last_reception_time = info.time;
+
+                            circbuf.push(temp);
+
+                            // because it's single transmission message, always add
+                            // to the recent_msg_buffer
+                            recent_msg_buffer[msg_type].push(To_completed_form(robot_ID, msg_type, temp));
+                        }
+                        // if not, must be multiple message type
+                        else
+                        {
+                            // the corresponding typed circular buffer
+                            auto &circbuf = robot_ptr->multiple_dat[msg_type - Single_transmission_msg_type - 1U];
+
+                            // bit 0 -> whether the data should be in a new bin
+                            // bit 1 -> whether the data is just full
+                            uint32_t flags = 0b01;
+
+                            // check if it's content message
+                            if (msg_ID)
+                            {
+                                // if content message, try to figure out if the
+                                // corresponding pool is empty
+                                if (circbuf.n_elem)
+                                {
+                                    // if not, try to add content to the existing,
+                                    // latest message
+                                    flags = circbuf.peek_tail().Add_content(info);
+                                }
+                                // if requires to generate a new content (flags's
+                                // first bit is 1)
+                                if (flags & 1)
+                                {
+                                    Parsed_msg_multiple temp;
+                                    flags = temp.Add_content(info);
+                                    circbuf.push(temp);
+                                }
+                                // if data has just been finished update
+                                // recent_msg_buffer
+                                if (flags & 2)
+                                {
+                                    recent_msg_buffer[msg_type].push(To_completed_form(robot_ID, msg_type, circbuf.peek_tail()));
+                                }
+                            }
+                            // if multiple message type and not content, must be
+                            // header
+                            else
+                            {
+                                // if header message, try to figure out if the
+                                // corresponding pool is empty
+                                if (circbuf.n_elem)
+                                {
+                                    // if not, try to add header to the existing,
+                                    // latest message
+                                    flags = circbuf.peek_tail().Add_header(info);
+                                }
+                                // if requires to generate a new content (flags's
+                                // first bit is 1)
+                                if (flags & 1)
+                                {
+                                    Parsed_msg_multiple temp;
+                                    flags = temp.Add_header(info);
+                                    circbuf.push(temp);
+                                }
+                                // if data has just been finished update
+                                // recent_msg_buffer
+                                if (flags & 2)
+                                {
+                                    recent_msg_buffer[msg_type].push(To_completed_form(robot_ID, msg_type, circbuf.peek_tail()));
+                                }
+                            }
+                        }
+                    }
+
+                    vTaskSuspendAll();
+                    // notify all tasks that should be notified
+                    for (auto &hand : TaskHandle_list)
+                    {
+                        xTaskNotifyGive(hand);
+                    }
+                    xTaskResumeAll();
+
+                    vTaskDelayUntil(&prev_wake_time, pdMS_TO_TICKS(Preprocess_trigger_period));
                 }
             }
-
-            // 2. delete the link of old robot in dict
-            msg_buffer_dict[msg_buffer[min_pos].robot_ID] = nullptr;
-
-            // 3. reset that place and make it the new robot's
-            Robot_RX *res = &msg_buffer[min_pos];
-            res->last_reception_time = 0;
-            res->robot_ID = robot_ID;
-            for (uint32_t i = 0; i <= Single_transmission_msg_type; i++) {
-              res->single_data[i].clear();
-            }
-            for (uint32_t i = 0;
-                 i < Msg_type_max - Single_transmission_msg_type; i++) {
-              res->multiple_dat[i].clear();
-            }
-
-            // 4. establish link for new robot in dict
-            msg_buffer_dict[robot_ID] = res;
-
-            return res;
-        }
+        } // anonymous namespace
 
         uint32_t Get_io_flag()
         {
@@ -671,8 +1135,10 @@ namespace IR
                                 empty = 1;
                         }
                     }
-                } else {
-                  empty = 1;
+                }
+                else
+                {
+                    empty = 1;
                 }
             }
             // repeat if write task preempted this task
@@ -710,23 +1176,7 @@ namespace IR
             return Circbuffer_copycat<Parsed_msg_completed, Recent_msg_buffer_history_size>{&recent_msg_buffer[msg_type]};
         }
 
-        // Msg_timing_t Get_timing_data(const uint32_t age)
-        // {
-        //     uint32_t curr_flag;
-        //     Msg_timing_t res;
-        //
-        //     do
-        //     {
-        //         curr_flag = io_flag;
-        //         res = timing_buffer.peek_tail(age);
-        //     }
-        //     // repeat if write task preempted this task
-        //     while (io_flag != curr_flag);
-        //
-        //     return res;
-        // }
-
-        uint32_t Get_timing_data(Msg_timing_t *const start, const uint64_t history_time)
+        uint32_t Get_timing_data(Msg_timing_t *const start, const int64_t history_time)
         {
             uint32_t curr_flag;
             uint32_t len = 0;
@@ -734,7 +1184,7 @@ namespace IR
             do
             {
                 curr_flag = io_flag;
-                uint64_t curr_time = esp_timer_get_time();
+                int64_t curr_time = esp_timer_get_time();
 
                 len = recent_timing_buffer.n_elem;
                 for (size_t i = 0; i < recent_timing_buffer.n_elem; i++)
@@ -755,11 +1205,11 @@ namespace IR
             return len;
         }
 
-        uint32_t Get_neighboring_robots_ID(uint32_t *const start, const uint64_t history_time)
+        uint32_t Get_neighboring_robots_ID(uint32_t *const start, const int64_t history_time)
         {
             uint32_t curr_flag;
 
-            uint64_t t_now = esp_timer_get_time();
+            int64_t t_now = esp_timer_get_time();
             // pointer to the current position in start array
             uint32_t *ptr;
             // number of robots
@@ -795,433 +1245,9 @@ namespace IR
             return count;
         }
 
-        uint64_t Get_last_RX_time()
+        int64_t Get_last_RX_time()
         {
             return last_RX_time;
-        }
-
-        /**
-         * @brief RX ISR that handles input RMT transmissions and store them into a buffer.
-         */
-        void IRAM_ATTR RX_ISR(void *)
-        {
-            // // test start pulse
-            // DEBUG_C(
-            // delayhigh100ns(DEBUG_PIN_1);
-            // clrbit(DEBUG_PIN_1);
-            // )
-
-            // delay for a bit to make sure all RMT channels finished receiving
-            // I assume a identical signal's delay won't vary by 100ns which is
-            // more than half the RMT pulse width. It is highly unlikely that
-            // two valid yet different signal received within such a short time
-            // is different. If each cycle is 250us, that's a 1/1000 chance that
-            // two valid yet different signal will collide, and this still
-            // haven't take into consideration of geometric configuration.
-            // delay100ns;
-            delay100ns;
-            delay100ns;
-
-            // record time
-            uint64_t rec_time;
-            rec_time = esp_timer_get_time();
-
-            // read RMT interrupt status.
-            uint32_t intr_st = RMT.int_st.val;
-            // interrupt state, with order modified so that its 0,1,2 bits represent interrupt state for ch0, ch1, ch2.
-            uint32_t intr_st_1 = 0;
-
-            // rmt item
-            volatile rmt_item32_t *item_1, *item_2, *item_3;
-            // RMT_RX_1, corresponding to RMT channel 2
-            // This channel has the highest priority when >1 channels received
-            // the signal. make sure that this is the center emitter, because we
-            // only care about where the center emitter's message is coming
-            // from.
-            if (intr_st & (1 << (1 + 3 * RMT_RX_channel_1)))
-            {
-                // change owner state, disable rx
-                RMT.conf_ch[RMT_RX_channel_1].conf1.rx_en = 0;
-                RMT.conf_ch[RMT_RX_channel_1].conf1.mem_owner = RMT_MEM_OWNER_TX;
-                intr_st_1 += 1;
-
-                // RMT storage pointer
-                item_1 = RMTMEM.chan[RMT_RX_channel_1].data32;
-            }
-#if RMT_RX_CHANNEL_COUNT >= 2
-            // RMT_RX_2, corresponding to RMT channel 4
-            if (intr_st & (1 << (1 + 3 * RMT_RX_channel_2)))
-            {
-                // change owner state, disable rx
-                RMT.conf_ch[RMT_RX_channel_2].conf1.rx_en = 0;
-                RMT.conf_ch[RMT_RX_channel_2].conf1.mem_owner = RMT_MEM_OWNER_TX;
-                intr_st_1 += 2;
-
-                // RMT storage pointer
-                item_2 = RMTMEM.chan[RMT_RX_channel_2].data32;
-            }
-#endif
-#if RMT_RX_CHANNEL_COUNT == 3
-            // RMT_RX_3, corresponding to RMT channel 6
-            if (intr_st & (1 << (1 + 3 * RMT_RX_channel_3)))
-            {
-                // change owner state, disable rx
-                RMT.conf_ch[RMT_RX_channel_3].conf1.rx_en = 0;
-                RMT.conf_ch[RMT_RX_channel_3].conf1.mem_owner = RMT_MEM_OWNER_TX;
-                intr_st_1 += 4;
-
-                // RMT storage pointer
-                item_3 = RMTMEM.chan[RMT_RX_channel_3].data32;
-            }
-#endif
-
-            // parsing output buffer
-            uint32_t raw;
-
-            // // whether this transmission is valid
-            // bool this_valid = false;
-
-            // setbit(TEST_PIN_2);
-
-            // parse RMT item into a uint32_t
-            if ((intr_st_1 & 1) && Parse_RMT_item(item_1, &raw))
-            {
-#if MSG_LED_ON
-                LIT_R;
-                if (intr_st_1 & 2)
-                    LIT_G;
-                else
-                    QUENCH_G;
-                if (intr_st_1 & 4)
-                    LIT_B;
-                else
-                    QUENCH_B;
-#endif
-
-                last_RX_time = rec_time;
-                // add element to the pool if parsing is successful
-                raw_msg_buffer.push(Trans_info{raw, intr_st_1, rec_time});
-                // this_valid = true;
-            }
-#if RMT_RX_CHANNEL_COUNT >= 2
-            else if ((intr_st_1 & 2) && Parse_RMT_item(item_2, &raw))
-            {
-#if MSG_LED_ON
-                QUENCH_R;
-                LIT_G;
-                if (intr_st_1 & 4)
-                    LIT_B;
-                else
-                    QUENCH_B;
-#endif
-
-                last_RX_time = rec_time;
-                // add element to the pool if parsing is successful
-                raw_msg_buffer.push(Trans_info{raw, intr_st_1 & 0b110, rec_time});
-                // this_valid = true;
-            }
-#endif
-#if RMT_RX_CHANNEL_COUNT == 3
-            else if ((intr_st_1 & 4) && Parse_RMT_item(item_3, &raw))
-            {
-#if MSG_LED_ON
-                QUENCH_R;
-                QUENCH_G;
-                LIT_B;
-#endif
-                last_RX_time = rec_time;
-                // add element to the pool if parsing is successful
-                raw_msg_buffer.push(Trans_info{raw, 0b100, rec_time});
-                // this_valid = true;
-            }
-#endif
-            else
-            {
-#if MSG_LED_ON
-                QUENCH_R;
-                QUENCH_G;
-                QUENCH_B;
-#endif
-            }
-
-            // reset memory and owner state, enable rx
-            if (intr_st_1 & 1)
-            {
-                RMT.conf_ch[RMT_RX_channel_1].conf1.mem_wr_rst = 1;
-                RMT.conf_ch[RMT_RX_channel_1].conf1.mem_owner = RMT_MEM_OWNER_RX;
-                RMT.conf_ch[RMT_RX_channel_1].conf1.rx_en = 1;
-            }
-#if RMT_RX_CHANNEL_COUNT >= 2
-            if (intr_st_1 & 2)
-            {
-                RMT.conf_ch[RMT_RX_channel_2].conf1.mem_wr_rst = 1;
-                RMT.conf_ch[RMT_RX_channel_2].conf1.mem_owner = RMT_MEM_OWNER_RX;
-                RMT.conf_ch[RMT_RX_channel_2].conf1.rx_en = 1;
-            }
-#endif
-#if RMT_RX_CHANNEL_COUNT == 3
-            if (intr_st_1 & 4)
-            {
-                RMT.conf_ch[RMT_RX_channel_3].conf1.mem_wr_rst = 1;
-                RMT.conf_ch[RMT_RX_channel_3].conf1.mem_owner = RMT_MEM_OWNER_RX;
-                RMT.conf_ch[RMT_RX_channel_3].conf1.rx_en = 1;
-            }
-#endif
-
-            // clear RMT interrupt status.
-            RMT.int_clr.val = intr_st;
-
-            // delay for a bit so that the interrupt status could be cleared
-            delay50ns;
-            delay100ns;
-
-            // test valid pulse
-            // if(this_valid)
-            // {
-            //     delayhigh100ns(DEBUG_PIN_1);
-            //     clrbit(DEBUG_PIN_1);
-            // }
-
-            // // test end pulse
-            // delayhigh500ns(TEST_PIN);
-            // clrbit(TEST_PIN);
-            // clrbit(TEST_PIN_2);
-        }
-
-        void Preprocess_task(void *pvParameters)
-        {
-            TickType_t prev_wake_time = xTaskGetTickCount();
-            while (1)
-            {
-                // increment io_flag as a coarse lock
-                // all read task should have lower priority than preprocess task
-                // and they should check io_flag to determine whether the read
-                // has been preempted by Preprocess
-                io_flag++;
-
-                // keep doing till the buffer is empty
-                while (raw_msg_buffer.n_elem)
-                {
-                    // fetch message from buffer
-                    Trans_info info = raw_msg_buffer.pop();
-
-                    // setup a temporary value and extract some basic properties
-                    // of the message.
-                    Msg_t temp_msg;
-                    temp_msg.raw = info.data;
-                    uint32_t robot_ID = temp_msg.robot_ID, msg_type = temp_msg.msg_type, msg_ID = temp_msg.msg_ID;
-
-                    // obtain pointer to buffer, create Robot_RX instance if needed.
-                    Robot_RX *robot_ptr = Add_new_robot(robot_ID);
-
-                    // deal with timing buffer
-                    // note that we always update timing buffer regardless of
-                    // message's validity I am fully aware that incorrect
-                    // messages with incorrect robot_ID might disrupt this
-                    // routine, but I don't have a choice right now. because we
-                    // do not have a way of verifying whether the message is
-                    // error free for multiple-transmission messages if we are
-                    // gonna do this, we have to add CRC to all messages
-                    // regardless of type, which is kinda expensive. but anyway,
-                    // now just a sanity check about pulse count and pulse width
-                    // should be quite enough for most scenarios, so we will
-                    // ignore this for now if there's a problem later, we can
-                    // always add an additional CRC about the raw message in the
-                    // future.
-                    auto &timebuf = robot_ptr->timing_dat;
-                    // whether the message is from the top emitter
-                    uint32_t emitter = info.data & (1 << (32 - 1));
-                    // if there's element and the last time this robot received
-                    // any message is close, then we should not add a new
-                    // instance. We should only update the timing info when
-                    // needed.
-                    if (timebuf.n_elem && (info.time - robot_ptr->last_reception_time) < Timing_expire_time)
-                    {
-                        // peek the latest one
-                        auto &last_time = timebuf.peek_tail();
-                        uint32_t new_pos = info.receiver & (~last_time.receiver);
-                        // usually this is just 0, then we can skip all the rest.
-                        if (new_pos)
-                        {
-                            // we only care about which emitter we are getting
-                            // message from if the message is received by the
-                            // center receiver, because that's the only receiver
-                            // related to elevation sensing.
-                            if (new_pos & 0b01u)
-                            {
-                                last_time.emitter_pos = emitter;
-                            }
-                            // but we do care about all the timing info
-                            for (size_t i = 0; i < RMT_RX_CHANNEL_COUNT; i++)
-                            {
-                                if (new_pos & (1 << i))
-                                {
-                                    last_time.time_arr[i] = info.time;
-                                }
-                            }
-                            last_time.receiver |= info.receiver;
-
-                            if (last_time.receiver == ((1 << RMT_RX_CHANNEL_COUNT) - 1))
-                            {
-                                last_time.timing_valid_Q = 1;
-                                // add to recent_timing_buffer if finished
-                                recent_timing_buffer.push(last_time);
-                            }
-                        }
-                    }
-                    // add new instance and push inside buffer if we cannot
-                    // merge with the last instance
-                    else
-                    {
-                        Msg_timing_t temp;
-                        temp.receiver = info.receiver;
-                        temp.robot_ID = robot_ID;
-
-                        // we only care about which emitter we are getting
-                        // message from if the message is received by the
-                        // center receiver, because that's the only receiver
-                        // related to elevation sensing.
-                        if (info.receiver & 0b01u)
-                        {
-                            temp.emitter_pos = emitter;
-                        }
-                        // but we do care about all the timing info
-                        for (size_t i = 0; i < RMT_RX_CHANNEL_COUNT; i++)
-                        {
-                            if (info.receiver & (1 << i))
-                            {
-                                temp.time_arr[i] = info.time;
-                            }
-                        }
-                        if (info.receiver == ((1 << RMT_RX_CHANNEL_COUNT) - 1))
-                        {
-                            temp.timing_valid_Q = 1;
-                            // add to recent_timing_buffer if finished
-                            recent_timing_buffer.push(temp);
-                        }
-
-                        timebuf.push(temp);
-                    }
-
-                    // update robot's timing info note that the timing for robot
-                    // might be later than the timing for individual messages
-                    // because when faulty multiple message type message is
-                    // received, we will not update timing for individual pool
-                    // but we will always update timing for robot time.
-                    robot_ptr->last_reception_time = info.time;
-
-                    // deal with data buffers
-                    // check type, if single message
-                    if (msg_type <= Single_transmission_msg_type)
-                    {
-                        // parse msg correctly
-                        Msg_single_t real_msg;
-                        real_msg.raw = info.data;
-                        uint32_t content = real_msg.content, msg_ID_init = real_msg.msg_ID_init;
-
-                        // check for CRC, if cannot pass, discard message.
-                        if (crc4_itu(content) != real_msg.CRC)
-                            continue;
-
-                        auto &circbuf = robot_ptr->single_data[msg_type];
-
-                        // fetch latest message if exist
-                        if (circbuf.n_elem)
-                        {
-                            Parsed_msg_single &tail = circbuf.peek_tail();
-                            // check if is the same and not obsolete, if so,
-                            // simply change tail's reception time and continue.
-                            if (tail.msg_ID_init == msg_ID_init && tail.content == content && (info.time - tail.last_reception_time) < Data_expire_time)
-                            {
-                                tail.last_reception_time = info.time;
-                                continue;
-                            }
-                        }
-
-                        // if one of the following is true
-                        //  1. buffer is empty
-                        //  2. the messages are not the same
-                        //  3. the old message is just too old
-                        // construct Parsed_msg_single and push it inside pool
-                        Parsed_msg_single temp;
-                        temp.content = content;
-                        temp.msg_ID_init = msg_ID_init;
-                        temp.last_reception_time = info.time;
-
-                        circbuf.push(temp);
-
-                        // because it's single transmission message, always add
-                        // to the recent_msg_buffer
-                        recent_msg_buffer[msg_type].push(To_completed_form(robot_ID, msg_type, temp));
-                    }
-                    // if not, must be multiple message type
-                    else
-                    {
-                        // the corresponding typed circular buffer
-                        auto &circbuf = robot_ptr->multiple_dat[msg_type - Single_transmission_msg_type - 1];
-
-                        // bit 0 -> whether the data should be in a new bin
-                        // bit 1 -> whether the data is just full
-                        uint32_t flags = 0b01;
-
-                        // check if it's content message
-                        if (msg_ID)
-                        {
-                            // if content message, try to figure out if the
-                            // corresponding pool is empty
-                            if (circbuf.n_elem)
-                            {
-                                // if not, try to add content to the existing,
-                                // latest message
-                                flags = circbuf.peek_tail().Add_content(info);
-                            }
-                            // if requires to generate a new content (flags's
-                            // first bit is 1)
-                            if (flags & 1)
-                            {
-                                Parsed_msg_multiple temp;
-                                flags = temp.Add_content(info);
-                                circbuf.push(temp);
-                            }
-                            // if data has just been finished update
-                            // recent_msg_buffer
-                            if (flags & 2)
-                            {
-                                recent_msg_buffer[msg_type].push(To_completed_form(robot_ID, msg_type, circbuf.peek_tail()));
-                            }
-                        }
-                        // if multiple message type and not content, must be
-                        // header
-                        else
-                        {
-                            // if header message, try to figure out if the
-                            // corresponding pool is empty
-                            if (circbuf.n_elem)
-                            {
-                                // if not, try to add header to the existing,
-                                // latest message
-                                flags = circbuf.peek_tail().Add_header(info);
-                            }
-                            // if requires to generate a new content (flags's
-                            // first bit is 1)
-                            if (flags & 1)
-                            {
-                                Parsed_msg_multiple temp;
-                                flags = temp.Add_header(info);
-                                circbuf.push(temp);
-                            }
-                            // if data has just been finished update
-                            // recent_msg_buffer
-                            if (flags & 2)
-                            {
-                                recent_msg_buffer[msg_type].push(To_completed_form(robot_ID, msg_type, circbuf.peek_tail()));
-                            }
-                        }
-                    }
-                }
-
-                vTaskDelayUntil(&prev_wake_time, pdMS_TO_TICKS(Preprocess_trigger_period));
-            }
         }
 
         bool Init()
@@ -1393,6 +1419,33 @@ namespace IR
 #endif
 
             return true;
+        }
+
+        bool Add_RX_Notification(const TaskHandle_t &handle)
+        {
+            vTaskSuspendAll();
+            if (std::find(TaskHandle_list.begin(), TaskHandle_list.end(), handle) == TaskHandle_list.end())
+            {
+                TaskHandle_list.push_back(handle);
+                xTaskResumeAll();
+                return true;
+            }
+            xTaskResumeAll();
+            return false;
+        }
+
+        bool Remove_RX_Notification(const TaskHandle_t &handle)
+        {
+            vTaskSuspendAll();
+            auto it = std::find(TaskHandle_list.begin(), TaskHandle_list.end(), handle);
+            if (it != TaskHandle_list.end())
+            {
+                TaskHandle_list.erase(it);
+                xTaskResumeAll();
+                return true;
+            }
+            xTaskResumeAll();
+            return false;
         }
     } // namespace RX
 } // namespace IR

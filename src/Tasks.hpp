@@ -31,9 +31,4 @@ void LED_off_task(void *pvParameters);
  */
 void Send_message_task(void *pvParameters);
 
-/**
- * @brief try localization (a fairly simple and messy solution)
- */
-void Simple_localization_task(void *pvParameters);
-
 #endif

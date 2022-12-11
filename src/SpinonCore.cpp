@@ -8,6 +8,7 @@
 #include <FastIO.hpp>
 #include <MotorCtrl.hpp>
 #include <IrCommunication.hpp>
+#include <Localization.hpp>
 #include "Tasks.hpp"
 
 uint64_t rec_finish_time = 0;
@@ -77,6 +78,10 @@ void real_setup(void *pvParameters)
 
     DEBUG_C(Serial.println("RX inited"));
 
+    IR::Localization::Init();
+
+    DEBUG_C(Serial.println("Localization inited"));
+
     DEBUG_C(Serial.println("Init finished, launching tasks!"));
 
     // // monitor the performance of cores
@@ -108,24 +113,16 @@ void real_setup(void *pvParameters)
     //     3,
     //     NULL,
     //     0);
-    
-    auto task_status = xTaskCreatePinnedToCore(
-        Simple_localization_task,
-        "simploctask",
-        30000,
-        NULL,
-        5,
-        NULL,
-        0);
 
-    if (task_status == pdTRUE)
-    {
-        Serial.println("All tasks launched!");
-    }
-    else
-    {
-        Serial.println("Task cannot be allocated!");
-    }
+
+    // if (task_status == pdTRUE)
+    // {
+    //     Serial.println("All tasks launched!");
+    // }
+    // else
+    // {
+    //     Serial.println("Task cannot be allocated!");
+    // }
 
     // remove this task after use
     vTaskDelete(NULL);

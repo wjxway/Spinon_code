@@ -7,6 +7,9 @@
 
 #include <cstdint>
 
+#define _USE_MATH_DEFINES
+#include <cmath>
+
 /**
  * @brief Robot's ID
  *
@@ -39,19 +42,21 @@ namespace IR
     namespace RX
     {
         /**
-         * @brief timing offset between left and right receiver channel
+         * @brief angle offset between left and right receiver channel in rad
          *
-         * @note The actual left-right delay is T_right - T_left + offset
+         * @note The actual left-right delay is T_right - T_left + angle_offset
+         * / angular_velocity
          */
-        constexpr int64_t Left_right_timing_offset = 650;
+        constexpr float Left_right_angle_offset = 4.8F/180.0F*M_PI;
 
         /**
-         * @brief timing offset between the average of left and right receiver
-         * channel and the center receiver channel
+         * @brief angle offset between the average of left and right receiver
+         * channel and the center receiver channel in rad
          *
-         * @note The actual center delay is T_center - T_avg + offset
+         * @note The actual center delay is T_center - T_avg + angle_offset /
+         * angular_velocity
          */
-        constexpr int64_t Center_timing_offset = 0;
+        constexpr float Center_angle_offset = 4.8F/180.0F*M_PI;
     } // namespace RX
 } // namespace IR
 

@@ -34,17 +34,19 @@ namespace Motor
      */
     constexpr uint32_t PWM_frequency = 40000U;
 
+    // NOLINTBEGIN
     /**
      * @brief default register configuration
      */
     constexpr uint8_t Default_config[] = {
         // 0x00, 0x00,
-        0x01, 0x03, 0x00, 0xFE,                       // 2~5
+        0x01, 0x03, 0x00, 0xFE,                       // 2~5 
         0x00, 0x00, 0x10, 0x20, 0x00,                 // 6~10
         0x01, 0x00, 0x00, 0x97, 0xD5,                 // 11~15
         0x00, 0xE6, 0x03, 0x16, 0x0A,                 // 16~20
         0x3F, /*0x2E*/ 0x32 + 4, /*0x2B*/ 0x3F, 0x40, // 21~24
     };
+    // NOLINTEND
 
     /**
      * @brief initialize motor

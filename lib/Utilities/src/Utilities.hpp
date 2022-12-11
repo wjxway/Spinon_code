@@ -14,5 +14,6 @@
 #include "FastIO.hpp"
 #include "FastMath.hpp"
 #include "FeedTheDog.hpp"
+#include "BitCast.hpp"
 
 #endif

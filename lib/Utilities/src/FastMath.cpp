@@ -1,5 +1,6 @@
 #include "FastMath.hpp"
 
+// NOLINTBEGIN
 float math::fast::cos(const float x) noexcept
 {
     float x1=x;
@@ -39,3 +40,4 @@ float math::fast::exp(const float x) noexcept
 
     return u.f;
 }
+// NOLINTEND

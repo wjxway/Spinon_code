@@ -205,7 +205,7 @@ namespace IR
 		{
 			uint32_t data;
 			uint32_t receiver;
-			uint64_t time;
+			int64_t time;
 		};
 
 		// RMT timing specifications

@@ -22,7 +22,7 @@ namespace IR
 
     namespace RX
     {
-        // constants
+        // constants that the user might want to know / access
         /**
          * @brief how frequently will preprocess task be triggered, in ms.
          */
@@ -32,30 +32,7 @@ namespace IR
          * @brief priority of Preprocess task, note that all other user tasks
          * based on RX should have lower priority than this!
          */
-        constexpr uint32_t Preprocess_task_priority = 10;
-
-        /**
-         * @brief timing data's valid time
-         *
-         * @note A proper value for Timing_expire_time should be the time it
-         * takes for the robot to spin ~0.2 rounds, take lower limit, but should
-         * be larger than a few times of RMT_TX_trigger_period_max.
-         */
-        constexpr uint64_t Timing_expire_time = 10000;
-
-        /**
-         * @brief data's valid time
-         * @note Data_expire_time should be larger than Timing_expire_time.
-         * A proper value for Data_expire_time should be 1.5 times the minimum
-         * span between two consecutive TX_load(...) So that it's not too short,
-         * but still can prevent msg_ID_init from duplication.
-         */
-        constexpr uint64_t Data_expire_time = 1000000;
-
-        /**
-         * @brief how many messages are allowed to stay in the buffer
-         */
-        constexpr uint32_t Raw_msg_buffer_size = 200;
+        constexpr uint32_t Preprocess_task_priority = 15;
 
         /**
          * @brief maximum number of robots that can communicate with a single
@@ -69,19 +46,19 @@ namespace IR
         constexpr uint32_t Msg_memory_size = ((1 << (Msg_ID_bits - 1)) - 1);
 
         /**
-         * @brief how many messages will we save per robot per type
-         */
-        constexpr uint32_t Msg_buffer_history_size = 5;
-
-        /**
          * @brief how many messages will we save in the recent message buffer
          */
         constexpr uint32_t Recent_msg_buffer_history_size = 20;
 
         /**
+         * @brief how many messages will we save per robot per type
+         */
+        constexpr uint32_t Msg_buffer_history_size = 5;
+
+        /**
          * @brief how many messages will we save in the timing message buffer
          */
-        constexpr uint32_t Timing_buffer_history_size = 3 * Max_robots_simultaneous;
+        constexpr uint32_t Timing_buffer_history_size = 3U * Max_robots_simultaneous;
 
         /**
          * @brief Parsed_msg_completed can be shorter because it's always
@@ -103,7 +80,7 @@ namespace IR
             /**
              * @brief time of finish reception
              */
-            uint64_t finish_reception_time;
+            int64_t finish_reception_time;
 
             /**
              * @brief length of message in uint16_t
@@ -125,7 +102,7 @@ namespace IR
             /**
              * @brief time for different channels
              */
-            uint64_t time_arr[RMT_RX_CHANNEL_COUNT];
+            int64_t time_arr[RMT_RX_CHANNEL_COUNT];
             /**
              * @brief bit i represents whether message received is sent by
              * top/bottom emitter.
@@ -134,17 +111,17 @@ namespace IR
              * from if the message is received by the center receiver, because
              * that's the only receiver related to elevation sensing.
              */
-            uint32_t emitter_pos = 0;
+            uint32_t emitter_pos = 0U;
             /**
              * @brief helper for quickly identifying the occupation state of
              * time_arr. if bit i=1, then time_arr[i] is occupied undefined
              */
-            uint32_t receiver = 0;
+            uint32_t receiver = 0U;
             /**
              * @brief byte channel represents whether timing for channel i is
              * valid.
              */
-            uint32_t timing_valid_Q = 0;
+            uint32_t timing_valid_Q = 0U;
         };
 
         /**
@@ -153,9 +130,28 @@ namespace IR
          *        2. initialize RX ISR
          *        3. initialize preprocess data structures, routine, and timer
          *
-         * @return whether init is successful
+         * @return bool 0 -> successful, 1 -> unsuccessful
+         *
+         * @note should execute this first before doing anything else! I don't
+         * check for this, but you have to.
          */
         bool Init();
+
+        /**
+         * @brief Notify this task when data is updated!
+         *
+         * @param handle Task handle to be added
+         * @return bool true if successfully added, false if already exists.
+         */
+        bool Add_RX_Notification(const TaskHandle_t &handle);
+
+        /**
+         * @brief No longer notify this task when data is updated!
+         *
+         * @param handle Task handle to be removed
+         * @return bool true if successfully removed, false if never exist.
+         */
+        bool Remove_RX_Notification(const TaskHandle_t &handle);
 
         /**
          * @brief get io_flag, can be used to implement one's own read routine.
@@ -168,6 +164,9 @@ namespace IR
          *          }
          *          // repeat if write task preempted this task
          *          while (io_flag != curr_flag);
+         *
+         * @note io_flag can also be used to determine whether there's an new
+         * update, to eliminate redundant data updates.
          */
         uint32_t Get_io_flag();
 
@@ -230,7 +229,7 @@ namespace IR
          * only time_arr[0] for timing.
          * @return uint32_t length of Msg_timing_t array
          */
-        uint32_t Get_timing_data(Msg_timing_t *const start, const uint64_t history_time = 0);
+        uint32_t Get_timing_data(Msg_timing_t *const start, const int64_t history_time = 0);
 
         /**
          * @brief get all neighboring robot's ID
@@ -241,14 +240,14 @@ namespace IR
          * history_time us. when is 0, then access all.
          * @return uint32_t how many robots are there?
          */
-        uint32_t Get_neighboring_robots_ID(uint32_t *const start, const uint64_t history_time = 0);
+        uint32_t Get_neighboring_robots_ID(uint32_t *const start, const int64_t history_time = 0);
 
         /**
          * @brief get the last time any message is received, regardless of correctness.
          *
          * @return last RX time
          */
-        uint64_t Get_last_RX_time();
+        int64_t Get_last_RX_time();
     } // namespace RX
 } // namespace IR
 
