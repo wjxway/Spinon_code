@@ -16,6 +16,12 @@
  */
 // #define MSG_LED_ON 1
 
+/**
+ * @brief if we should turn on simple LED when any message (regardless of
+ * validity) is received by any receiver?
+ */
+#define MSG_SIMPLE_LED_ON 1
+
 namespace IR
 {
     using namespace detail;
@@ -159,11 +165,11 @@ namespace IR
          *          uint32_t curr_flag;
          *          do
          *          {
-         *              curr_flag = io_flag;
+         *              curr_flag = Get_io_flag();
          *              // read something
          *          }
          *          // repeat if write task preempted this task
-         *          while (io_flag != curr_flag);
+         *          while (Get_io_flag() != curr_flag);
          *
          * @note io_flag can also be used to determine whether there's an new
          * update, to eliminate redundant data updates.

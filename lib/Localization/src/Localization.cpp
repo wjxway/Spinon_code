@@ -68,12 +68,12 @@ namespace IR
 
             /**
              * @brief The position error we are giving to the position per us.
-             *        Let's assume that the movement speed is ~10cm/s.
+             *        Let's assume that the movement speed is ~5cm/s.
              *
              * @note For now, we assume that the error increase rate is the same for all
              * three directions
              */
-            constexpr float Error_increase_rate = 100e-6F;
+            constexpr float Error_increase_rate = 50e-6F;
 
             /**
              * @brief after how long will we stop to use the old localization
@@ -103,25 +103,6 @@ namespace IR
                 float elev_err;    // error of elev
                 float angle;       // angle computed by 2*Pi*(time%T_0)/T_0.
                 float angle_err;   // error of angle
-            };
-
-            /**
-             * @brief container for absolute position information, note that
-             * this includes the error estimation as well. Position are in unit
-             * of mm, variance of position in unit of mm^2, angle in unit of
-             * rad.
-             */
-            struct Position_data
-            {
-                float x;                // estimated x position
-                float y;                // estimated y position
-                float var_xy;           // variance of x,y position, sqrt(var)=error
-                float z;                // estimated z position
-                float var_z;            // variance of z position, sqrt(var)=error
-                float angle_0;          // angle the robot's facing at k*rotation_time
-                int64_t rotation_time;  // used to pre-treat the int64_t to prevent clipping in float.
-                float angular_velocity; // angular velocity
-                int64_t time;           // the time of data, which is the last measurement's time
             };
 
             /**
@@ -621,6 +602,7 @@ namespace IR
                     }
                     // record single round time.
                     rotation_time /= rotation_count;
+
                     // if we can, compute the rotation speed.
                     float angular_velocity = float(M_TWOPI) / float(rotation_time);
 
@@ -716,22 +698,28 @@ namespace IR
                         // new result
                         Position_data res;
 
-                        // do not filter these two because they directly
-                        // determines the angle offset, and the offset is
-                        // computed by something like
-                        // (T-[T/rotation_time])*angular_velocity
-                        res.rotation_time = rotation_time;
-                        res.angular_velocity = angular_velocity;
-                        res.time = last_message_time;
-
                         // compute localization based purely on new data
-                        // if there are previous results, use that for guess of new localization.
+                        // if there are previous results, use that for guess of
+                        // new localization.
+                        // 
+                        // @note should we do this is open to debate, because we
+                        // are almost sure that starting from the center will
+                        // work, but previous results might be in unfavourable
+                        // position.
                         if (Filtered_position_stack.n_elem && (last_message_time - Filtered_position_stack.peek_tail().time) < Position_expire_time)
                         {
                             // last filtered result
                             Position_data last = Filtered_position_stack.peek_tail();
 
                             res = Execute_localization(Loc_data, last.x, last.y);
+                            // do not filter these two because they directly
+                            // determines the angle offset, and the offset is
+                            // computed by something like
+                            // (T-[T/rotation_time])*angular_velocity
+                            res.rotation_time = rotation_time;
+                            res.angular_velocity = angular_velocity;
+                            res.time = last_message_time;
+
                             // store data in the non-filtered stack
                             Position_stack.push(res);
 
@@ -778,6 +766,13 @@ namespace IR
                             y0 /= float(Loc_data.size());
 
                             res = Execute_localization(Loc_data, x0, y0);
+                            // do not filter these two because they directly
+                            // determines the angle offset, and the offset is
+                            // computed by something like
+                            // (T-[T/rotation_time])*angular_velocity
+                            res.rotation_time = rotation_time;
+                            res.angular_velocity = angular_velocity;
+                            res.time = last_message_time;
                             // store data in the non-filtered stack
                             Position_stack.push(res);
                             // because we don't have available previous info to
@@ -821,7 +816,7 @@ namespace IR
             auto task_status = xTaskCreatePinnedToCore(
                 Localization_task,
                 "Localization_task",
-                30000,
+                50000,
                 NULL,
                 Localization_task_priority,
                 &Localization_task_handle,
@@ -868,6 +863,59 @@ namespace IR
             }
             xTaskResumeAll();
             return false;
+        }
+
+        Position_data Get_position(const uint32_t age)
+        {
+            if (Position_stack.n_elem > age)
+            {
+                return Position_stack.peek_tail(age);
+            }
+            return Position_data{};
+        }
+
+        Position_data Get_filtered_position(const uint32_t age)
+        {
+            if (Filtered_position_stack.n_elem > age)
+            {
+                return Filtered_position_stack.peek_tail(age);
+            }
+            return Position_data{};
+        }
+
+        size_t Get_position_data_count(const int64_t history_time)
+        {
+            if (history_time == 0)
+            {
+                return Position_stack.n_elem;
+            }
+
+            uint32_t curr_flag;
+            size_t count;
+
+            do
+            {
+                curr_flag = Filtered_position_stack.io_flag;
+                int64_t curr_time = esp_timer_get_time();
+
+                for (count = 0; count < Position_stack.n_elem; count++)
+                {
+                    // break if time reached
+                    if ((curr_time - Position_stack.peek_tail(count).time) > history_time)
+                    {
+                        break;
+                    }
+                }
+            }
+            // repeat if write task preempted this task
+            while (Position_stack.io_flag != curr_flag);
+
+            return count;
+        }
+
+        uint32_t Get_io_flag()
+        {
+            return Position_stack.io_flag;
         }
     } // namespace Localization
 } // namespace IR

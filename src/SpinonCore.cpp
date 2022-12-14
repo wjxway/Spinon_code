@@ -94,15 +94,15 @@ void real_setup(void *pvParameters)
     //     NULL,
     //     0);
 
-    // // quench LED!
-    // xTaskCreatePinnedToCore(
-    //     LED_off_task,
-    //     "LED_off_task",
-    //     10000,
-    //     NULL,
-    //     2,
-    //     NULL,
-    //     0);
+    // quench LED!
+    xTaskCreatePinnedToCore(
+        LED_off_task,
+        "LED_off_task",
+        10000,
+        NULL,
+        2,
+        NULL,
+        0);
 
     // // send me messages through serial!
     // xTaskCreatePinnedToCore(
@@ -114,15 +114,29 @@ void real_setup(void *pvParameters)
     //     NULL,
     //     0);
 
+    // Light LED based on position
+    TaskHandle_t LED_control_handle;
 
-    // if (task_status == pdTRUE)
-    // {
-    //     Serial.println("All tasks launched!");
-    // }
-    // else
-    // {
-    //     Serial.println("Task cannot be allocated!");
-    // }
+    auto task_status = xTaskCreatePinnedToCore(
+        LED_control_task,
+        "ledcontroltask",
+        50000,
+        NULL,
+        8,
+        &LED_control_handle,
+        0);
+
+    // trigger LED_control_task when localization is updated.
+    IR::Localization::Add_Localization_Notification(LED_control_handle);
+
+    if (task_status == pdTRUE)
+    {
+        Serial.println("All tasks launched!");
+    }
+    else
+    {
+        Serial.println("Task cannot be allocated!");
+    }
 
     // remove this task after use
     vTaskDelete(NULL);

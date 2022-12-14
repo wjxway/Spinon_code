@@ -580,10 +580,12 @@ namespace IR
                 // parsing output buffer
                 uint32_t raw;
 
-                // // whether this transmission is valid
-                // bool this_valid = false;
-
-                // setbit(TEST_PIN_2);
+#if MSG_SIMPLE_LED_ON
+                if(intr_st_1)
+                {
+                    LIT_B;
+                }
+#endif
 
                 // parse RMT item into a uint32_t
                 if ((intr_st_1 & 1) && Parse_RMT_item(item_1, &raw))
@@ -831,6 +833,10 @@ namespace IR
                 TickType_t prev_wake_time = xTaskGetTickCount();
                 while (true)
                 {
+                    vTaskDelayUntil(&prev_wake_time, pdMS_TO_TICKS(Preprocess_trigger_period));
+
+                    // LIT_G;
+
                     // increment io_flag as a coarse lock
                     // all read task should have lower priority than preprocess task
                     // and they should check io_flag to determine whether the read
@@ -1065,8 +1071,6 @@ namespace IR
                         xTaskNotifyGive(hand);
                     }
                     xTaskResumeAll();
-
-                    vTaskDelayUntil(&prev_wake_time, pdMS_TO_TICKS(Preprocess_trigger_period));
                 }
             }
         } // anonymous namespace

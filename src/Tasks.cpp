@@ -14,6 +14,8 @@
 #define _USE_MATH_DEFINES
 #include <cmath>
 
+using math::fast::square;
+
 void IRAM_ATTR Idle_stats_task(void *pvParameters)
 {
     // stats resolution in CPU cycles
@@ -106,8 +108,8 @@ void LED_off_task(void *pvParameters)
         // turn off led if they haven't been refreshed for a while
         if (esp_timer_get_time() - IR::RX::Get_last_RX_time() >= 300)
         {
-            QUENCH_R;
-            QUENCH_G;
+            // QUENCH_R;
+            // QUENCH_G;
             QUENCH_B;
         }
 
@@ -227,174 +229,213 @@ std::string n2hexstr(I w, size_t hex_len = sizeof(I) << 1)
 //     }
 // }
 
-/**
- * @brief trigger timer for LED indicator
- */
-hw_timer_t *LED_trigger_timer;
+// anonymous namespace to hide stuffs
+namespace
+{
+    struct LED_timing_t
+    {
+        int64_t t_start;
+        int64_t duration;
+        int64_t period;
+    };
 
-/**
- * @brief relative angle of LED
- */
-constexpr float LED_angle_offset = 0.8818719385800353F;
+    /**
+     * @brief a buffer that stores when to turn on and off LED!
+     */
+    Circbuffer<LED_timing_t, 10> LED_timing_buffer;
 
-// /**
-//  * @brief a task that switch on and off LED based on robot's position
-//  *
-//  * @note not finished!
-//  */
-// void IRAM_ATTR FB_LED_ISR()
-// {
-//     uint32_t cp0_regs[18];
-//     // get FPU state
-//     uint32_t cp_state = xthal_get_cpenable();
+    /**
+     * @brief trigger timer for LED indicator
+     */
+    hw_timer_t *LED_trigger_timer;
 
-//     if (cp_state)
-//     {
-//         // Save FPU registers
-//         xthal_save_cp0(cp0_regs);
-//     }
-//     else
-//     {
-//         // enable FPU
-//         xthal_set_cpenable(1);
-//     }
+    /**
+     * @brief relative angle of LED
+     */
+    constexpr float LED_angle_offset = 0.8818719385800353F;
 
-//     // 0 for now off, 1 for now on
-//     // initially it should be 1, so we can setup the initial timing
-//     static bool LED_state = 1;
+    /**
+     * @brief minimum delay time, if lower than this, we trigger after this.
+     */
+    constexpr int64_t Delay_min_time = 50LL;
 
-//     // how long should we delay before next on
-//     uint64_t delay_time;
-//     // how long should next time be on
-//     static uint64_t on_time = 0;
+    /**
+     * @brief last timing used by the interrupt
+     */
+    LED_timing_t Last_LED_timing;
 
-//     // this is for indication of XY position feedback.
-//     // if currently LED is on, then we should turn it off, and also setup the
-//     // time when it should be on again. Let's use green LED only here.
-//     if (LED_state)
-//     {
-//         QUENCH_G;
-//         LED_state = 0;
+    /**
+     * @brief 0 for off, 1 for on
+     *
+     * @note initially it should be 0
+     */
+    bool LED_state = false;
 
-//         // get localization data
-//         Position_data res = Position_stack.peek_tail();
-//         on_time = 0.01F * sqrtf(square(res.x) + square(res.y)) / res.angular_velocity;
-//         // determine next time
-//         delay_time = (res.rotation_time * 3 - int64_t(on_time / 2.0F + (LED_angle_offset + res.angle_0 - atan2f(res.y, res.x)) / res.angular_velocity) - (esp_timer_get_time() % res.rotation_time)) % res.rotation_time;
-//     }
-//     else
-//     {
-//         LIT_G;
-//         LED_state = 1;
-//         // we always lit LED for 1ms.
-//         delay_time = on_time;
-//     }
+    /**
+     * @brief a task that switch on and off LED based on robot's position
+     *
+     * @note not finished!
+     */
+    void IRAM_ATTR FB_LED_ISR()
+    {
+        // how long should we delay before next switch
+        uint64_t next_time;
 
-//     // // this is for indication of X and Y direction.
-//     // // if currently LED is on, then we should turn it off, and also setup the
-//     // // time when it should be on again. Let's use green LED only here.
-//     // if (LED_state)
-//     // {
-//     //     QUENCH_G;
-//     //     LED_state = 0;
+        // this is for indication of XY position feedback.
+        // if currently LED is on, then we should turn it off, and also setup the
+        // time when it should be on again. Let's use green LED only here.
+        if (LED_state)
+        {
+            QUENCH_R;
+            LED_state = 0;
 
-//     //     // get localization data
-//     //     Position_data res = Position_stack.peek_tail();
-//     //     on_time = int64_t(float(M_PI_2) / res.angular_velocity);
-//     //     // determine next time
-//     //     delay_time = (res.rotation_time * 3 - int64_t((LED_angle_offset + res.angle_0) / res.angular_velocity) - (esp_timer_get_time() % res.rotation_time)) % res.rotation_time;
-//     // }
-//     // else
-//     // {
-//     //     LIT_G;
-//     //     LED_state = 1;
-//     //     // we always lit LED for 1ms.
-//     //     delay_time = on_time;
-//     // }
+            // get localization data
+            LED_timing_t temp = LED_timing_buffer.peek_tail();
+            // now this temp is used, update Last_LED_timing
+            Last_LED_timing = temp;
 
-//     // reset timer
-//     timerRestart(LED_trigger_timer);
-//     timerAlarmWrite(LED_trigger_timer, delay_time, false);
-//     timerAlarmEnable(LED_trigger_timer);
+            // update time
+            next_time = (temp.t_start - (esp_timer_get_time() % temp.period)) % temp.period;
+        }
+        else
+        {
+            LIT_R;
+            LED_state = 1;
+            next_time = Last_LED_timing.duration;
+        }
 
-//     if (cp_state)
-//     {
-//         // Restore FPU registers
-//         xthal_restore_cp0(cp0_regs);
-//     }
-//     else
-//     {
-//         // turn it back off
-//         xthal_set_cpenable(0);
-//     }
-// }
+        // not sure if this is necessary, but we will add it anyways, it's not gonna influence anything.
+        next_time = (next_time < Delay_min_time) ? Delay_min_time : next_time;
+        // reset timer
+        timerRestart(LED_trigger_timer);
+        timerAlarmWrite(LED_trigger_timer, next_time, false);
+        timerAlarmEnable(LED_trigger_timer);
+    }
+} // anonymous namespace
 
+void LED_control_task(void *pvParameters)
+{
+    constexpr float K_P = 1.0F;
+    // K_D has time unit of s
+    constexpr float K_D = 0.0F;
+    // K_I has time unit of 1/s
+    constexpr float K_I = 0.0F;
 
+    // position data is valid for 1s
+    constexpr int64_t Position_expire_time = 1000000LL;
 
+    bool ISR_started = false;
 
-// do something with the res, add it to a queue or something else.
-// we can setup the interrupt here and let it turn on/off the lights.
+    // integral component
+    float I_comp[3] = {0.0F, 0.0F, 0.0F};
 
-// // indicate when position of robot is computed
-// LIT_R;
-// delayMicroseconds(1000);
-// QUENCH_R;
+    while (true)
+    {
+        // wait till next localization is done
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-// static bool FB_LED_ISR_started = 0;
+        // get data
+        uint32_t io_flag;
+        IR::Localization::Position_data pos_0, pos_1;
+        bool not_enough_data = false;
+        do
+        {
+            io_flag = IR::Localization::Get_io_flag();
 
-// if (!FB_LED_ISR_started)
-// {
-//     FB_LED_ISR_started = 1;
+            // check if there's enough data to use
+            if (IR::Localization::Get_position_data_count(Position_expire_time) < 2)
+            {
+                not_enough_data = true;
+                break;
+            }
 
-//     // config timer to transmit TX once in a while
-//     // we are using timer 1 to prevent confiction
-//     // timer ticks 1MHz
-//     LED_trigger_timer = timerBegin(1, 80, true);
-//     // add timer interrupt
-//     timerAttachInterrupt(LED_trigger_timer, &FB_LED_ISR, true);
-//     timerAlarmWrite(LED_trigger_timer, 10000UL, false);
-//     timerAlarmEnable(LED_trigger_timer);
-// }
+            pos_0 = IR::Localization::Get_filtered_position(0);
+            pos_1 = IR::Localization::Get_filtered_position(1);
 
-// // store and print out the data later.
-// // for now we end pushing after we have > 400 elements
-// // and we setup the LED to be always on to indicate that the data has been filled.
-// if (Position_stack.n_elem < 295)
-// {
-//     LIT_R;
-//     LIT_G;
-//     LIT_B;
-//     delayMicroseconds(500);
-//     QUENCH_R;
-//     QUENCH_G;
-//     QUENCH_B;
-//
-//     All_PD tmp;
-//     tmp.rel_pos_dat[0] = Loc_data[0];
-//     tmp.rel_pos_dat[1] = Loc_data[1];
-//     tmp.rel_pos_dat[2] = Loc_data[2];
-//     tmp.pos_dat = res;
-//
-//     Position_stack.push(tmp);
-// }
-// // if just finished reception
-// else if (Data_finished == 0)
-// {
-//     LIT_R;
-//     LIT_G;
-//     LIT_B;
-//     delayMicroseconds(10000);
-//     QUENCH_R;
-//     QUENCH_G;
-//     QUENCH_B;
-//
-//     Data_finished = 1;
-//     xTaskCreatePinnedToCore(
-//         Print_data_task,
-//         "Print_data_task",
-//         20000,
-//         NULL,
-//         15,
-//         NULL,
-//         0);
-// }
+        } while (io_flag != IR::Localization::Get_io_flag());
+
+        // if not, just wait!
+        if (not_enough_data)
+        {
+            continue;
+        }
+
+        // compute PID
+        float P_comp[3], D_comp[3];
+        // actual PID feedback value
+        float FB_val[3];
+
+        P_comp[0] = pos_0.x;
+        P_comp[1] = pos_0.y;
+        P_comp[2] = pos_0.z;
+
+        float t_coef = float(pos_0.time - pos_1.time) / 1000000.0F;
+
+        I_comp[0] += t_coef * pos_0.x;
+        I_comp[1] += t_coef * pos_0.y;
+        I_comp[2] += t_coef * pos_0.z;
+
+        t_coef = 1000000.0F / float(pos_0.time - pos_1.time);
+
+        D_comp[0] = t_coef * (pos_0.x - pos_1.x);
+        D_comp[1] = t_coef * (pos_0.y - pos_1.y);
+        D_comp[2] = t_coef * (pos_0.z - pos_1.z);
+
+        for (size_t i = 0; i < 3; i++)
+        {
+            FB_val[i] = K_P * P_comp[i] + K_I * I_comp[i] + K_D * D_comp[i];
+        }
+
+        // compute timing
+        LED_timing_t temp;
+
+        temp.duration = int64_t(0.005F * sqrtf(square(FB_val[0]) + square(FB_val[1])) / pos_0.angular_velocity);
+        temp.t_start = pos_0.rotation_time * 5 - temp.duration / 2 - int64_t((LED_angle_offset + pos_0.angle_0 - atan2f(FB_val[1], FB_val[0])) / pos_0.angular_velocity);
+        temp.period = pos_0.rotation_time;
+
+        constexpr int64_t Duration_max_time = 20000;
+        // cap the duration!
+        temp.duration = (temp.duration > Duration_max_time) ? Duration_max_time : temp.duration;
+
+        // push inside buffer
+        LED_timing_buffer.push(temp);
+
+        // check if first time, if so, start ISR
+        if (!ISR_started)
+        {
+            ISR_started = true;
+
+            // last led timing is this!
+            Last_LED_timing = temp;
+
+            LED_trigger_timer = timerBegin(2, 80, true);
+            // add timer interrupt
+            timerAttachInterrupt(LED_trigger_timer, &FB_LED_ISR, true);
+        }
+
+        // updating timer info
+        int64_t t_delay = (temp.t_start - (esp_timer_get_time() % temp.period)) % temp.period;
+
+        // not sure if this is necessary, but we will add it anyways, it's not
+        // gonna influence anything.
+        t_delay = (t_delay < Delay_min_time) ? Delay_min_time : t_delay;
+
+        if (LED_state == false)
+        {
+            // how long before/after the trigger time should we prevent triggering in us
+            constexpr uint64_t No_operation_time = 500ULL;
+            // make sure that we won't reset the timer just after LED turns on.
+            // also make sure that we won't reset the timer just before LED
+            // turns on.
+            if (timerRead(LED_trigger_timer) > No_operation_time || timerAlarmRead(LED_trigger_timer) < timerRead(LED_trigger_timer) + No_operation_time)
+            {
+                timerAlarmDisable(LED_trigger_timer);
+                timerRestart(LED_trigger_timer);
+                timerAlarmWrite(LED_trigger_timer, t_delay, false);
+                timerAlarmEnable(LED_trigger_timer);
+            }
+        }
+
+        // QUENCH_G;
+    }
+}
