@@ -124,8 +124,7 @@ namespace IR
              */
             uint32_t receiver = 0U;
             /**
-             * @brief byte channel represents whether timing for channel i is
-             * valid.
+             * @brief byte channel represents whether all timing data is valid
              */
             uint32_t timing_valid_Q = 0U;
         };

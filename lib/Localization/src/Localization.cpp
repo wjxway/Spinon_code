@@ -5,6 +5,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <utility>
 
 #define _USE_MATH_DEFINES
 #include <cmath>
@@ -18,14 +19,21 @@ namespace IR
         namespace
         {
 
-            // type of message that carries localization data
+            /**
+             * @brief type of message that carries localization data
+             */
             uint32_t Localization_Msg_type = 4;
 
             /**
-             * @brief the minimum tolerable timing is 6 degrees, corresponding
-             * to a distance of ~50cm
+             * @brief an estimation of maximum communication distance, used to determine the validity of localization result
              */
-            constexpr float Min_valid_angle = 6.0F / 180.0F * M_PI;
+            constexpr float Max_Communication_distance = 60.0F;
+
+            /**
+             * @brief the minimum tolerable timing for distance measurements is
+             * 7 degrees, corresponding to a distance of ~42cm
+             */
+            constexpr float Min_valid_angle = 7.0F / 180.0F * M_PI;
             /**
              * @brief the maximum tolerable timing is 60 degrees, corresponding
              * to two robots touching each other.
@@ -234,41 +242,48 @@ namespace IR
                 const size_t data_len = data.size();
 
                 Position_data temp;
+                // number of valid measurements.
+                uint32_t valid_meas = 0U;
+                // total error factor computed by
+                // ((measurement-estimation)/measurement_error)^2
+                float error_factor = 0.0F;
 
-                // determine the height, because it's independent from others, it's simple.
-                // deno is 1e-10 to prevent 1/0.
-                float deno = 1e-10F;
-                float nume = 0.0F;
-                for (size_t i = 0; i < data_len; i++)
+                // Z opt.
                 {
-                    // only take into account of those with elevation measurements.
-                    if (data[i].dist_err != 0.0F)
-                    {
-                        float c = 1.0F / square(data[i].elev_err);
-                        deno += c;
-                        nume += data[i].elev * c;
-                    }
-                }
-                temp.z = nume / deno;
-                // variance of this measurement
-                temp.var_z = 1.0F / deno;
+                    // determine the height, because it's independent from
+                    // others, it's simple.
+                    // 1/sigma^2 term, initialized to 1e-10 to prevent 1/0.
+                    float deno = 1e-10F;
+                    // x0/sigma^2 term
+                    float nume = 0.0F;
+                    // x0^2/sigma^2 term
+                    float numesq = 0.0F;
 
-                // estimated {X,Y}
-                // starting from the last position
-                // or you can start from the average of all beacon positions if you wish...
-                // might even give you better stability.
+                    for (size_t i = 0; i < data_len; i++)
+                    {
+                        // only take into account of those with elevation measurements.
+                        if (data[i].dist_err != 0.0F)
+                        {
+                            valid_meas++;
+
+                            float c = 1.0F / square(data[i].elev_err);
+                            deno += c;
+                            nume += data[i].elev * c;
+                            numesq += square(data[i].elev) * c;
+                        }
+                    }
+                    temp.z = nume / deno;
+                    // variance of this measurement
+                    temp.var_z = 1.0F / deno;
+                    // error of all Z measurements
+                    error_factor += numesq - square(nume) / deno;
+                }
+
+                // initial {X,Y}
+                // starting from the last position or from the average of all beacon positions.
                 float x = x_start;
                 float y = y_start;
                 float theta;
-
-                // // determine starting {X,Y} point by averaging all beacon position
-                // for (size_t i = 0; i < data_len; i++)
-                // {
-                //     x += data[i].pos[0];
-                //     y += data[i].pos[1];
-                // }
-                // x /= data_len;
-                // y /= data_len;
 
                 // maximum iterations we do
                 constexpr size_t Max_Position_Iterations = 10;
@@ -334,16 +349,28 @@ namespace IR
                 // keep an record of the last Hessian, so we have an estimate of how
                 // accurate is this localization result. 1/Hessian would be a good
                 // estimation of the variance of measurement.
+                // also compute the final error factor here
                 float Hessian = 0.0F;
                 for (size_t i = 0; i < data_len; i++)
                 {
-                    Hessian += 1.0F / (square(data[i].angle_err) * (square(data[i].pos[0] - x) + square(data[i].pos[1] - y)));
+                    float dx = data[i].pos[0] - x;
+                    float dy = data[i].pos[1] - y;
+                    float dr = sqrtf(square(dx) + square(dy));
+                    float angdiff = Angle_diff(atan2f(dy, dx) - theta - data[i].angle);
+
+                    Hessian += 1.0F / square(data[i].angle_err * dr);
+
+                    valid_meas++;
+                    error_factor += square(angdiff / data[i].angle_err);
 
                     // distance related terms, only exist when distance measurements are
                     // valid
                     if (data[i].dist_err != 0.0F)
                     {
                         Hessian += 1.0F / square(data[i].dist_err);
+
+                        valid_meas++;
+                        error_factor += square((dr - data[i].dist) / data[i].dist_err);
                     }
                 }
                 temp.var_xy = 1.0F / Hessian;
@@ -351,55 +378,81 @@ namespace IR
                 temp.rotation_time = 0L;
                 temp.angular_velocity = 0.0F;
                 temp.time = 0L;
+                temp.mean_error_factor = error_factor / float(valid_meas);
 
                 return temp;
             }
 
-            // /**
-            //  * @brief a stack of positions and relative measurements
-            //  */
-            // typedef struct
-            // {
-            //     Position_data pos_dat;
-            //     Relative_position_data rel_pos_dat[3];
-            // } All_PD;
-            // Circbuffer<All_PD, 300> Position_stack;
-            //
-            // void Print_data_task(void *pvParameters)
-            // {
-            //     while (1)
-            //     {
-            //         vTaskDelay(50);
-            //         if (Serial.available())
-            //         {
-            //             delay(10);
-            //             // deplete serial buffer
-            //             while (Serial.available())
-            //             {
-            //                 Serial.read();
-            //             }
-            //
-            //             Serial.println("\nLocalization result:");
-            //             while(Position_stack.n_elem)
-            //             {
-            //                 auto temp = Position_stack.pop();
-            //                 std::string v = "";
-            //                 v.reserve(1000);
-            //
-            //                 v += std::string("x: ") + std::to_string(temp.pos_dat.x) + ", y: " + std::to_string(temp.pos_dat.y) + ", z: " + std::to_string(temp.pos_dat.z) + ", omega: " + std::to_string(1000000.0f * temp.pos_dat.angular_velocity) + "\n";
-            //
-            //                 for (size_t j = 0; j < 3; j++)
-            //                 {
-            //                     v += std::string("  --ID: ") + std::to_string(temp.rel_pos_dat[j].Robot_ID) + ", x0: " + std::to_string(temp.rel_pos_dat[j].pos[0]) + ", y0: " + std::to_string(temp.rel_pos_dat[j].pos[1]) + ", z0: " + std::to_string(temp.rel_pos_dat[j].pos[2]) + ", dist: " + std::to_string(temp.rel_pos_dat[j].dist) + ", dist_err: " + std::to_string(temp.rel_pos_dat[j].dist_err) + ", elev: " + std::to_string(temp.rel_pos_dat[j].elev) + ", elev_err: " + std::to_string(temp.rel_pos_dat[j].elev_err) + ", ang: " + std::to_string(temp.rel_pos_dat[j].angle) + ", ang_err: " + std::to_string(temp.rel_pos_dat[j].angle_err) + "\n";
-            //                 }
-            //
-            //                 v += "\n";
-            //
-            //                 Serial.println(v.c_str());
-            //             }
-            //         }
-            //     }
-            // }
+            /**
+             * @brief how we scale variance according to the average error after
+             * optimization
+             *
+             * @param var variance computed using 1/Hessian
+             * @param error_factor mean
+             * ((measurement-estimation)/measurement_error)^2, indicating how
+             * far off our estimation is from measurements.
+             * @return float scaled variance
+             *
+             * @note this is pretty arbitrary, we add this because we know
+             * sometimes we have measurements way outside the tolerable error
+             * region (due to reflections, etc.), and we can capture this kind
+             * of behavior through error_factor. if this is too large, it means
+             * that we cannot even find a good solution using the data we have,
+             * so the data we have must be really bad, and we should consider
+             * give this localization result low priority. If data is correct,
+             * the average error factor should be ~1, so make sure that the
+             * function increase slowely as error factor ~1, but much faster
+             * as it grows even larger. Note that the error factor is the square
+             * of error, so itself increase pretty fast already.
+             */
+            float Error_scaling_function(const float var, const float error_factor)
+            {
+                return var * (1.0F + 0.5F * error_factor);
+            }
+
+#if LOCALIZATION_CALIBRATION_MODE
+            size_t record_count = 0U;
+            constexpr size_t start_record_count = 500U;
+            constexpr size_t Relative_measurement_buffer_max_size = 300U;
+            std::vector<std::vector<Relative_position_data>> Relative_measurement_buffer;
+
+            void Print_data_task(void *pvParameters)
+            {
+                // reserve position
+                Relative_measurement_buffer.reserve(Relative_measurement_buffer_max_size + 1);
+
+                while (true)
+                {
+                    vTaskDelay(50);
+                    if (Serial.available())
+                    {
+                        delay(10);
+                        // deplete serial buffer
+                        while (Serial.available())
+                        {
+                            Serial.read();
+                        }
+
+                        for (auto &all_dat : Relative_measurement_buffer)
+                        {
+                            std::string v = "";
+                            v.reserve(1000);
+
+                            v += std::string("Angular velocity: ") + std::to_string(all_dat[0].angle_err) + "\n";
+
+                            for (auto &dat : all_dat)
+                            {
+                                v += std::string("  ID: ") + std::to_string(dat.Robot_ID) + ", x0: " + std::to_string(dat.pos[0]) + ", y0: " + std::to_string(dat.pos[1]) + ", z0: " + std::to_string(dat.pos[2]) + ", LR angle diff: " + std::to_string(dat.dist) + ", Center angle diff: " + std::to_string(dat.elev) + ", ang: " + std::to_string(dat.angle) + "\n";
+                            }
+
+                            v += "\n";
+
+                            Serial.println(v.c_str());
+                        }
+                    }
+                }
+            }
+#endif
 
             /**
              * @brief a vector of all tasks to be notified when new data is processed.
@@ -426,40 +479,149 @@ namespace IR
             TaskHandle_t Localization_task_handle;
 
             /**
-             * @brief A task that updates the localization result buffer and filtered
-             * localization result buffer
+             * @brief compute time it takes to rotate for a round. (helper
+             * function)
+             *
+             * @param time_list time_list obtained using Get_timing_data
+             * @param time_count time_count obtained using Get_timing_data, also
+             * the length of time_list
+             * @return std::pair<int64_t,size_t> the first parameter is the time
+             * it takes to rotate for a round in us, the second is the number of
+             * robots seen in the last round. If the second parameter is 0, then
+             * the data is invalid.
+             *
+             * @note let's exploit the timing_valid_Q here to store the
+             * information about whether we've processed the second newest
+             * transmission. 0 -> processed, 1 -> not processed. We know that
+             * it's always 1 when we retrive them anyways. So it means that the
+             * timing_valid_Q info in time_list will be altered when this
+             * function is called.
+             */
+            std::pair<int64_t, size_t> Compute_rotation_time(IR::RX::Msg_timing_t *const time_list, const size_t time_count)
+            {
+                // let's exploit the timing_valid_Q here to store the
+                // information about whether we've processed the second newest
+                // transmission. 0 -> processed, 1 -> not processed. We know
+                // that it's always 1 when we retrive them anyways.
+
+                // last useful robot's index, needs to be within the last rotation.
+                size_t last_index = 0U;
+                // something used to coarsely estimate the rotation speed by
+                // averaging the timing difference between seeing the same robot
+                // in two consecutive rounds.
+                int64_t rotation_time = 0L;
+                uint32_t rotation_count = 0U;
+                // compute rotation speed
+                for (size_t i = 1U; i < time_count; i++)
+                {
+                    // if finished=1, then directly quit because we've already
+                    // scan through last two rotations.
+                    bool finished = false;
+
+                    // iterate till either the previous message, or end before
+                    // the last
+                    // rotation
+                    for (size_t j = 0U; j < ((last_index) ? last_index : (i - 1)); j++)
+                    {
+                        // check if this a second-oldest message
+                        if (time_list[i].robot_ID == time_list[j].robot_ID)
+                        {
+                            // if more than second oldest, break the whole
+                            // cycle, because we've already run for two cycles.
+                            if (!time_list[j].timing_valid_Q)
+                            {
+                                finished = true;
+                            }
+                            // if exactly the second oldest, then use it to
+                            // compute the rotation speed.
+                            else
+                            {
+                                // if first time we encounter a duplicate, then
+                                // we record this, and from now on we only care
+                                // about robots smaller than this count.
+                                if (!last_index)
+                                {
+                                    last_index = i;
+                                }
+                                // compute rotation time by averaging the timing
+                                // difference of left and right channel. the
+                                // reason why we didn't check for validity is
+                                // because:
+                                // 1. when we add to the timing_buffer, we've
+                                // already made sure that two consecutive timing
+                                // cannot be too short.
+                                // 2. when taking data out of buffer, we never
+                                // take message too old.
+                                rotation_time += ((time_list[j].time_arr[1] - time_list[i].time_arr[1] + time_list[j].time_arr[2] - time_list[i].time_arr[2]) >> 1);
+                                rotation_count++;
+                                // j's second latest round has been recorded.
+                                time_list[j].timing_valid_Q = 0U;
+                            }
+                            // end finding j whenever a solution is found.
+                            break;
+                        }
+                    }
+
+                    // if already finished, directly break.
+                    if (finished)
+                    {
+                        break;
+                    }
+                }
+
+                // if we cannot determine the rotation speed, return 0
+                if (!rotation_count)
+                {
+                    // DEBUG_C(Serial.println("Cannot determine the rotation speed."));
+                    return std::make_pair(0LL, 0UL);
+                }
+                // record single round time.
+                rotation_time /= rotation_count;
+
+                return std::make_pair(rotation_time, last_index);
+            }
+
+            /**
+             * @brief A task that updates the localization result buffer and
+             * filtered localization result buffer
              *
              * @param pvParameters
              *
-             * @note some considerations about whether to include angular velocity as an
-             * input for this function: from the program design perspective, this task
-             * should be a task that simply reads in the relative measurements and then
-             * output an estimation of the absolute position, and should not have redundant
-             * information. However, an estimation of the angular velocity might be able to
-             * help us identify the error of angle measurements (especially during
-             * acceleration), or help us better understand how we should update the angle
-             * estimation based on previous angle estimations. Yet, another reason why this
-             * info might not be as helpful is because the angle estimation here should be
-             * already sufficiently accurate as long as position estimation is accurate, and
-             * the shift / error in position / angular velocity might just be too large so
-             * that taking into consideration of the past measurement might not be very
-             * useful afterall because the shift in angle during one rotation would be much
-             * higher than the error of individual result.
+             * @note some considerations about whether to include angular
+             * velocity as an input for this function: from the program design
+             * perspective, this task should be a task that simply reads in the
+             * relative measurements and then output an estimation of the
+             * absolute position, and should not have redundant information.
+             * However, an estimation of the angular velocity might be able to
+             * help us identify the error of angle measurements (especially
+             * during acceleration), or help us better understand how we should
+             * update the angle estimation based on previous angle estimations.
+             * Yet, another reason why this info might not be as helpful is
+             * because the angle estimation here should be already sufficiently
+             * accurate as long as position estimation is accurate, and the
+             * shift / error in position / angular velocity might just be too
+             * large so that taking into consideration of the past measurement
+             * might not be very useful afterall because the shift in angle
+             * during one rotation would be much higher than the error of
+             * individual result.
              *
-             * @note We use Kalmann filter to estimate the position and error right now,
-             * with the assumption that the robot is static, and is subject to velocity
-             * disturbances of normal distribution. The reason why we assume the position,
-             * instead of the velocity, is a constant is partially because our localization
-             * only gets position info per round, but the measurements are taken throughout
-             * a time of one round. This means that there is an inherent measurement error
-             * induced by velocity, and regardless of the model, it can only be accurate
-             * when the robot is static. So, why not use the simplest model? However, there
-             * is something we can slightly modify here: because the time step is not fixed,
-             * and we know that between two updates, the velocity error will probably be in
-             * the same direction. we can set the normal distribution's variance to be
-             * proportional to T^2 instead of T. Well, because we are using a fixed position
-             * model, Kalmann filter is just a glorified way of saying we are doing best
-             * estimation based on multiple measurements.
+             * @note We use Kalmann filter to estimate the position and error
+             * right now, with the assumption that the robot is static, and is
+             * subject to velocity disturbances of normal distribution. The
+             * reason why we assume the position, instead of the velocity, is a
+             * constant is partially because our localization only gets position
+             * info per round, but the measurements are taken throughout a time
+             * of one round. This means that there is an inherent measurement
+             * error induced by velocity, and regardless of the model, it can
+             * only be accurate when the robot is static. So, why not use the
+             * simplest model? However, there is something we can slightly
+             * modify here: because the time step is not fixed, and we know that
+             * between two updates, the velocity error will probably be in the
+             * same direction. we can set the normal distribution's variance to
+             * be proportional to T^2 instead of T. Well, because we are using a
+             * fixed position model, Kalmann filter is just a glorified way of
+             * saying we are doing best estimation based on multiple
+             * measurements.
              */
             void Localization_task(void *pvParameters)
             {
@@ -503,12 +665,16 @@ namespace IR
                     {
                         curr_flag = RX::Get_io_flag();
 
-                        robot_count = RX::Get_neighboring_robots_ID(robot_ID_list, 0);
+                        robot_count = RX::Get_neighboring_robots_ID(robot_ID_list, Relative_measurements_expire_time);
 
                         pos_list.reserve(robot_count);
                         for (size_t i = 0; i < robot_count; i++)
                         {
-                            pos_list.push_back(RX::Get_latest_msg_by_bot(robot_ID_list[i], Localization_Msg_type));
+                            auto temp = RX::Get_latest_msg_by_bot(robot_ID_list[i], Localization_Msg_type);
+                            if (temp.content_length)
+                            {
+                                pos_list.push_back(temp);
+                            }
                         }
 
                         time_count = RX::Get_timing_data(time_list, Relative_measurements_expire_time);
@@ -525,89 +691,21 @@ namespace IR
 
                     // processing
 
-                    // let's exploit the timing_valid_Q here to store the information about
-                    // whether we've processed the second newest transmission. 0 ->
-                    // processed, 1 -> not processed. We know that it's always 1 when we
-                    // retrive them anyways.
-
-                    // if finished=1, then directly quit because we've already scan through
-                    // last two rotations.
-                    bool finished = false;
-                    // last useful robot's index, needs to be within the last rotation.
-                    size_t last_index = 0U;
-                    // something used to coarsely estimate the rotation speed by averaging
-                    // the timing difference between seeing the same robot in two
-                    // consecutive rounds.
-                    int64_t rotation_time = 0L;
-                    uint32_t rotation_count = 0U;
-                    // compute rotation speed.
-                    for (size_t i = 1U; i < time_count; i++)
-                    {
-                        // iterate till either the previous message, or end before the last
-                        // rotation
-                        for (size_t j = 0U; j < ((last_index) ? last_index : (i - 1)); j++)
-                        {
-                            // check if this a second-oldest message
-                            if (time_list[i].robot_ID == time_list[j].robot_ID)
-                            {
-                                // if more than second oldest, break the whole cycle,
-                                // because we've already run for two cycles.
-                                if (!time_list[j].timing_valid_Q)
-                                {
-                                    finished = true;
-                                }
-                                // if exactly the second oldest, then use it to compute the
-                                // rotation speed.
-                                else
-                                {
-                                    // if first time we encounter a duplicate, then we
-                                    // record this, and from now on we only care about
-                                    // robots smaller than this count.
-                                    if (!last_index)
-                                    {
-                                        last_index = i;
-                                    }
-                                    // compute rotation time by averaging the timing
-                                    // difference of left and right channel.
-                                    // the reason why we didn't check for validity is
-                                    // because:
-                                    // 1. when we add to the timing_buffer, we've already
-                                    // made sure that two consecutive timing cannot be too
-                                    // short.
-                                    // 2. when taking data out of buffer, we never take
-                                    // message too old.
-                                    rotation_time += ((time_list[j].time_arr[1] - time_list[i].time_arr[1] + time_list[j].time_arr[2] - time_list[i].time_arr[2]) >> 1);
-                                    rotation_count++;
-                                    // j's second latest round has been recorded.
-                                    time_list[j].timing_valid_Q = 0U;
-                                }
-                                // end finding j whenever a solution is found.
-                                break;
-                            }
-                        }
-
-                        // if already finished, directly break.
-                        if (finished)
-                        {
-                            break;
-                        }
-                    }
-
-                    // compute rotation speed
+                    // rotation_time computation
+                    auto temp_p = Compute_rotation_time(time_list, time_count);
                     // if we cannot determine the rotation speed, just quit this round!
-                    if (!rotation_count)
+                    if (temp_p.second == 0)
                     {
                         // DEBUG_C(Serial.println("Cannot determine the rotation speed."));
                         continue;
                     }
-                    // record single round time.
-                    rotation_time /= rotation_count;
-
-                    // if we can, compute the rotation speed.
+                    int64_t rotation_time = temp_p.first;
+                    // compute the rotation speed.
                     float angular_velocity = float(M_TWOPI) / float(rotation_time);
 
-                    // now we collect the data useful for localization.
+                    size_t last_index = temp_p.second;
 
+                    // now we collect the data useful for localization.
                     // data directly used for localization
                     std::vector<Relative_position_data> Loc_data;
                     Loc_data.reserve(last_index);
@@ -619,10 +717,10 @@ namespace IR
                     for (size_t i = 0; i < last_index; i++)
                     {
                         // position found?
-                        bool position_found = 0;
+                        bool position_found = false;
                         // robot ID
                         uint32_t rid = time_list[i].robot_ID;
-                        // search for robot ID in pos_list and check for its validity
+                        // search for robot ID in pos_list
                         for (auto &msg : pos_list)
                         {
                             // find robot and update content
@@ -636,7 +734,7 @@ namespace IR
                                 this_Loc_data.pos[1] = std::bit_cast<int16_t>(msg.content[1]);
                                 this_Loc_data.pos[2] = std::bit_cast<int16_t>(msg.content[2]);
 
-                                position_found = 1;
+                                position_found = true;
                                 break;
                             }
                         }
@@ -644,14 +742,32 @@ namespace IR
                         if (position_found)
                         {
                             Relative_position_data &this_Loc_data = Loc_data.back();
+
+#if LOCALIZATION_CALIBRATION_MODE
+                            int64_t avg_time = ((time_list[i].time_arr[1] + time_list[i].time_arr[2]) >> 1);
+
+                            // update last_message_time if the new one is later
+                            if (avg_time - last_message_time > 0)
+                            {
+                                last_message_time = avg_time;
+                            }
+
+                            this_Loc_data.angle = float(avg_time % rotation_time) * angular_velocity;
+                            this_Loc_data.angle_err = 1.0F;
+                            this_Loc_data.dist = float(int64_t(time_list[i].time_arr[1] - time_list[i].time_arr[2])) * angular_velocity;
+                            this_Loc_data.dist_err = 1.0F; // set to 1.0F because I want to distinguish invalid data.
+                            this_Loc_data.elev = (time_list[i].time_arr[0] - avg_time) * angular_velocity;
+                            this_Loc_data.elev_err = 1.0F;
+#else
                             // check if timing data is reasonable
                             float ang_diff = float(int64_t(time_list[i].time_arr[1] - time_list[i].time_arr[2])) * angular_velocity + RX::Left_right_angle_offset;
-                            // because the robot is rotating anti-clockwise when viewed from
-                            // top, then left receiver will see the emitter first. thus the
-                            // first reception time of the right receiver should be larger
-                            // than the left.
-                            // if ang_diff>=0 and ang_diff < Max_valid_angle, which is basic
-                            // for sanity, we record its angle info. but not necessarily
+                            // because the robot is rotating anti-clockwise when
+                            // viewed from top, then left receiver will see the
+                            // emitter first. thus the first reception time of
+                            // the right receiver should be larger than the
+                            // left. if ang_diff>=0 and ang_diff <
+                            // Max_valid_angle, which is basic for sanity, we
+                            // record its angle info. but not necessarily
                             // distance info.
                             if (ang_diff > 0 && ang_diff < Max_valid_angle)
                             {
@@ -665,10 +781,11 @@ namespace IR
 
                                 this_Loc_data.angle = float(avg_time % rotation_time) * angular_velocity;
                                 this_Loc_data.angle_err = Relative_angle_error;
-                                // we only record the distance info if the distance could be
-                                // usefully accurate (~ <50cm) you can adjust that threshold
-                                // for using the distance information or not by adjusting
-                                // the Min/Max valid angle
+                                // we only record the distance info if the
+                                // distance could be usefully accurate (~ <42cm)
+                                // you can adjust that threshold for using the
+                                // distance information or not by adjusting the
+                                // Min/Max valid angle
                                 if (ang_diff > Min_valid_angle)
                                 {
                                     this_Loc_data.dist = (Left_right_distance / (2.0F * sin(ang_diff * 0.5F)));
@@ -689,105 +806,173 @@ namespace IR
                             {
                                 Loc_data.pop_back();
                             }
+#endif
                         }
                     }
 
-                    // we localize when there are at least 2 beacons
+#if LOCALIZATION_CALIBRATION_MODE
                     if (Loc_data.size() >= 2)
                     {
-                        // new result
-                        Position_data res;
-
-                        // compute localization based purely on new data
-                        // if there are previous results, use that for guess of
-                        // new localization.
-                        // 
-                        // @note should we do this is open to debate, because we
-                        // are almost sure that starting from the center will
-                        // work, but previous results might be in unfavourable
-                        // position.
-                        if (Filtered_position_stack.n_elem && (last_message_time - Filtered_position_stack.peek_tail().time) < Position_expire_time)
+                        record_count++;
+                        if (record_count >= start_record_count && Relative_measurement_buffer.size() < Relative_measurement_buffer_max_size)
                         {
-                            // last filtered result
-                            Position_data last = Filtered_position_stack.peek_tail();
+                            // exploit this angle error to store angular velocity.
+                            Loc_data[0].angle_err = angular_velocity;
 
-                            res = Execute_localization(Loc_data, last.x, last.y);
-                            // do not filter these two because they directly
-                            // determines the angle offset, and the offset is
-                            // computed by something like
-                            // (T-[T/rotation_time])*angular_velocity
-                            res.rotation_time = rotation_time;
-                            res.angular_velocity = angular_velocity;
-                            res.time = last_message_time;
-
-                            // store data in the non-filtered stack
-                            Position_stack.push(res);
-
-                            // now we start to kalmann filter stuff
-                            // new filtered result
-                            Position_data filt;
-                            // add some basic info
-                            filt.rotation_time = rotation_time;
-                            filt.angular_velocity = angular_velocity;
-                            filt.time = last_message_time;
-
-                            // determine how much variance should be added to
-                            // the old measurement due to drifting of drone
-                            float var_drift = square(float(res.time - last.time) * Error_increase_rate);
-
-                            // determine z and var_z
-                            float tmpv = 1.0F / (res.var_z + last.var_z + var_drift);
-                            filt.z = (last.z * res.var_z + res.z * (last.var_z + var_drift)) * tmpv;
-                            filt.var_z = res.var_z * (last.var_z + var_drift) * tmpv;
-
-                            // similar for xy and var_xy
-                            tmpv = 1.0F / (res.var_xy + last.var_xy + var_drift);
-                            filt.x = (last.x * res.var_xy + res.x * (last.var_xy + var_drift)) * tmpv;
-                            filt.y = (last.y * res.var_xy + res.y * (last.var_xy + var_drift)) * tmpv;
-                            filt.var_xy = res.var_xy * (last.var_xy + var_drift) * tmpv;
-
-                            // compute angle based on new xyz
-                            filt.angle_0 = Angle_average(Loc_data, filt.x, filt.y);
-
-                            // store in filtered stack
-                            Filtered_position_stack.push(filt);
-                        }
-                        // if there are no previous results or they are all too old, we start from the average of all positions
-                        else
-                        {
-                            float x0 = 0.0F;
-                            float y0 = 0.0F;
-                            for (auto &p : Loc_data)
+                            Relative_measurement_buffer.push_back(Loc_data);
+                            if (Relative_measurement_buffer.size() == Relative_measurement_buffer_max_size)
                             {
-                                x0 += p.pos[0];
-                                y0 += p.pos[1];
+                                LIT_G;
+
+                                // send me messages through serial!
+                                xTaskCreatePinnedToCore(
+                                    Print_data_task,
+                                    "Print_data_task",
+                                    20000,
+                                    NULL,
+                                    3,
+                                    NULL,
+                                    0);
                             }
-                            x0 /= float(Loc_data.size());
-                            y0 /= float(Loc_data.size());
-
-                            res = Execute_localization(Loc_data, x0, y0);
-                            // do not filter these two because they directly
-                            // determines the angle offset, and the offset is
-                            // computed by something like
-                            // (T-[T/rotation_time])*angular_velocity
-                            res.rotation_time = rotation_time;
-                            res.angular_velocity = angular_velocity;
-                            res.time = last_message_time;
-                            // store data in the non-filtered stack
-                            Position_stack.push(res);
-                            // because we don't have available previous info to
-                            // merge, we directly push into the filtered stack.
-                            Filtered_position_stack.push(res);
                         }
-
-                        vTaskSuspendAll();
-                        // notify all tasks that should be notified
-                        for (auto &hand : TaskHandle_list)
-                        {
-                            xTaskNotifyGive(hand);
-                        }
-                        xTaskResumeAll();
                     }
+#else
+                    // we localize when there are at least 2 beacons
+                    if (Loc_data.size() < 2)
+                    {
+                        continue;
+                    }
+
+                    // compute the mean of XY beacon positions
+                    float xmean = 0.0F;
+                    float ymean = 0.0F;
+                    for (auto &p : Loc_data)
+                    {
+                        xmean += p.pos[0];
+                        ymean += p.pos[1];
+                    }
+                    xmean /= float(Loc_data.size());
+                    ymean /= float(Loc_data.size());
+
+                    // last result
+                    Position_data last;
+
+                    // compute localization based purely on new data if there
+                    // are previous valid results, use that for guess of new
+                    // localization.
+                    //
+                    // @note should we do this is open to debate, because we are
+                    // almost sure that starting from the center will work, but
+                    // previous results might be in unfavourable position.
+                    //
+                    // determine if the old data is valid
+                    bool old_valid = true;
+                    if (Filtered_position_stack.n_elem == 0)
+                    {
+                        old_valid = false;
+                    }
+                    else
+                    {
+                        // peek last data
+                        Position_data last = Filtered_position_stack.peek_tail();
+
+                        if ((last_message_time - last.time) > Position_expire_time)
+                        {
+                            old_valid = false;
+                        }
+                        else if (square(last.x - xmean) + square(last.y - ymean) >= square(Max_Communication_distance))
+                        {
+                            old_valid = false;
+                        }
+                    }
+
+                    // new localization result before filtering
+                    Position_data res;
+
+                    // if we can use the old data
+                    // if (old_valid)
+                    // now let's be more conservative first and always start from the mean position
+                    if (false)
+                    {
+                        res = Execute_localization(Loc_data, last.x, last.y);
+                    }
+                    // if there are no previous results or they are all too
+                    // old, we start from the average of all positions
+                    else
+                    {
+                        res = Execute_localization(Loc_data, xmean, ymean);
+                    }
+
+                    // additional sanity check here. so if localization
+                    // result is too far from the beacon position, this
+                    // result cannot be valid, we don't push!
+                    if (square(res.x - xmean) + square(res.y - ymean) >= square(Max_Communication_distance))
+                    {
+                        continue;
+                    }
+
+                    // do not filter these two because they directly determines
+                    // the angle offset, and the offset is computed by something
+                    // like (T-[T/rotation_time])*angular_velocity
+                    res.rotation_time = rotation_time;
+                    res.angular_velocity = angular_velocity;
+                    res.time = last_message_time;
+                    // store data in the non-filtered stack
+                    Position_stack.push(res);
+
+                    // if the old data is valid, we use Kalman filter to merge
+                    // the old with the new before pushing into the filtered
+                    // stack.
+                    if (old_valid)
+                    {
+                        // now we start to kalmann filter stuff
+                        // new filtered result
+                        Position_data filt;
+                        // add some basic info
+                        filt.rotation_time = rotation_time;
+                        filt.angular_velocity = angular_velocity;
+                        filt.time = last_message_time;
+
+                        // determine how much variance should be added to the
+                        // old measurement due to drifting of drone
+                        float var_drift = square(float(res.time - last.time) * Error_increase_rate);
+
+                        // determine the variance after taking into consideration of error factor
+                        float var_z_scaled = Error_scaling_function(res.var_z, res.mean_error_factor);
+                        float var_xy_scaled = Error_scaling_function(res.var_xy, res.mean_error_factor);
+
+                        // determine z and var_z
+                        float tmpv = 1.0F / (var_z_scaled + last.var_z + var_drift);
+                        filt.z = (last.z * var_z_scaled + res.z * (last.var_z + var_drift)) * tmpv;
+                        filt.var_z = var_z_scaled * (last.var_z + var_drift) * tmpv;
+
+                        // similar for xy and var_xy
+                        tmpv = 1.0F / (var_xy_scaled + last.var_xy + var_drift);
+                        filt.x = (last.x * var_xy_scaled + res.x * (last.var_xy + var_drift)) * tmpv;
+                        filt.y = (last.y * var_xy_scaled + res.y * (last.var_xy + var_drift)) * tmpv;
+                        filt.var_xy = var_xy_scaled * (last.var_xy + var_drift) * tmpv;
+
+                        // compute angle based on new xyz
+                        filt.angle_0 = Angle_average(Loc_data, filt.x, filt.y);
+
+                        // store in filtered stack
+                        Filtered_position_stack.push(filt);
+                    }
+                    // if we don't have available previous info to merge,
+                    // directly push into the filtered stack.
+                    else
+                    {
+                        Filtered_position_stack.push(res);
+                    }
+
+                    vTaskSuspendAll();
+                    // notify all tasks that should be notified
+                    for (auto &hand : TaskHandle_list)
+                    {
+                        xTaskNotifyGive(hand);
+                    }
+                    xTaskResumeAll();
+#endif
                 }
             }
         } // anonymous namespace

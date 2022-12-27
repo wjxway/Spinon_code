@@ -104,16 +104,6 @@ void real_setup(void *pvParameters)
         NULL,
         0);
 
-    // // send me messages through serial!
-    // xTaskCreatePinnedToCore(
-    //     Send_message_task,
-    //     "sendmsgtask",
-    //     20000,
-    //     NULL,
-    //     3,
-    //     NULL,
-    //     0);
-
     // Light LED based on position
     TaskHandle_t LED_control_handle;
 

@@ -37,6 +37,11 @@ const uint32_t This_robot_ID = 12U;
  */
 #define RMT_TX_CHANNEL_COUNT 2
 
+/**
+ * @brief set to 1 to enter calibration mode where we output all raw data.
+ */
+#define LOCALIZATION_CALIBRATION_MODE 1
+
 namespace IR
 {
     namespace RX
@@ -46,8 +51,10 @@ namespace IR
          *
          * @note The actual left-right delay is T_right - T_left + angle_offset
          * / angular_velocity
+         * 
+         * @note not useful in calibration mode
          */
-        constexpr float Left_right_angle_offset = 4.8F/180.0F*M_PI;
+        constexpr float Left_right_angle_offset = 4.8F / 180.0F * M_PI;
 
         /**
          * @brief angle offset between the average of left and right receiver
@@ -55,8 +62,10 @@ namespace IR
          *
          * @note The actual center delay is T_center - T_avg + angle_offset /
          * angular_velocity
+         * 
+         * @note not useful in calibration mode
          */
-        constexpr float Center_angle_offset = 4.8F/180.0F*M_PI;
+        constexpr float Center_angle_offset = 4.8F / 180.0F * M_PI;
     } // namespace RX
 } // namespace IR
 

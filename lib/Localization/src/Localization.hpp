@@ -10,6 +10,9 @@
 
 /**
  * @brief should we be in calibration mode?
+ * 
+ * @note in calibration mode, we basically output all raw measurement data we
+ * obtained through serial. (buffer might be required)
  */
 // #define LOCALIZATION_CALIBRATION_MODE_ON 1
 
@@ -18,7 +21,8 @@ namespace IR
     namespace Localization
     {
         /**
-         * @brief priority of Localization task, it should be marginally smaller than Preprocess task, but still higher than the rest.
+         * @brief priority of Localization task, it should be marginally smaller
+         * than Preprocess task, but still higher than the rest.
          */
         constexpr uint32_t Localization_task_priority = RX::Preprocess_task_priority - 1;
 
@@ -48,6 +52,7 @@ namespace IR
             int64_t rotation_time;  // used to pre-treat the int64_t to prevent clipping in float.
             float angular_velocity; // angular velocity
             int64_t time;           // the time of data, which is the last measurement's time
+            float mean_error_factor;// only useful for individual measurements. this is the average of ((measurement-estimation)/measurement_error)^2, which partially indicates how good/poor our data quality is.
         };
 
         /**
