@@ -218,11 +218,16 @@ namespace IR
 		constexpr uint32_t RMT_clock_div = 2;
 
 		/**
+		 * @brief RMT_ticks_num = 1 << RMT_ticks_shift
+		 */
+		constexpr uint32_t RMT_ticks_shift = 3;
+
+		/**
 		 * @brief Ticks count of each pulse
 		 *
 		 * @note RMT_ticks_num * RMT_clock_div * 1/80MHz is the pulse width.
 		 */
-		constexpr uint32_t RMT_ticks_num = 8;
+		constexpr uint32_t RMT_ticks_num = 1 << RMT_ticks_shift;
 
 		/**
 		 * @brief padding ticks added before TX channel 2 signal for

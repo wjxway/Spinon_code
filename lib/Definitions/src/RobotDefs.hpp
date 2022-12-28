@@ -54,7 +54,7 @@ namespace IR
          * 
          * @note not useful in calibration mode
          */
-        constexpr float Left_right_angle_offset = 4.8F / 180.0F * M_PI;
+        constexpr float Left_right_angle_offset = 2.75F / 180.0F * M_PI;
 
         /**
          * @brief angle offset between the average of left and right receiver
@@ -65,7 +65,7 @@ namespace IR
          * 
          * @note not useful in calibration mode
          */
-        constexpr float Center_angle_offset = 4.8F / 180.0F * M_PI;
+        constexpr float Center_angle_offset = -0.3F / 180.0F * M_PI;
     } // namespace RX
 } // namespace IR
 

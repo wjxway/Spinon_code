@@ -545,7 +545,7 @@ namespace IR
                     // change owner state, disable rx
                     RMT.conf_ch[RMT_RX_channel_1].conf1.rx_en = 0;
                     RMT.conf_ch[RMT_RX_channel_1].conf1.mem_owner = RMT_MEM_OWNER_TX;
-                    intr_st_1 += 1;
+                    intr_st_1 += 0b001U;
 
                     // RMT storage pointer
                     item_1 = RMTMEM.chan[RMT_RX_channel_1].data32;
@@ -557,7 +557,7 @@ namespace IR
                     // change owner state, disable rx
                     RMT.conf_ch[RMT_RX_channel_2].conf1.rx_en = 0;
                     RMT.conf_ch[RMT_RX_channel_2].conf1.mem_owner = RMT_MEM_OWNER_TX;
-                    intr_st_1 += 2;
+                    intr_st_1 += 0b010U;
 
                     // RMT storage pointer
                     item_2 = RMTMEM.chan[RMT_RX_channel_2].data32;
@@ -570,7 +570,7 @@ namespace IR
                     // change owner state, disable rx
                     RMT.conf_ch[RMT_RX_channel_3].conf1.rx_en = 0;
                     RMT.conf_ch[RMT_RX_channel_3].conf1.mem_owner = RMT_MEM_OWNER_TX;
-                    intr_st_1 += 4;
+                    intr_st_1 += 0b100U;
 
                     // RMT storage pointer
                     item_3 = RMTMEM.chan[RMT_RX_channel_3].data32;
@@ -581,82 +581,80 @@ namespace IR
                 uint32_t raw;
 
 #if MSG_SIMPLE_LED_ON
-                if(intr_st_1)
+                if (intr_st_1)
                 {
                     LIT_B;
                 }
 #endif
 
                 // parse RMT item into a uint32_t
-                if ((intr_st_1 & 1) && Parse_RMT_item(item_1, &raw))
+                if ((intr_st_1 & 1U) && Parse_RMT_item(item_1, &raw))
                 {
 #if MSG_LED_ON
                     LIT_R;
-                    if (intr_st_1 & 2)
-                        LIT_G;
-                    else
-                        QUENCH_G;
-                    if (intr_st_1 & 4)
-                        LIT_B;
-                    else
-                        QUENCH_B;
 #endif
 
                     last_RX_time = rec_time;
                     // add element to the pool if parsing is successful
-                    raw_msg_buffer.push(Trans_info{raw, intr_st_1, rec_time});
+                    raw_msg_buffer.push(Trans_info{raw, 0b001U, rec_time});
                     // this_valid = true;
                 }
+#if MSG_LED_ON
+                else
+                {
+                    QUENCH_R
+                }
+#endif
+
 #if RMT_RX_CHANNEL_COUNT >= 2
-                else if ((intr_st_1 & 2) && Parse_RMT_item(item_2, &raw))
+                if ((intr_st_1 & 2) && Parse_RMT_item(item_2, &raw))
                 {
 #if MSG_LED_ON
-                    QUENCH_R;
                     LIT_G;
-                    if (intr_st_1 & 4)
-                        LIT_B;
-                    else
-                        QUENCH_B;
 #endif
 
                     last_RX_time = rec_time;
                     // add element to the pool if parsing is successful
-                    raw_msg_buffer.push(Trans_info{raw, intr_st_1 & 0b110, rec_time});
+                    raw_msg_buffer.push(Trans_info{raw, 0b010U, rec_time});
                     // this_valid = true;
                 }
+#if MSG_LED_ON
+                else
+                {
+                    QUENCH_G
+                }
 #endif
+#endif
+
 #if RMT_RX_CHANNEL_COUNT == 3
-                else if ((intr_st_1 & 4) && Parse_RMT_item(item_3, &raw))
+                if ((intr_st_1 & 4) && Parse_RMT_item(item_3, &raw))
                 {
 #if MSG_LED_ON
-                    QUENCH_R;
-                    QUENCH_G;
                     LIT_B;
 #endif
                     last_RX_time = rec_time;
                     // add element to the pool if parsing is successful
-                    raw_msg_buffer.push(Trans_info{raw, 0b100, rec_time});
+                    raw_msg_buffer.push(Trans_info{raw, 0b100U, rec_time});
                     // this_valid = true;
                 }
-#endif
+#if MSG_LED_ON
                 else
                 {
-#if MSG_LED_ON
-                    QUENCH_R;
-                    QUENCH_G;
-                    QUENCH_B;
-#endif
+                    QUENCH_B
                 }
+#endif
+
+#endif
 
                 // reset memory and owner state, enable rx
-                if (intr_st_1 & 1)
+                if (intr_st_1 & 0b001U)
                 {
                     RMT.conf_ch[RMT_RX_channel_1].conf1.mem_wr_rst = 1;
                     RMT.conf_ch[RMT_RX_channel_1].conf1.mem_owner = RMT_MEM_OWNER_RX;
                     RMT.conf_ch[RMT_RX_channel_1].conf1.rx_en = 1;
                 }
 #if RMT_RX_CHANNEL_COUNT >= 2
-                if (intr_st_1 & 2)
+                if (intr_st_1 & 0b010U)
                 {
                     RMT.conf_ch[RMT_RX_channel_2].conf1.mem_wr_rst = 1;
                     RMT.conf_ch[RMT_RX_channel_2].conf1.mem_owner = RMT_MEM_OWNER_RX;
@@ -664,7 +662,7 @@ namespace IR
                 }
 #endif
 #if RMT_RX_CHANNEL_COUNT == 3
-                if (intr_st_1 & 4)
+                if (intr_st_1 & 0b100U)
                 {
                     RMT.conf_ch[RMT_RX_channel_3].conf1.mem_wr_rst = 1;
                     RMT.conf_ch[RMT_RX_channel_3].conf1.mem_owner = RMT_MEM_OWNER_RX;
