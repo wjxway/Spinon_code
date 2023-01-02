@@ -33,7 +33,7 @@ namespace IR
              * @brief the minimum tolerable timing for distance measurements is
              * 7 degrees, corresponding to a distance of ~42cm
              */
-            constexpr float Min_valid_angle = 7.0F / 180.0F * M_PI;
+            constexpr float Min_valid_angle = 0.13F;
             /**
              * @brief the maximum tolerable timing is 60 degrees, corresponding
              * to two robots touching each other.
@@ -47,7 +47,7 @@ namespace IR
              * received a message, which is related to the consecutive TX time
              * and the geometry.
              */
-            constexpr float Angle_error = 0.8F / 180.0F * M_PI;
+            constexpr float Angle_error = 1.0F / 180.0F * M_PI;
 
             /**
              * @brief error of relative angle
@@ -56,7 +56,7 @@ namespace IR
              * for angle difference between robots, and this will be influenced
              * by the rotation speed variance.
              */
-            constexpr float Relative_angle_error = 3.0F / 180.0F * M_PI;
+            constexpr float Relative_angle_error = 4.0F / 180.0F * M_PI;
 
             /**
              * @brief tilting angle of center emitter, 1 / tangent value. It is
@@ -139,26 +139,55 @@ namespace IR
             Circbuffer<Position_data, Position_stack_length> Filtered_position_stack;
 
             /**
+             * @brief compute distance based on angle
+             *
+             * @param LR_angle difference between angle received by left and
+             * right receiver.
+             * @return constexpr float distance estimation in mm
+             */
+            constexpr float Distance_expectation(const float LR_angle)
+            {
+                return 59.58F / LR_angle - 14.22F;
+            }
+
+            /**
              * @brief compute distance error based on the distance
              *
-             * @param distance distance expectation
-             * @return constexpr uint16_t error estimation
+             * @param LR_angle difference between angle received by left and
+             * right receiver.
+             * @return constexpr float error estimation
              */
-            constexpr float Distance_error(const float distance)
+            constexpr float Distance_error(const float LR_angle)
             {
-                return Distance_error_mult * distance * distance;
+                return Distance_error_mult * square(Distance_expectation(LR_angle));
+            }
+
+            /**
+             * @brief compute elevation based on distance and elevation angle
+             *
+             * @param LR_angle difference between angle received by left and
+             * right receiver.
+             * @param Cent_angle difference between angle received by center
+             * and average of LR receiver.
+             * @return constexpr float elevation estimation
+             */
+            constexpr float Elevation_expectation(const float LR_angle, const float Cent_angle)
+            {
+                return Distance_expectation(LR_angle) * tan(Cent_angle) * Tilting_angle_multiplyer - 25.0F;
             }
 
             /**
              * @brief compute elevation error based on the distance and elevation
              *
-             * @param distance distance expectation
-             * @param elevation elevation expectation
-             * @return constexpr uint32_t error estimation
+             * @param LR_angle difference between angle received by left and
+             * right receiver.
+             * @param Cent_angle difference between angle received by center
+             * and average of LR receiver.
+             * @return constexpr float error estimation
              */
-            constexpr float Elevation_error(const float distance, const float elevation)
+            constexpr float Elevation_error(const float LR_angle, const float Cent_angle)
             {
-                return (Tilting_angle_multiplyer * Angle_error * (distance + elevation * elevation / distance) + abs(elevation) * Distance_error_mult * distance);
+                return (Tilting_angle_multiplyer * sqrt(square(tan(Cent_angle) * Distance_error(LR_angle)) + square(Distance_expectation(LR_angle) * Angle_error / cos(Cent_angle))));
             }
 
             // /**
@@ -412,15 +441,12 @@ namespace IR
 
 #if LOCALIZATION_CALIBRATION_MODE
             size_t record_count = 0U;
-            constexpr size_t start_record_count = 500U;
+            constexpr size_t start_record_count = 300U;
             constexpr size_t Relative_measurement_buffer_max_size = 300U;
             std::vector<std::vector<Relative_position_data>> Relative_measurement_buffer;
 
             void Print_data_task(void *pvParameters)
             {
-                // reserve position
-                Relative_measurement_buffer.reserve(Relative_measurement_buffer_max_size + 1);
-
                 while (true)
                 {
                     vTaskDelay(50);
@@ -521,7 +547,7 @@ namespace IR
                     // iterate till either the previous message, or end before
                     // the last
                     // rotation
-                    for (size_t j = 0U; j < ((last_index) ? last_index : (i - 1)); j++)
+                    for (size_t j = 0U; j < ((last_index) ? last_index : i); j++)
                     {
                         // check if this a second-oldest message
                         if (time_list[i].robot_ID == time_list[j].robot_ID)
@@ -759,8 +785,18 @@ namespace IR
                             this_Loc_data.elev = (time_list[i].time_arr[0] - avg_time) * angular_velocity;
                             this_Loc_data.elev_err = 1.0F;
 #else
+                            // note that here we directly use the compensated
+                            // angle data, computed using LR-0.12 Cent
+                            int64_t avg_time = ((time_list[i].time_arr[1] + time_list[i].time_arr[2]) >> 1);
+                            // timing difference between left and right receiver.
+                            float LR_diff = float(int64_t(time_list[i].time_arr[1] - time_list[i].time_arr[2])) * angular_velocity;
+                            // timing difference between center and average of LR.
+                            float Cent_diff = float(time_list[i].time_arr[0] - avg_time) * angular_velocity;
+
+                            float Compensated_LR_diff = LR_diff + IR::RX::LR_angle_compensation * Cent_diff;
+
                             // check if timing data is reasonable
-                            float ang_diff = float(int64_t(time_list[i].time_arr[1] - time_list[i].time_arr[2])) * angular_velocity + RX::Left_right_angle_offset;
+
                             // because the robot is rotating anti-clockwise when
                             // viewed from top, then left receiver will see the
                             // emitter first. thus the first reception time of
@@ -769,29 +805,27 @@ namespace IR
                             // Max_valid_angle, which is basic for sanity, we
                             // record its angle info. but not necessarily
                             // distance info.
-                            if (ang_diff > 0 && ang_diff < Max_valid_angle)
+                            if (Compensated_LR_diff > 0.0F && Compensated_LR_diff < Max_valid_angle)
                             {
-                                int64_t avg_time = ((time_list[i].time_arr[1] + time_list[i].time_arr[2]) >> 1);
-
                                 // update last_message_time if the new one is later
                                 if (avg_time - last_message_time > 0)
                                 {
                                     last_message_time = avg_time;
                                 }
 
-                                this_Loc_data.angle = float(avg_time % rotation_time) * angular_velocity;
+                                this_Loc_data.angle = float(avg_time % rotation_time) * angular_velocity + IR::RX::Orientation_compensation * LR_diff;
                                 this_Loc_data.angle_err = Relative_angle_error;
                                 // we only record the distance info if the
                                 // distance could be usefully accurate (~ <42cm)
                                 // you can adjust that threshold for using the
                                 // distance information or not by adjusting the
                                 // Min/Max valid angle
-                                if (ang_diff > Min_valid_angle)
+                                if (Compensated_LR_diff > Min_valid_angle)
                                 {
-                                    this_Loc_data.dist = (Left_right_distance / (2.0F * sin(ang_diff * 0.5F)));
-                                    this_Loc_data.dist_err = Distance_error(this_Loc_data.dist);
-                                    this_Loc_data.elev = this_Loc_data.dist * tanf((time_list[i].time_arr[0] - avg_time) * angular_velocity * Tilting_angle_multiplyer + RX::Center_angle_offset);
-                                    this_Loc_data.elev_err = Elevation_error(this_Loc_data.dist, this_Loc_data.elev);
+                                    this_Loc_data.dist = Distance_expectation(Compensated_LR_diff);
+                                    this_Loc_data.dist_err = Distance_error(Compensated_LR_diff);
+                                    this_Loc_data.elev = Elevation_expectation(Compensated_LR_diff,Cent_diff);
+                                    this_Loc_data.elev_err = Elevation_error(Compensated_LR_diff,Cent_diff);
                                 }
                                 else
                                 {

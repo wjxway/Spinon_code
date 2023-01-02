@@ -29,7 +29,7 @@ void LED_off_task(void *pvParameters);
 /**
  * @brief send me some messages!
  */
-void Send_message_task(void *pvParameters);
+void Buffer_data_task(void *pvParameters);
 
 /**
  * @brief convert localization information to LED states and manages LED_FB_ISR

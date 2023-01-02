@@ -577,8 +577,14 @@ namespace IR
                 }
 #endif
 
+                // mask of data bits
+                constexpr uint32_t data_mask = (1U << (32 - 1)) - 1U;
+                constexpr uint32_t emitter_mask = (1U << (32 - 1));
+
                 // parsing output buffer
-                uint32_t raw;
+                uint32_t raw, raw_temp, emitter_pos = 0U;
+                // bit i indicates whether signal from channel i is valid.
+                uint32_t valid = 0U;
 
 #if MSG_SIMPLE_LED_ON
                 if (intr_st_1)
@@ -587,64 +593,82 @@ namespace IR
                 }
 #endif
 
-                // parse RMT item into a uint32_t
-                if ((intr_st_1 & 1U) && Parse_RMT_item(item_1, &raw))
+                do
                 {
+                    // parse RMT item into a uint32_t
+                    if ((intr_st_1 & 0b001U) && Parse_RMT_item(item_1, &raw))
+                    {
 #if MSG_LED_ON
-                    LIT_R;
+                        LIT_R;
 #endif
-
-                    last_RX_time = rec_time;
-                    // add element to the pool if parsing is successful
-                    raw_msg_buffer.push(Trans_info{raw, 0b001U, rec_time});
-                    // this_valid = true;
-                }
+                        emitter_pos = emitter_mask & raw;
+                        raw &= data_mask;
+                        valid = 0b001U;
+                    }
 #if MSG_LED_ON
-                else
-                {
-                    QUENCH_R
-                }
+                    else
+                    {
+                        QUENCH_R;
+                    }
 #endif
 
 #if RMT_RX_CHANNEL_COUNT >= 2
-                if ((intr_st_1 & 2) && Parse_RMT_item(item_2, &raw))
-                {
+                    if ((intr_st_1 & 0b010U) && Parse_RMT_item(item_2, &raw_temp))
+                    {
 #if MSG_LED_ON
-                    LIT_G;
+                        LIT_G;
 #endif
 
-                    last_RX_time = rec_time;
-                    // add element to the pool if parsing is successful
-                    raw_msg_buffer.push(Trans_info{raw, 0b010U, rec_time});
-                    // this_valid = true;
-                }
+                        raw_temp &= data_mask;
+                        // if both data are valid yet inconsistent, just ignore
+                        if (valid && raw_temp != raw)
+                        {
+                            break;
+                        }
+
+                        raw = raw_temp;
+                        valid |= 0b010U;
+                    }
 #if MSG_LED_ON
-                else
-                {
-                    QUENCH_G
-                }
+                    else
+                    {
+                        QUENCH_G;
+                    }
 #endif
 #endif
 
 #if RMT_RX_CHANNEL_COUNT == 3
-                if ((intr_st_1 & 4) && Parse_RMT_item(item_3, &raw))
-                {
+                    if ((intr_st_1 & 0b100U) && Parse_RMT_item(item_3, &raw_temp))
+                    {
 #if MSG_LED_ON
-                    LIT_B;
+                        LIT_B;
 #endif
-                    last_RX_time = rec_time;
-                    // add element to the pool if parsing is successful
-                    raw_msg_buffer.push(Trans_info{raw, 0b100U, rec_time});
-                    // this_valid = true;
-                }
+                        raw_temp &= data_mask;
+                        // if both data are valid yet inconsistent, just ignore
+                        if (valid && raw_temp != raw)
+                        {
+                            break;
+                        }
+
+                        raw = raw_temp;
+                        valid |= 0b100U;
+                    }
 #if MSG_LED_ON
-                else
-                {
-                    QUENCH_B
-                }
+                    else
+                    {
+                        QUENCH_B;
+                    }
+#endif
 #endif
 
-#endif
+                    if (valid)
+                    {
+                        last_RX_time = rec_time;
+                        // add element to the pool if parsing is successful and consistent
+                        raw_msg_buffer.push(Trans_info{raw | emitter_pos, valid, rec_time});
+                    }
+
+                } while (false);
 
                 // reset memory and owner state, enable rx
                 if (intr_st_1 & 0b001U)
@@ -685,9 +709,10 @@ namespace IR
                 // }
 
                 // // test end pulse
-                // delayhigh500ns(TEST_PIN);
-                // clrbit(TEST_PIN);
-                // clrbit(TEST_PIN_2);
+                // DEBUG_C(
+                // delayhigh500ns(DEBUG_PIN_1);
+                // clrbit(DEBUG_PIN_1);
+                // )
             }
 
             /**

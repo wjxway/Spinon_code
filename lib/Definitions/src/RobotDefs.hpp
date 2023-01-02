@@ -40,7 +40,7 @@ const uint32_t This_robot_ID = 12U;
 /**
  * @brief set to 1 to enter calibration mode where we output all raw data.
  */
-#define LOCALIZATION_CALIBRATION_MODE 1
+// #define LOCALIZATION_CALIBRATION_MODE 1
 
 namespace IR
 {
@@ -49,23 +49,22 @@ namespace IR
         /**
          * @brief angle offset between left and right receiver channel in rad
          *
-         * @note The actual left-right delay is T_right - T_left + angle_offset
-         * / angular_velocity
+         * @note The actual left-right angle is LR_diff + LR_angle_compensation
+         * * Cent_diff
          * 
          * @note not useful in calibration mode
          */
-        constexpr float Left_right_angle_offset = 2.75F / 180.0F * M_PI;
+        constexpr float LR_angle_compensation = -0.12F;
 
         /**
-         * @brief angle offset between the average of left and right receiver
-         * channel and the center receiver channel in rad
-         *
-         * @note The actual center delay is T_center - T_avg + angle_offset /
-         * angular_velocity
+         * @brief orientation angle offset.
+         * 
+         * @note The actual orientation angle is angle +
+         * Orientation_compensation * LR_diff
          * 
          * @note not useful in calibration mode
          */
-        constexpr float Center_angle_offset = -0.3F / 180.0F * M_PI;
+        constexpr float Orientation_compensation = 0.18F;
     } // namespace RX
 } // namespace IR
 
