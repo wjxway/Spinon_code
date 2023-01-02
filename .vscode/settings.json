@@ -1,7 +1,6 @@
 {
     "files.associations": {
         "*.h": "c",
-        "*.hpp": "cpp",
         "array": "cpp",
         "atomic": "cpp",
         "*.tcc": "cpp",
@@ -14,15 +13,18 @@
         "cstdio": "cpp",
         "cstdlib": "cpp",
         "cstring": "cpp",
+        "ctime": "cpp",
         "cwchar": "cpp",
         "cwctype": "cpp",
         "deque": "cpp",
         "unordered_map": "cpp",
+        "unordered_set": "cpp",
         "vector": "cpp",
         "exception": "cpp",
         "algorithm": "cpp",
         "functional": "cpp",
         "iterator": "cpp",
+        "map": "cpp",
         "memory": "cpp",
         "memory_resource": "cpp",
         "numeric": "cpp",
@@ -36,7 +38,9 @@
         "utility": "cpp",
         "fstream": "cpp",
         "initializer_list": "cpp",
+        "iomanip": "cpp",
         "iosfwd": "cpp",
+        "iostream": "cpp",
         "istream": "cpp",
         "limits": "cpp",
         "new": "cpp",
@@ -45,8 +49,6 @@
         "stdexcept": "cpp",
         "streambuf": "cpp",
         "cinttypes": "cpp",
-        "typeinfo": "cpp",
-        "map": "cpp",
-        "iostream": "cpp"
+        "typeinfo": "cpp"
     }
 }

@@ -2,8 +2,9 @@
  * @file Tasks.hpp
  * @brief User defined tasks to run
  */
-#ifndef _TASKS_HPP_
-#define _TASKS_HPP_
+#ifndef TASKS_HPP__
+#define TASKS_HPP__
+
 #include "Arduino.h"
 
 /**
@@ -28,16 +29,13 @@ void LED_off_task(void *pvParameters);
 /**
  * @brief send me some messages!
  */
-void Send_message_task(void *pvParameters);
+void Buffer_data_task(void *pvParameters);
 
 /**
- * @brief start LED based on robot's position
+ * @brief convert localization information to LED states and manages LED_FB_ISR
+ * 
+ * @param pvParameters 
  */
-void FB_LED_Init();
-
-/**
- * @brief try localization (a fairly simple and messy solution)
- */
-void Simple_localization_task(void *pvParameters);
+void LED_control_task(void *pvParameters);
 
 #endif
