@@ -10,7 +10,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
-// #include <esp_timer.h>
+#include <esp_timer.h>
 
 #define _USE_MATH_DEFINES
 #include <cmath>
@@ -335,16 +335,6 @@ namespace
     };
 
     /**
-     * @brief a buffer that stores when to turn on and off LED!
-     */
-    Circbuffer<LED_timing_t, 10> LED_timing_buffer_1, LED_timing_buffer_2;
-
-    /**
-     * @brief trigger timer for LED indicator
-     */
-    hw_timer_t *LED_trigger_timer_1, *LED_trigger_timer_2;
-
-    /**
      * @brief relative angle of LED
      */
     constexpr float LED_angle_offset = 0.8818719385800353F;
@@ -354,99 +344,89 @@ namespace
      */
     constexpr int64_t Delay_min_time = 50LL;
 
-    /**
-     * @brief last timing used by the interrupt
-     */
-    LED_timing_t Last_LED_timing_1, Last_LED_timing_2;
+    struct LED_callback_args
+    {
+        bool LED_state;                      // current state of LED, 0 (initial state) for off, 1 for on
+        LED_timing_t Last_LED_timing;        // last timing info used by the callback
+        int64_t Last_trig_time;              // last time we updated the trigger info
+        int64_t Next_trig_time;              // when will we trig next time
+        int LED_num;                         // 0,1,2 for R,G,B respectively
+        Circbuffer<LED_timing_t, 5> *buffer; // timing info buffer
+        esp_timer_handle_t handle;           // callback handler
+    };
 
-    /**
-     * @brief 0 for off, 1 for on
-     *
-     * @note initially it should be 0
-     */
-    bool LED_state_1 = false, LED_state_2 = false;
+    LED_callback_args callback_args_1, callback_args_2, callback_args_3;
+    Circbuffer<LED_timing_t, 5> timing_buf_1, timing_buf_2, timing_buf_3;
 
     /**
      * @brief a task that switch on and off LED based on robot's position
      *
-     * @note not finished!
+     * @param void* v_arg arguments
      */
-    void IRAM_ATTR FB_LED_ISR_1()
+    void IRAM_ATTR LED_callback(void *v_arg)
     {
+        uint64_t t_now = esp_timer_get_time();
+
+        LED_callback_args *arg = (LED_callback_args *)v_arg;
+
         // how long should we delay before next switch
         uint64_t next_time;
 
         // this is for indication of XY position feedback.
         // if currently LED is on, then we should turn it off, and also setup the
         // time when it should be on again. Let's use green LED only here.
-        if (LED_state_1)
+        if (arg->LED_state)
         {
-            QUENCH_R;
-            LED_state_1 = 0;
+            switch (arg->LED_num)
+            {
+            case 0:
+                QUENCH_R;
+                break;
+            case 1:
+                QUENCH_G;
+                break;
+            case 2:
+                QUENCH_B;
+                break;
+            }
+            arg->LED_state = false;
 
             // get localization data
-            LED_timing_t temp = LED_timing_buffer_1.peek_tail();
+            LED_timing_t temp = arg->buffer->peek_tail();
             // now this temp is used, update Last_LED_timing
-            Last_LED_timing_1 = temp;
+            arg->Last_LED_timing = temp;
 
             // update time
-            next_time = (temp.t_start - (esp_timer_get_time() % temp.period)) % temp.period;
+            // make sure that we won't trigger again in 1/4 cycles
+            next_time = ((temp.t_start - (t_now % temp.period) - (temp.period >> 2)) % temp.period) + (temp.period >> 2);
         }
         else
         {
-            LIT_R;
-            LED_state_1 = 1;
-            next_time = Last_LED_timing_1.duration;
+            switch (arg->LED_num)
+            {
+            case 0:
+                LIT_R;
+                break;
+            case 1:
+                LIT_G;
+                break;
+            case 2:
+                LIT_B;
+                break;
+            }
+            arg->LED_state = true;
+            next_time = arg->Last_LED_timing.duration;
         }
 
         // not sure if this is necessary, but we will add it anyways, it's not gonna influence anything.
         next_time = (next_time < Delay_min_time) ? Delay_min_time : next_time;
         // reset timer
-        timerRestart(LED_trigger_timer_1);
-        timerAlarmWrite(LED_trigger_timer_1, next_time, false);
-        timerAlarmEnable(LED_trigger_timer_1);
+        arg->Last_trig_time = t_now;
+        arg->Next_trig_time = t_now + next_time;
+        esp_timer_stop(arg->handle);
+        esp_timer_start_once(arg->handle, next_time);
     }
 
-    /**
-     * @brief a task that switch on and off LED based on robot's position
-     *
-     * @note not finished!
-     */
-    void IRAM_ATTR FB_LED_ISR_2()
-    {
-        // how long should we delay before next switch
-        uint64_t next_time;
-
-        // this is for indication of XY position feedback.
-        // if currently LED is on, then we should turn it off, and also setup the
-        // time when it should be on again. Let's use green LED only here.
-        if (LED_state_2)
-        {
-            QUENCH_G;
-            LED_state_2 = 0;
-
-            // get localization data
-            LED_timing_t temp = LED_timing_buffer_2.peek_tail();
-            // now this temp is used, update Last_LED_timing
-            Last_LED_timing_2 = temp;
-
-            // update time
-            next_time = (temp.t_start - (esp_timer_get_time() % temp.period)) % temp.period;
-        }
-        else
-        {
-            LIT_G;
-            LED_state_2 = 1;
-            next_time = Last_LED_timing_2.duration;
-        }
-
-        // not sure if this is necessary, but we will add it anyways, it's not gonna influence anything.
-        next_time = (next_time < Delay_min_time) ? Delay_min_time : next_time;
-        // reset timer
-        timerRestart(LED_trigger_timer_2);
-        timerAlarmWrite(LED_trigger_timer_2, next_time, false);
-        timerAlarmEnable(LED_trigger_timer_2);
-    }
 } // anonymous namespace
 
 void LED_control_task(void *pvParameters)
@@ -551,11 +531,11 @@ void LED_control_task(void *pvParameters)
 
         // update coefficient, choose the time coefficient to be approximately
         // averaging over 0.5s
-        float update_coef = clip(2e-6F * float(pos_0.time - D_last_update_time), 0.0F, 1.0F);
+        float update_coef = clip(4e-6F * float(pos_0.time - D_last_update_time), 0.0F, 1.0F);
 
-        A_comp[0] = (1.0 - update_coef) * A_comp[0] + update_coef * 1.0e-6F * (D_comp[0] - old_D_comp[0]) / float(pos_0.time - D_last_update_time);
-        A_comp[1] = (1.0 - update_coef) * A_comp[1] + update_coef * 1.0e-6F * (D_comp[1] - old_D_comp[1]) / float(pos_0.time - D_last_update_time);
-        A_comp[2] = (1.0 - update_coef) * A_comp[2] + update_coef * 1.0e-6F * (D_comp[2] - old_D_comp[2]) / float(pos_0.time - D_last_update_time);
+        A_comp[0] = (1.0 - update_coef) * A_comp[0] + update_coef * 1.0e6F * (D_comp[0] - old_D_comp[0]) / float(pos_0.time - D_last_update_time);
+        A_comp[1] = (1.0 - update_coef) * A_comp[1] + update_coef * 1.0e6F * (D_comp[1] - old_D_comp[1]) / float(pos_0.time - D_last_update_time);
+        A_comp[2] = (1.0 - update_coef) * A_comp[2] + update_coef * 1.0e6F * (D_comp[2] - old_D_comp[2]) / float(pos_0.time - D_last_update_time);
 
         D_last_update_time = pos_0.time;
 
@@ -564,99 +544,150 @@ void LED_control_task(void *pvParameters)
         //     FB_val[i] = K_P * P_comp[i] + K_I * I_comp[i] + K_D * D_comp[i];
         // }
 
-        // compute timing for ISR_1
-        LED_timing_t ISR_dat_1;
-
-        ISR_dat_1.duration = int64_t(0.005F * norm(P_comp[0], P_comp[1]) / pos_0.angular_velocity);
-        ISR_dat_1.t_start = pos_0.rotation_time * 5 - ISR_dat_1.duration / 2 - int64_t((LED_angle_offset + pos_0.angle_0 - atan2f(P_comp[1], P_comp[0])) / pos_0.angular_velocity);
-        ISR_dat_1.period = pos_0.rotation_time;
-
         // cap the duration!
         constexpr int64_t Duration_max_time = 25000;
-        ISR_dat_1.duration = (ISR_dat_1.duration > Duration_max_time) ? Duration_max_time : ISR_dat_1.duration;
+
+        // compute timing for callback_1
+        LED_timing_t Callback_dat_1;
+
+        Callback_dat_1.duration = clip(int64_t(0.005F * norm(P_comp[0], P_comp[1]) / pos_0.angular_velocity), 0LL, Duration_max_time);
+        Callback_dat_1.t_start = pos_0.rotation_time * 5 - Callback_dat_1.duration / 2 - int64_t((LED_angle_offset + pos_0.angle_0 - atan2f(P_comp[1], P_comp[0])) / pos_0.angular_velocity);
+        Callback_dat_1.period = pos_0.rotation_time;
 
         // push inside buffer
-        LED_timing_buffer_1.push(ISR_dat_1);
+        timing_buf_1.push(Callback_dat_1);
 
-        // compute timing for ISR_2
-        LED_timing_t ISR_dat_2;
+        // compute timing for callback_2
+        LED_timing_t Callback_dat_2;
 
-        ISR_dat_2.duration = int64_t(0.005F * norm(D_comp[0], D_comp[1]) / pos_0.angular_velocity);
-        ISR_dat_2.t_start = pos_0.rotation_time * 5 - ISR_dat_2.duration / 2 - int64_t((LED_angle_offset + pos_0.angle_0 - atan2f(D_comp[1], D_comp[0])) / pos_0.angular_velocity);
-        ISR_dat_2.period = pos_0.rotation_time;
-
-        // cap the duration!
-        ISR_dat_2.duration = (ISR_dat_2.duration > Duration_max_time) ? Duration_max_time : ISR_dat_2.duration;
+        Callback_dat_2.duration = clip(int64_t(0.005F * norm(D_comp[0], D_comp[1]) / pos_0.angular_velocity), 0LL, Duration_max_time);
+        Callback_dat_2.t_start = pos_0.rotation_time * 5 - Callback_dat_2.duration / 2 - int64_t((LED_angle_offset + pos_0.angle_0 - atan2f(D_comp[1], D_comp[0])) / pos_0.angular_velocity);
+        Callback_dat_2.period = pos_0.rotation_time;
 
         // push inside buffer
-        LED_timing_buffer_2.push(ISR_dat_2);
+        timing_buf_2.push(Callback_dat_2);
+
+        // compute timing for callback_3
+        LED_timing_t Callback_dat_3;
+
+        Callback_dat_3.duration = clip(int64_t(0.005F * norm(A_comp[0], A_comp[1]) / pos_0.angular_velocity), 0LL, Duration_max_time);
+        Callback_dat_3.t_start = pos_0.rotation_time * 5 - Callback_dat_3.duration / 2 - int64_t((LED_angle_offset + pos_0.angle_0 - atan2f(A_comp[1], A_comp[0])) / pos_0.angular_velocity);
+        Callback_dat_3.period = pos_0.rotation_time;
+
+        // push inside buffer
+        timing_buf_3.push(Callback_dat_3);
 
         // check if first time, if so, start ISR
         if (!ISR_started)
         {
             ISR_started = true;
 
-            // last led timing is this!
-            Last_LED_timing_1 = ISR_dat_1;
+            // Callback/ISR 1
+            callback_args_1.buffer = &timing_buf_1;
+            callback_args_1.Last_LED_timing = Callback_dat_1;
+            callback_args_1.LED_num = 0;
+            callback_args_1.LED_state = false;
+            callback_args_1.Last_trig_time = 0;
+            callback_args_1.Next_trig_time = 0;
 
-            LED_trigger_timer_1 = timerBegin(1, 80, true);
-            // add timer interrupt
-            timerAttachInterrupt(LED_trigger_timer_1, &FB_LED_ISR_1, true);
+            const esp_timer_create_args_t oneshot_timer_callback_args_1 = {
+                .callback = &LED_callback,
+                /* argument specified here will be passed to timer callback function */
+                .arg = (void *)(&callback_args_1),
+                .dispatch_method = ESP_TIMER_TASK,
+                .name = "position"};
 
-            // last led timing is this!
-            Last_LED_timing_2 = ISR_dat_2;
+            esp_timer_create(&oneshot_timer_callback_args_1, &(callback_args_1.handle));
 
-            LED_trigger_timer_2 = timerBegin(2, 80, true);
-            // add timer interrupt
-            timerAttachInterrupt(LED_trigger_timer_2, &FB_LED_ISR_2, true);
+            // Callback/ISR 2
+            callback_args_2.buffer = &timing_buf_2;
+            callback_args_2.Last_LED_timing = Callback_dat_2;
+            callback_args_2.LED_num = 1;
+            callback_args_2.LED_state = false;
+            callback_args_2.Last_trig_time = 0;
+            callback_args_2.Next_trig_time = 0;
+
+            const esp_timer_create_args_t oneshot_timer_callback_args_2 = {
+                .callback = &LED_callback,
+                /* argument specified here will be passed to timer callback function */
+                .arg = (void *)(&callback_args_2),
+                .dispatch_method = ESP_TIMER_TASK,
+                .name = "velocity"};
+
+            esp_timer_create(&oneshot_timer_callback_args_2, &(callback_args_2.handle));
+
+            // Callback/ISR 3
+            callback_args_3.buffer = &timing_buf_3;
+            callback_args_3.Last_LED_timing = Callback_dat_3;
+            callback_args_3.LED_num = 2;
+            callback_args_3.LED_state = false;
+            callback_args_3.Last_trig_time = 0;
+            callback_args_3.Next_trig_time = 0;
+
+            const esp_timer_create_args_t oneshot_timer_callback_args_3 = {
+                .callback = &LED_callback,
+                /* argument specified here will be passed to timer callback function */
+                .arg = (void *)(&callback_args_3),
+                .dispatch_method = ESP_TIMER_TASK,
+                .name = "acceleration"};
+
+            esp_timer_create(&oneshot_timer_callback_args_3, &(callback_args_3.handle));
         }
 
         // how long before/after the trigger time should we prevent triggering
         // in us
-        constexpr uint64_t No_operation_time = 500ULL;
+        constexpr uint64_t No_operation_time = 200ULL;
 
         // updating timer info
-        int64_t t_delay = (ISR_dat_1.t_start - (esp_timer_get_time() % ISR_dat_1.period)) % ISR_dat_1.period;
+        // not sure if clipping is necessary, but we will add it anyways,
+        // it's not gonna influence anything.
+        int64_t t_delay = clip((Callback_dat_1.t_start - (esp_timer_get_time() % Callback_dat_1.period)) % Callback_dat_1.period, Delay_min_time, 1000000LL);
 
-        // not sure if this is necessary, but we will add it anyways, it's not
-        // gonna influence anything.
-        t_delay = (t_delay < Delay_min_time) ? Delay_min_time : t_delay;
-
-        if (LED_state_1 == false)
+        if (callback_args_1.LED_state == false)
         {
+            int64_t t_now = esp_timer_get_time();
             // make sure that we won't reset the timer just after LED turns on.
             // also make sure that we won't reset the timer just before LED
             // turns on.
-            if (timerRead(LED_trigger_timer_1) > No_operation_time || timerAlarmRead(LED_trigger_timer_1) < timerRead(LED_trigger_timer_1) + No_operation_time)
+            if (t_now - callback_args_1.Last_trig_time > No_operation_time && (callback_args_1.Next_trig_time == 0 || callback_args_1.Next_trig_time - t_now > No_operation_time))
             {
-                timerAlarmDisable(LED_trigger_timer_1);
-                timerRestart(LED_trigger_timer_1);
-                timerAlarmWrite(LED_trigger_timer_1, t_delay, false);
-                timerAlarmEnable(LED_trigger_timer_1);
+                callback_args_1.Next_trig_time = t_now + t_delay;
+                esp_timer_stop(callback_args_1.handle);
+                esp_timer_start_once(callback_args_1.handle, t_delay);
             }
         }
 
-        // updating timer info
-        t_delay = (ISR_dat_2.t_start - (esp_timer_get_time() % ISR_dat_2.period)) % ISR_dat_2.period;
+        t_delay = clip((Callback_dat_2.t_start - (esp_timer_get_time() % Callback_dat_2.period)) % Callback_dat_2.period, Delay_min_time, 1000000LL);
 
-        // not sure if this is necessary, but we will add it anyways, it's not
-        // gonna influence anything.
-        t_delay = (t_delay < Delay_min_time) ? Delay_min_time : t_delay;
-
-        if (LED_state_2 == false)
+        if (callback_args_2.LED_state == false)
         {
+            int64_t t_now = esp_timer_get_time();
             // make sure that we won't reset the timer just after LED turns on.
             // also make sure that we won't reset the timer just before LED
             // turns on.
-            if (timerRead(LED_trigger_timer_2) > No_operation_time || timerAlarmRead(LED_trigger_timer_2) < timerRead(LED_trigger_timer_2) + No_operation_time)
+            if (t_now - callback_args_2.Last_trig_time > No_operation_time && (callback_args_2.Next_trig_time == 0 || callback_args_2.Next_trig_time - t_now > No_operation_time))
             {
-                timerAlarmDisable(LED_trigger_timer_2);
-                timerRestart(LED_trigger_timer_2);
-                timerAlarmWrite(LED_trigger_timer_2, t_delay, false);
-                timerAlarmEnable(LED_trigger_timer_2);
+                callback_args_2.Next_trig_time = t_now + t_delay;
+                esp_timer_stop(callback_args_2.handle);
+                esp_timer_start_once(callback_args_2.handle, t_delay);
             }
         }
 
+        t_delay = clip((Callback_dat_3.t_start - (esp_timer_get_time() % Callback_dat_3.period)) % Callback_dat_3.period, Delay_min_time, 1000000LL);
+
+        if (callback_args_3.LED_state == false)
+        {
+            int64_t t_now = esp_timer_get_time();
+            // make sure that we won't reset the timer just after LED turns on.
+            // also make sure that we won't reset the timer just before LED
+            // turns on.
+            if (t_now - callback_args_3.Last_trig_time > No_operation_time && (callback_args_3.Next_trig_time == 0 || callback_args_3.Next_trig_time - t_now > No_operation_time))
+            {
+                callback_args_3.Next_trig_time = t_now + t_delay;
+                esp_timer_stop(callback_args_3.handle);
+                esp_timer_start_once(callback_args_3.handle, t_delay);
+            }
+        }
         // QUENCH_G;
     }
 }
