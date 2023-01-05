@@ -10,6 +10,7 @@
 #define _USE_MATH_DEFINES
 #include <cmath>
 
+using math::fast::norm;
 using math::fast::square;
 
 namespace IR
@@ -25,9 +26,9 @@ namespace IR
             uint32_t Localization_Msg_type = 4;
 
             /**
-             * @brief an estimation of maximum communication distance, used to determine the validity of localization result
+             * @brief an estimation of maximum communication distance in mm, used to determine the validity of localization result.
              */
-            constexpr float Max_Communication_distance = 60.0F;
+            constexpr float Max_Communication_distance = 800.0F;
 
             /**
              * @brief the minimum tolerable timing for distance measurements is
@@ -187,7 +188,7 @@ namespace IR
              */
             constexpr float Elevation_error(const float LR_angle, const float Cent_angle)
             {
-                return (Tilting_angle_multiplyer * sqrt(square(tan(Cent_angle) * Distance_error(LR_angle)) + square(Distance_expectation(LR_angle) * Angle_error / cos(Cent_angle))));
+                return (Tilting_angle_multiplyer * norm(tan(Cent_angle) * Distance_error(LR_angle), Distance_expectation(LR_angle) * Angle_error / cos(Cent_angle)));
             }
 
             // /**
@@ -209,7 +210,7 @@ namespace IR
             //     {
             //         // add distance error
             //         float dx = data[i].pos[0] - pos.x, dy = data[i].pos[1] - pos.y;
-            //         error += square(sqrtf(dx * dx + dy * dy) - data[i].dist) / square(data[i].dist_err);
+            //         error += square(norm(dx,dy) - data[i].dist) / square(data[i].dist_err);
             //
             //         // add angular error
             //         float da = Angle_diff(atan2f(dy, dx) - data[i].angle - pos.angle_0) / data[i].angle_err;
@@ -338,7 +339,7 @@ namespace IR
                     {
                         float dx = data[i].pos[0] - x;
                         float dy = data[i].pos[1] - y;
-                        float dr = sqrtf(square(dx) + square(dy));
+                        float dr = norm(dx, dy);
                         float angdiff = Angle_diff(atan2f(dy, dx) - theta - data[i].angle);
 
                         // angle related terms
@@ -384,7 +385,7 @@ namespace IR
                 {
                     float dx = data[i].pos[0] - x;
                     float dy = data[i].pos[1] - y;
-                    float dr = sqrtf(square(dx) + square(dy));
+                    float dr = norm(dx, dy);
                     float angdiff = Angle_diff(atan2f(dy, dx) - theta - data[i].angle);
 
                     Hessian += 1.0F / square(data[i].angle_err * dr);
@@ -436,7 +437,7 @@ namespace IR
              */
             float Error_scaling_function(const float var, const float error_factor)
             {
-                return var * (1.0F + 0.5F * error_factor);
+                return (error_factor <= 2.0F) ? (var * (1.0F + error_factor * error_factor)) : var * 1.0e6F;
             }
 
 #if LOCALIZATION_CALIBRATION_MODE
@@ -824,8 +825,8 @@ namespace IR
                                 {
                                     this_Loc_data.dist = Distance_expectation(Compensated_LR_diff);
                                     this_Loc_data.dist_err = Distance_error(Compensated_LR_diff);
-                                    this_Loc_data.elev = Elevation_expectation(Compensated_LR_diff,Cent_diff);
-                                    this_Loc_data.elev_err = Elevation_error(Compensated_LR_diff,Cent_diff);
+                                    this_Loc_data.elev = Elevation_expectation(Compensated_LR_diff, Cent_diff);
+                                    this_Loc_data.elev_err = Elevation_error(Compensated_LR_diff, Cent_diff);
                                 }
                                 else
                                 {
@@ -842,6 +843,12 @@ namespace IR
                             }
 #endif
                         }
+                    }
+
+                    // we quit if this time is the same as the last time, because that means there's nothing new in this data.
+                    if (last_message_time == Position_stack.peek_tail().time)
+                    {
+                        continue;
                     }
 
 #if LOCALIZATION_CALIBRATION_MODE
@@ -908,7 +915,7 @@ namespace IR
                     else
                     {
                         // peek last data
-                        Position_data last = Filtered_position_stack.peek_tail();
+                        last = Filtered_position_stack.peek_tail();
 
                         if ((last_message_time - last.time) > Position_expire_time)
                         {
@@ -937,9 +944,9 @@ namespace IR
                         res = Execute_localization(Loc_data, xmean, ymean);
                     }
 
-                    // additional sanity check here. so if localization
-                    // result is too far from the beacon position, this
-                    // result cannot be valid, we don't push!
+                    // // additional sanity check here. so if localization
+                    // // result is too far from the beacon position, this
+                    // // result cannot be valid, we don't push!
                     if (square(res.x - xmean) + square(res.y - ymean) >= square(Max_Communication_distance))
                     {
                         continue;

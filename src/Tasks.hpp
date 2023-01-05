@@ -38,4 +38,11 @@ void Buffer_data_task(void *pvParameters);
  */
 void LED_control_task(void *pvParameters);
 
+/**
+ * @brief similar to LED_control task, but actually turns the motor.
+ * 
+ * @param pvParameters 
+ */
+void Motor_control_task(void *pvParameters);
+
 #endif

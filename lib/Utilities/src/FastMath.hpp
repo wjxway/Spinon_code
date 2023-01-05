@@ -53,6 +53,24 @@ namespace math
         {
             return x * x;
         }
+
+        template <class T>
+        constexpr T norm(const T x, const T y) noexcept
+        {
+            return sqrt(square(x) + square(y));
+        }
+
+        template <class T>
+        constexpr T norm(const T x, const T y, const T z) noexcept
+        {
+            return sqrt(square(x) + square(y) + square(z));
+        }
+
+        template <class T>
+        constexpr T clip(const T x, const T low_bound, const T high_bound) noexcept
+        {
+            return (x < low_bound) ? low_bound : ((x > high_bound) ? high_bound : x);
+        }
     } // namespace fast
 } // namespace math
 

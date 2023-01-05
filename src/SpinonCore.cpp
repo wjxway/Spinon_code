@@ -104,35 +104,35 @@ void real_setup(void *pvParameters)
         NULL,
         0);
 
-    // // Light LED based on position
-    // TaskHandle_t LED_control_handle;
-
-    // auto task_status = xTaskCreatePinnedToCore(
-    //     LED_control_task,
-    //     "ledcontroltask",
-    //     50000,
-    //     NULL,
-    //     8,
-    //     &LED_control_handle,
-    //     0);
-
-    // // trigger LED_control_task when localization is updated.
-    // IR::Localization::Add_Localization_Notification(LED_control_handle);
-
-    // buffer data when new localization is executed
-    TaskHandle_t Buffer_data_handle;
+    // Light LED based on position
+    TaskHandle_t LED_control_handle;
 
     auto task_status = xTaskCreatePinnedToCore(
-        Buffer_data_task,
-        "Buffer_data_task",
+        LED_control_task,
+        "ledcontroltask",
         50000,
         NULL,
         8,
-        &Buffer_data_handle,
+        &LED_control_handle,
         0);
 
-    // trigger buffer data when localization is updated.
-    IR::Localization::Add_Localization_Notification(Buffer_data_handle);
+    // trigger LED_control_task when localization is updated.
+    IR::Localization::Add_Localization_Notification(LED_control_handle);
+
+    // // buffer data when new localization is executed
+    // TaskHandle_t Buffer_data_handle;
+
+    // auto task_status = xTaskCreatePinnedToCore(
+    //     Buffer_data_task,
+    //     "Buffer_data_task",
+    //     50000,
+    //     NULL,
+    //     8,
+    //     &Buffer_data_handle,
+    //     0);
+
+    // // trigger buffer data when localization is updated.
+    // IR::Localization::Add_Localization_Notification(Buffer_data_handle);
 
     if (task_status == pdTRUE)
     {

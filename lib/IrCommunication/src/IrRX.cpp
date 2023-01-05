@@ -858,8 +858,6 @@ namespace IR
                 {
                     vTaskDelayUntil(&prev_wake_time, pdMS_TO_TICKS(Preprocess_trigger_period));
 
-                    // LIT_G;
-
                     // increment io_flag as a coarse lock
                     // all read task should have lower priority than preprocess task
                     // and they should check io_flag to determine whether the read
