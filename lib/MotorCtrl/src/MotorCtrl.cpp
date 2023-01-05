@@ -15,14 +15,17 @@ namespace Motor
 		 * Measure_speed().
 		 */
 		uint32_t Last_set_speed = 0U;
-	} // anonymous namespace
 
-	/**
-	 * @brief an ISR that get triggered when alert is fired.
-	 *
-	 * @note actively brake the motor for now.
-	 */
-	void IRAM_ATTR Alert_ISR();
+		/**
+		 * @brief an ISR that get triggered when alert is fired.
+		 *
+		 * @note actively brake the motor for now.
+		 */
+		void IRAM_ATTR Alert_ISR()
+		{
+			Active_brake();
+		}
+	} // anonymous namespace
 
 	uint32_t Init()
 	{
@@ -42,7 +45,7 @@ namespace Motor
 		// check if successful
 		uint32_t temp = 1U;
 		// initial config
-		for (uint8_t addr = 0U; addr < 23U; addr++)
+		for (uint8_t addr = 0U; addr < 23U; addr++) // NOLINT
 		{
 			temp &= Config_register(addr + 2U, Default_config[addr]);
 		}
@@ -72,7 +75,7 @@ namespace Motor
 		state = Wire.endTransmission();
 
 		// not sure whether necessary, but let's add it anyways
-		delayMicroseconds(100U);
+		delayMicroseconds(100U); // NOLINT
 
 		return state;
 	}
@@ -91,10 +94,10 @@ namespace Motor
 	uint32_t Measure_speed()
 	{
 		// set a time out (in us) or else it will freeze the core when at 0 speed.
-		constexpr unsigned long time_out = 5000U;
+		constexpr int64_t time_out = 5000U;
 
 		// starting time
-		unsigned long t_start = esp_timer_get_time();
+		int64_t t_start = esp_timer_get_time();
 		// wait for the pin to go low
 		while (fastread(MOTOR_SPD_FB_PIN) && (esp_timer_get_time() - t_start < time_out))
 		{
@@ -119,7 +122,7 @@ namespace Motor
 		// save time frame
 		t_start = esp_timer_get_time() - t_start;
 
-		return (t_start > time_out) ? 0U : (4000000U / t_start);
+		return (t_start > time_out) ? 0U : (4000000U / t_start); // NOLINT
 	}
 
 	void Active_brake()
@@ -131,10 +134,5 @@ namespace Motor
 	void Active_brake_release()
 	{
 		clrbit(MOTOR_BRAKE_PIN);
-	}
-
-	void IRAM_ATTR Alert_ISR()
-	{
-		Active_brake();
 	}
 } // namespace Motor

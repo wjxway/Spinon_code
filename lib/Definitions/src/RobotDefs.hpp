@@ -7,6 +7,9 @@
 
 #include <cstdint>
 
+#define _USE_MATH_DEFINES
+#include <cmath>
+
 /**
  * @brief Robot's ID
  *
@@ -34,24 +37,34 @@ const uint32_t This_robot_ID = 12U;
  */
 #define RMT_TX_CHANNEL_COUNT 2
 
+/**
+ * @brief set to 1 to enter calibration mode where we output all raw data.
+ */
+// #define LOCALIZATION_CALIBRATION_MODE 1
+
 namespace IR
 {
     namespace RX
     {
         /**
-         * @brief timing offset between left and right receiver channel
+         * @brief angle offset between left and right receiver channel in rad
          *
-         * @note The actual left-right delay is T_right - T_left + offset
+         * @note The actual left-right angle is LR_diff + LR_angle_compensation
+         * * Cent_diff
+         * 
+         * @note not useful in calibration mode
          */
-        constexpr int64_t Left_right_timing_offset = 650;
+        constexpr float LR_angle_compensation = -0.12F;
 
         /**
-         * @brief timing offset between the average of left and right receiver
-         * channel and the center receiver channel
-         *
-         * @note The actual center delay is T_center - T_avg + offset
+         * @brief orientation angle offset.
+         * 
+         * @note The actual orientation angle is angle +
+         * Orientation_compensation * LR_diff
+         * 
+         * @note not useful in calibration mode
          */
-        constexpr int64_t Center_timing_offset = 0;
+        constexpr float Orientation_compensation = 0.18F;
     } // namespace RX
 } // namespace IR
 

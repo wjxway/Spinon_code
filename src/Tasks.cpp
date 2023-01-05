@@ -1,41 +1,23 @@
 #include "Tasks.hpp"
-#include "RobotDefs.hpp"
+#include <RobotDefs.hpp>
 #include <FastIO.hpp>
 #include <FastMath.hpp>
 #include <DebugDefs.hpp>
 #include <FeedTheDog.hpp>
 #include <Circbuffer.hpp>
 #include <IrCommunication.hpp>
-// #include "MotorCtrl/MotorCtrl.hpp"
+#include <Localization.hpp>
 #include <iostream>
 #include <string>
 #include <vector>
+#include <esp_timer.h>
+
+#define _USE_MATH_DEFINES
 #include <cmath>
 
-// add the definition of bit_cast (a pretty unsafe version) if cpp version is
-// old.
-#if __cplusplus < 202002L
-namespace std
-{
-    // bit cast, but a really unsafe version.
-    // I don't know why some macros cannot work here, so it's up to the user to
-    // make sure that it can work
-    template <class To, class From>
-    To bit_cast(const From &src) noexcept
-    {
-        To dst;
-        memcpy(&dst, &src, sizeof(To));
-        return dst;
-    }
-} // namespace std
-#endif
-
-// whether the data is finished
-// after finished, make LED always on.
-uint32_t Data_finished = 0;
-
-// utility circbuffer
-Circbuffer<float, 100> util_buf;
+using math::fast::clip;
+using math::fast::norm;
+using math::fast::square;
 
 void IRAM_ATTR Idle_stats_task(void *pvParameters)
 {
@@ -104,12 +86,12 @@ void IRAM_ATTR Idle_stats_task(void *pvParameters)
 void IRAM_ATTR Occupy_time_task(void *pvParameters)
 {
     // time in ms
-    constexpr uint32_t t_active = 5;
-    constexpr uint32_t t_idle = 5;
+    constexpr int64_t t_active = 5;
+    constexpr int64_t t_idle = 5;
 
     while (true)
     {
-        uint64_t t_start = esp_timer_get_time();
+        int64_t t_start = esp_timer_get_time();
         while (esp_timer_get_time() - t_start < 1000 * t_active)
         {
         }
@@ -129,8 +111,8 @@ void LED_off_task(void *pvParameters)
         // turn off led if they haven't been refreshed for a while
         if (esp_timer_get_time() - IR::RX::Get_last_RX_time() >= 300)
         {
-            QUENCH_R;
-            QUENCH_G;
+            // QUENCH_R;
+            // QUENCH_G;
             QUENCH_B;
         }
 
@@ -138,6 +120,7 @@ void LED_off_task(void *pvParameters)
     }
 }
 
+// hex string conversion
 template <typename I>
 std::string n2hexstr(I w, size_t hex_len = sizeof(I) << 1)
 {
@@ -249,646 +232,462 @@ std::string n2hexstr(I w, size_t hex_len = sizeof(I) << 1)
 //     }
 // }
 
-// type of message that carries localization data
-constexpr uint32_t Localization_Msg_type = 4;
-
-// the angular standard deviation (of relative angle measurements)
-constexpr float Angle_error = 1.0F / 180.0F * M_PI;
-
-// error of relative angle (this is not the same as Angle_error, because we
-// use this for angle difference between robots, and this will be influenced by
-// the rotation speed variance.)
-constexpr float Relative_angle_error = 4.0F / 180.0F * M_PI;
-
-// tilting angle of center emitter, 1 / tangent value.
-// it is 25deg right now, so we should put 1 / tan(25deg) here.
-constexpr float Tilting_angle_multiplyer = 2.14450692051F;
-
-// distance between left and right receiver
-constexpr float Left_right_distance = 51.562F;
-// just a constant
-constexpr float Distance_error_mult = Angle_error / Left_right_distance;
-/**
- * @brief compute distance error based on the distance
- *
- * @param distance distance expectation
- * @return constexpr uint16_t error estimation
- */
-constexpr float Distance_error(const float distance)
+namespace
 {
-    return Distance_error_mult * distance * distance;
-}
+    size_t record_count = 0U;
+    constexpr size_t start_record_count = 300U;
+    constexpr size_t Position_buffer_max_size = 300U;
+    std::vector<IR::Localization::Position_data> Position_buffer;
 
-/**
- * @brief compute elevation error based on the distance and elevation
- *
- * @param distance distance expectation
- * @param elevation elevation expectation
- * @return constexpr uint32_t error estimation
- */
-constexpr float Elevation_error(const float distance, const float elevation)
-{
-    return (Tilting_angle_multiplyer * Angle_error * (distance + elevation * elevation / distance) + abs(elevation) * Distance_error_mult * distance);
-}
-
-// information needed to compute the position and orientation of this robot.
-// Position, distance and elevation are all in unit of mm, angle in unit of rad.
-// Note that here we assume that the position is accurate!
-struct Relative_position_data
-{
-    uint32_t Robot_ID; // ID of robot, should be redundant
-    float pos[3];      // position of reference robot
-    float dist;        // horizontal distance between robots
-    float dist_err;    // error of dist
-    float elev;        // vertical distance (h of this - h of reference)
-    float elev_err;    // error of elev
-    float angle;       // angle computed by 2*Pi*(time%T_0)/T_0.
-    float angle_err;
-};
-
-struct Position_data
-{
-    int16_t x;
-    int16_t y;
-    int16_t z;
-    float angle_0;
-    uint64_t
-        rotation_time; // used to pre-treat the uint64_t to prevent clipping.
-    float angular_velocity;
-};
-
-/**
- * @brief round an angle to [-Pi, Pi) range
- *
- * @param v input angle
- * @return float value rounded to [-Pi, Pi) range
- */
-float Angle_diff(const float v) noexcept
-{
-    float v1 = v / float(2.0F * M_PI);
-    v1 = v1 - math::fast::floor(v1 + 0.5f);
-    return v1 * float(2.0F * M_PI);
-}
-
-constexpr float square(const float x) noexcept
-{
-    return x * x;
-}
-
-// /**
-//  * @brief Compute the error between estimated state and measurements
-//  *
-//  * @param pos estimated positon
-//  * @param data measurements
-//  * @param data_len length of measurements
-//  * @return float error
-//  *
-//  * @note here we only compute the error induced by horizontal position and
-//  * rotation, because the error introduced by elevation is trivially computable.
-//  */
-// float Localization_error(const Position_data pos, Relative_position_data *const data, const size_t data_len)
-// {
-//     float error = 0;
-//
-//     for (size_t i = 0; i < data_len; i++)
-//     {
-//         // add distance error
-//         float dx = data[i].pos[0] - pos.x, dy = data[i].pos[1] - pos.y;
-//         error += square(sqrtf(dx * dx + dy * dy) - data[i].dist) / square(data[i].dist_err);
-//
-//         // add angular error
-//         float da = Angle_diff(atan2f(dy, dx) - data[i].angle - pos.angle_0) / data[i].angle_err;
-//         error += da * da;
-//     }
-//
-//     return error;
-// }
-
-/**
- * @brief Execute localization based on relative measurement data
- *
- * @param data input data array
- * @param data_len length of data array
- */
-Position_data Execute_localization(Relative_position_data *const data, const size_t data_len)
-{
-    Position_data temp;
-
-    // determine the height, because it's independent from others, it's simple.
-    float deno = 0.0F;
-    float nume = 0.0F;
-    for (size_t i = 0; i < data_len; i++)
+    void Send_message_task(void *pvParameters)
     {
-        float c = 1.0F / (data[i].elev_err * data[i].elev_err);
-        deno += c;
-        nume += data[i].elev * c;
-    }
-    temp.z = nume / deno;
-
-    // estimated {X,Y}
-    float x = 0.0F;
-    float y = 0.0F;
-    float theta = 0.0F;
-
-    // determine starting {X,Y} point by averaging all beacon position
-    for (size_t i = 0; i < data_len; i++)
-    {
-        x += data[i].pos[0];
-        y += data[i].pos[1];
-    }
-    x /= data_len;
-    y /= data_len;
-
-    // maximum iterations we do
-    constexpr size_t Max_Position_Iterations = 10;
-    // when step size dropped below this, we quit!
-    constexpr float Error_tolerance = 1.0F;
-    // determine the rest iteratively, max 10 times
-    for (size_t step = 0; step < Max_Position_Iterations; step++)
-    {
-        // determine the angle first based on the X,Y we have.
-        // assuming angle error are the same.
-        // angsum is the summation of all angles between [-Pi, Pi), ang1sum is
-        // the summation [0, 2Pi)
-        // ang2sum is the summation of square of all angles ...
-        float angsum = 0.0F;
-        float ang2sum = 0.0F;
-        float ang1sum = 0.0F;
-        float ang12sum = 0.0F;
-        for (size_t i = 0; i < data_len; i++)
+        while (true)
         {
-            float ang = Angle_diff(atan2f(data[i].pos[1] - y, data[i].pos[0] - x) - data[i].angle);
-            float ang1 = (ang < 0) ? (ang + 2.0F * float(M_PI)) : ang;
-            angsum += ang;
-            ang2sum += square(ang);
-            ang1sum += ang1;
-            ang12sum += square(ang1);
-        }
-        // compute variance * (data_len - 1)
-        ang2sum = ang2sum - square(angsum) / float(data_len);
-        ang12sum = ang12sum - square(ang1sum) / float(data_len);
+            vTaskDelay(50);
+            if (Serial.available())
+            {
+                delay(10);
+                // deplete serial buffer
+                while (Serial.available())
+                {
+                    Serial.read();
+                }
 
-        // the optimal angle is the smaller one of these two
-        theta = ((ang2sum < ang12sum) ? angsum : ang1sum) / float(data_len);
+                for (auto &pdat : Position_buffer)
+                {
+                    std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", x : ") + std::to_string(pdat.x) + std::string(", y : ") + std::to_string(pdat.y) + std::string(", z : ") + std::to_string(pdat.z) + std::string(", var_xy : ") + std::to_string(pdat.var_xy) + std::string(", var_z : ") + std::to_string(pdat.var_z) + std::string(", w : ") + std::to_string(pdat.angular_velocity) + std::string(", err_factor : ") + std::to_string(pdat.mean_error_factor) + "\n";
 
-        // now let's work on X,Y based on the rule that the optimal point should be at Inverse[Hessian].Grad(f)
-        // we have an simple assumption of Hessian matrix, a constant diagonal matrix: a I
-        // how much should we move this time and the Hessian value
-        float Deltax = 0.0F;
-        float Deltay = 0.0F;
-        float Hessian = 0.0F;
-
-        for (size_t i = 0; i < data_len; i++)
-        {
-            float dx = data[i].pos[0] - x;
-            float dy = data[i].pos[1] - y;
-            float dr = sqrtf(square(dx) + square(dy));
-            float angdiff = Angle_diff(atan2f(dy, dx) - theta - data[i].angle);
-
-            float isq1 = 1.0F / square(data[i].dist_err);
-            float isq2 = 1.0F / square(data[i].dist_err);
-
-            Hessian += 1.0F / square(data[i].angle_err * dr) + isq2;
-
-            Deltax += 2.0F * dx * (1 - data[i].dist / dr) * isq1 -
-                      2.0F * dy * angdiff * isq2;
-            Deltay += 2.0F * dy * (1 - data[i].dist / dr) * isq1 +
-                      2.0F * dx * angdiff * isq2;
-        }
-        x += Deltax / Hessian;
-        y += Deltay / Hessian;
-        if (abs(Deltax) <= Error_tolerance * Hessian &&
-            abs(Deltay) <= Error_tolerance * Hessian)
-        {
-            break;
+                    Serial.print(v.c_str());
+                }
+            }
         }
     }
-    temp.x = x;
-    temp.y = y;
-    temp.angle_0 = theta;
-
-    temp.rotation_time = 0;
-    temp.angular_velocity = 0;
-
-    return temp;
 }
 
-// /**
-//  * @brief a stack of positions and relative measurements
-//  */
-// typedef struct
-// {
-//     Position_data pos_dat;
-//     Relative_position_data rel_pos_dat[3];
-// } All_PD;
-// Circbuffer<All_PD, 300> Position_stack;
-//
-// void Print_data_task(void *pvParameters)
-// {
-//     while (1)
-//     {
-//         vTaskDelay(50);
-//         if (Serial.available())
-//         {
-//             delay(10);
-//             // deplete serial buffer
-//             while (Serial.available())
-//             {
-//                 Serial.read();
-//             }
-//
-//             Serial.println("\nLocalization result:");
-//             while(Position_stack.n_elem)
-//             {
-//                 auto temp = Position_stack.pop();
-//                 std::string v = "";
-//                 v.reserve(1000);
-//
-//                 v += std::string("x: ") + std::to_string(temp.pos_dat.x) + ", y: " + std::to_string(temp.pos_dat.y) + ", z: " + std::to_string(temp.pos_dat.z) + ", omega: " + std::to_string(1000000.0f * temp.pos_dat.angular_velocity) + "\n";
-//
-//                 for (size_t j = 0; j < 3; j++)
-//                 {
-//                     v += std::string("  --ID: ") + std::to_string(temp.rel_pos_dat[j].Robot_ID) + ", x0: " + std::to_string(temp.rel_pos_dat[j].pos[0]) + ", y0: " + std::to_string(temp.rel_pos_dat[j].pos[1]) + ", z0: " + std::to_string(temp.rel_pos_dat[j].pos[2]) + ", dist: " + std::to_string(temp.rel_pos_dat[j].dist) + ", dist_err: " + std::to_string(temp.rel_pos_dat[j].dist_err) + ", elev: " + std::to_string(temp.rel_pos_dat[j].elev) + ", elev_err: " + std::to_string(temp.rel_pos_dat[j].elev_err) + ", ang: " + std::to_string(temp.rel_pos_dat[j].angle) + ", ang_err: " + std::to_string(temp.rel_pos_dat[j].angle_err) + "\n";
-//                 }
-//
-//                 v += "\n";
-//
-//                 Serial.println(v.c_str());
-//             }
-//         }
-//     }
-// }
-
-/**
- * @brief trigger timer for LED indicator
- */
-hw_timer_t *LED_trigger_timer;
-
-/**
- * @brief a queue to store history localization data
- */
-Circbuffer<Position_data, 10> Position_stack;
-
-/**
- * @brief relative angle of LED
- */
-constexpr float LED_angle_offset = 0.8818719385800353F;
-
-/**
- * @brief a task that switch on and off LED based on robot's position
- *
- * @note not finished!
- */
-void IRAM_ATTR FB_LED_ISR()
+void Buffer_data_task(void *pvParameters)
 {
-    uint32_t cp0_regs[18];
-    // get FPU state
-    uint32_t cp_state = xthal_get_cpenable();
+    // position data is valid for 1s
+    constexpr int64_t Position_expire_time = 1000000LL;
 
-    if (cp_state)
+    Position_buffer.reserve(Position_buffer_max_size + 1);
+
+    while (true)
     {
-        // Save FPU registers
-        xthal_save_cp0(cp0_regs);
-    }
-    else
-    {
-        // enable FPU
-        xthal_set_cpenable(1);
-    }
+        // wait till next localization is done
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-    // 0 for now off, 1 for now on
-    // initially it should be 1, so we can setup the initial timing
-    static bool LED_state = 1;
+        record_count++;
 
-    // how long should we delay before next on
-    uint64_t delay_time;
-    // how long should next time be on
-    static uint64_t on_time = 0;
+        if (record_count > start_record_count && Position_buffer.size() < Position_buffer_max_size)
+        {
+            // get data
+            uint32_t io_flag;
+            IR::Localization::Position_data pos_0;
+            bool not_enough_data = false;
+            do
+            {
+                io_flag = IR::Localization::Get_io_flag();
 
-    // this is for indication of XY position feedback.
-    // if currently LED is on, then we should turn it off, and also setup the
-    // time when it should be on again. Let's use green LED only here.
-    if (LED_state)
-    {
-        QUENCH_G;
-        LED_state = 0;
+                // check if there's enough data to use
+                if (IR::Localization::Get_position_data_count(Position_expire_time) == 0)
+                {
+                    not_enough_data = true;
+                    break;
+                }
 
-        // get localization data
-        Position_data res = Position_stack.peek_tail();
-        on_time = 0.01F * sqrtf(square(res.x) + square(res.y)) / res.angular_velocity;
-        // determine next time
-        delay_time = (res.rotation_time * 3 - int64_t(on_time / 2.0F + (LED_angle_offset + res.angle_0 - atan2f(res.y, res.x)) / res.angular_velocity) - (esp_timer_get_time() % res.rotation_time)) % res.rotation_time;
-    }
-    else
-    {
-        LIT_G;
-        LED_state = 1;
-        // we always lit LED for 1ms.
-        delay_time = on_time;
-    }
+                // pos_0 = IR::Localization::Get_position();
+                pos_0 = IR::Localization::Get_filtered_position();
+            } while (io_flag != IR::Localization::Get_io_flag());
 
-    // // this is for indication of X and Y direction.
-    // // if currently LED is on, then we should turn it off, and also setup the
-    // // time when it should be on again. Let's use green LED only here.
-    // if (LED_state)
-    // {
-    //     QUENCH_G;
-    //     LED_state = 0;
-    
-    //     // get localization data
-    //     Position_data res = Position_stack.peek_tail();
-    //     on_time = int64_t(float(M_PI_2) / res.angular_velocity);
-    //     // determine next time
-    //     delay_time = (res.rotation_time * 3 - int64_t((LED_angle_offset + res.angle_0) / res.angular_velocity) - (esp_timer_get_time() % res.rotation_time)) % res.rotation_time;
-    // }
-    // else
-    // {
-    //     LIT_G;
-    //     LED_state = 1;
-    //     // we always lit LED for 1ms.
-    //     delay_time = on_time;
-    // }
+            if (not_enough_data)
+            {
+                continue;
+            }
 
-    // reset timer
-    timerRestart(LED_trigger_timer);
-    timerAlarmWrite(LED_trigger_timer, delay_time, false);
-    timerAlarmEnable(LED_trigger_timer);
+            Position_buffer.push_back(pos_0);
 
-    if (cp_state)
-    {
-        // Restore FPU registers
-        xthal_restore_cp0(cp0_regs);
-    }
-    else
-    {
-        // turn it back off
-        xthal_set_cpenable(0);
+            if (Position_buffer.size() == Position_buffer_max_size)
+            {
+                LIT_G;
+
+                // send me messages through serial!
+                xTaskCreatePinnedToCore(
+                    Send_message_task,
+                    "Send_message_task",
+                    20000,
+                    NULL,
+                    3,
+                    NULL,
+                    0);
+            }
+        }
     }
 }
 
-void Simple_localization_task(void *pvParameters)
+// anonymous namespace to hide stuffs
+namespace
 {
-    // max history time we fetch data from. should be slightly higher than 2 rotations.
-    // please use higher limit for this number.
-    constexpr uint64_t Max_history_time = 130000ul;
-
-    TickType_t prev_wake_time = xTaskGetTickCount();
-    while (1)
+    struct LED_timing_t
     {
-        // wait upfront, so we can use continue like return.
-        vTaskDelayUntil(&prev_wake_time, pdMS_TO_TICKS(50));
+        int64_t t_start;
+        int64_t duration;
+        int64_t period;
+    };
 
-        uint32_t curr_flag;
+    /**
+     * @brief relative angle of LED
+     */
+    constexpr float LED_angle_offset = 0.8818719385800353F;
 
-        // neighboring robots
-        uint32_t robot_count;
-        uint32_t robot_ID_list[IR::RX::Max_robots_simultaneous];
+    /**
+     * @brief minimum delay time, if lower than this, we trigger after this.
+     */
+    constexpr int64_t Delay_min_time = 50LL;
 
-        // neighboring robots' position
-        std::vector<IR::RX::Parsed_msg_completed> pos_list;
+    struct LED_callback_args
+    {
+        bool LED_state;                      // current state of LED, 0 (initial state) for off, 1 for on
+        LED_timing_t Last_LED_timing;        // last timing info used by the callback
+        int64_t Last_trig_time;              // last time we updated the trigger info
+        int64_t Next_trig_time;              // when will we trig next time
+        int LED_num;                         // 0,1,2 for R,G,B respectively
+        Circbuffer<LED_timing_t, 5> *buffer; // timing info buffer
+        esp_timer_handle_t handle;           // callback handler
+    };
 
-        // timing info
-        uint32_t time_count;
-        IR::RX::Msg_timing_t time_list[IR::RX::Raw_msg_buffer_size];
+    LED_callback_args callback_args_1, callback_args_2, callback_args_3;
+    Circbuffer<LED_timing_t, 5> timing_buf_1, timing_buf_2, timing_buf_3;
+
+    /**
+     * @brief a task that switch on and off LED based on robot's position
+     *
+     * @param void* v_arg arguments
+     */
+    void IRAM_ATTR LED_callback(void *v_arg)
+    {
+        uint64_t t_now = esp_timer_get_time();
+
+        LED_callback_args *arg = (LED_callback_args *)v_arg;
+
+        // how long should we delay before next switch
+        uint64_t next_time;
+
+        // this is for indication of XY position feedback.
+        // if currently LED is on, then we should turn it off, and also setup the
+        // time when it should be on again. Let's use green LED only here.
+        if (arg->LED_state)
+        {
+            switch (arg->LED_num)
+            {
+            case 0:
+                QUENCH_R;
+                break;
+            case 1:
+                QUENCH_G;
+                break;
+            case 2:
+                QUENCH_B;
+                break;
+            }
+            arg->LED_state = false;
+
+            // get localization data
+            LED_timing_t temp = arg->buffer->peek_tail();
+            // now this temp is used, update Last_LED_timing
+            arg->Last_LED_timing = temp;
+
+            // update time
+            // make sure that we won't trigger again in 1/4 cycles
+            next_time = ((temp.t_start - (t_now % temp.period) - (temp.period >> 2)) % temp.period) + (temp.period >> 2);
+        }
+        else
+        {
+            switch (arg->LED_num)
+            {
+            case 0:
+                LIT_R;
+                break;
+            case 1:
+                LIT_G;
+                break;
+            case 2:
+                LIT_B;
+                break;
+            }
+            arg->LED_state = true;
+            next_time = arg->Last_LED_timing.duration;
+        }
+
+        // not sure if this is necessary, but we will add it anyways, it's not gonna influence anything.
+        next_time = (next_time < Delay_min_time) ? Delay_min_time : next_time;
+        // reset timer
+        arg->Last_trig_time = t_now;
+        arg->Next_trig_time = t_now + next_time;
+        esp_timer_stop(arg->handle);
+        esp_timer_start_once(arg->handle, next_time);
+    }
+
+} // anonymous namespace
+
+void LED_control_task(void *pvParameters)
+{
+    constexpr float K_P = 1.0F;
+    // K_D has time unit of s
+    constexpr float K_D = 0.0F;
+    // K_I has time unit of 1/s
+    constexpr float K_I = 0.0F;
+
+    // position data is valid for 1s
+    constexpr int64_t Position_expire_time = 1000000LL;
+
+    bool ISR_started = false;
+
+    // PID components
+    float I_comp[3] = {0.0F, 0.0F, 0.0F};
+    float D_comp[3] = {0.0F, 0.0F, 0.0F};
+    // variance of D_comp
+    float D_xy_var = 1.0e6F, D_z_var = 1.0e6F;
+    int64_t D_last_update_time = 0;
+    float P_comp[3], FB_val[3];
+
+    // acceleration component
+    float A_comp[3] = {0.0F, 0.0F, 0.0F};
+
+    while (true)
+    {
+        // wait till next localization is done
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        // LIT_G;
 
         // get data
+        uint32_t io_flag;
+        IR::Localization::Position_data filt_pos_0, filt_pos_1, pos_0, pos_1;
+        bool not_enough_data = false;
         do
         {
-            curr_flag = IR::RX::Get_io_flag();
+            io_flag = IR::Localization::Get_io_flag();
 
-            robot_count = IR::RX::Get_neighboring_robots_ID(robot_ID_list, 0);
-
-            pos_list.reserve(robot_count);
-            for (size_t i = 0; i < robot_count; i++)
+            // check if there's enough data to use
+            if (IR::Localization::Get_position_data_count(Position_expire_time) < 2)
             {
-                pos_list.push_back(IR::RX::Get_latest_msg_by_bot(robot_ID_list[i], Localization_Msg_type));
-            }
-
-            time_count = IR::RX::Get_timing_data(time_list, Max_history_time);
-        } while (curr_flag != IR::RX::Get_io_flag());
-
-        // some quick tests to verify we have enough data, if not, directly
-        // continue.
-        if (robot_count < 3 || time_count < 4)
-        {
-            // DEBUG_C(Serial.println("Not sufficent timing data!");)
-            continue;
-        }
-
-        // processing
-
-        // let's exploit the timing_valid_Q here to store the information about
-        // whether we've processed the second newest transmission. 0 ->
-        // processed, 1 -> not processed. We know that it's always 1 when we
-        // retrive them anyways.
-
-        // if finished=1, then directly quit because we've already scan through
-        // last two rotations.
-        bool finished = 0;
-        // last useful robot's index, needs to be within the last rotation.
-        size_t last_index = 0;
-        // something used to coarsely estimate the rotation speed by averaging
-        // the timing difference between seeing the same robot in two
-        // consecutive rounds.
-        uint64_t rotation_time = 0;
-        uint32_t rotation_count = 0;
-        // compute rotation speed.
-        for (size_t i = 1; i < time_count; i++)
-        {
-            // iterate till either the previous message, or end before the last
-            // rotation
-            for (size_t j = 0; j < ((last_index) ? last_index : (i - 1)); j++)
-            {
-                // check if this a second-oldest message
-                if (time_list[i].robot_ID == time_list[j].robot_ID)
-                {
-                    // if more than second oldest, break the whole cycle,
-                    // because we've already run for two cycles.
-                    if (!time_list[j].timing_valid_Q)
-                    {
-                        finished = 1;
-                    }
-                    // if exactly the second oldest, then use it to compute the
-                    // rotation speed.
-                    else
-                    {
-                        // if first time we encounter a duplicate, then we
-                        // record this, and from now on we only care about
-                        // robots smaller than this count.
-                        if (!last_index)
-                        {
-                            last_index = i;
-                        }
-                        // compute rotation time by averaging the timing
-                        // difference of left and right channel.
-                        // the reason why we didn't check for validity is
-                        // because:
-                        // 1. when we add to the timing_buffer, we've already
-                        // made sure that two consecutive timing cannot be too
-                        // short.
-                        // 2. when taking data out of buffer, we never take
-                        // message too old.
-                        rotation_time += ((time_list[j].time_arr[1] - time_list[i].time_arr[1] + time_list[j].time_arr[2] - time_list[i].time_arr[2]) >> 1);
-                        rotation_count++;
-                        // j's second latest round has been recorded.
-                        time_list[j].timing_valid_Q = 0;
-                    }
-                    // end finding j whenever a solution is found.
-                    break;
-                }
-            }
-
-            // if already finished, directly break.
-            if (finished)
+                not_enough_data = true;
                 break;
-        }
+            }
 
-        // compute rotation speed
-        // if we cannot determine the rotation speed, just quit this round!
-        if (!rotation_count)
+            // use unfiltered position for D/I terms
+            pos_0 = IR::Localization::Get_position(0);
+            pos_1 = IR::Localization::Get_position(1);
+
+            // use filtered position for P terms
+            filt_pos_0 = IR::Localization::Get_filtered_position(0);
+            filt_pos_1 = IR::Localization::Get_filtered_position(1);
+
+        } while (io_flag != IR::Localization::Get_io_flag());
+
+        // if not, just wait!
+        if (not_enough_data)
         {
-            // DEBUG_C(Serial.println("Cannot determine the rotation speed."));
+            // QUENCH_G;
             continue;
         }
-        // record single round time.
-        rotation_time /= rotation_count;
-        // if we can, compute the rotation speed.
-        float angular_velocity = 2.0F * float(M_PI) / float(rotation_time);
 
-        // the minimum tolerable timing is 5 degrees
-        uint64_t Min_valid_time = rotation_time / 72;
-        // the maximum tolerable timing is 60 degrees
-        uint64_t Max_valid_time = rotation_time / 6;
+        P_comp[0] = filt_pos_0.x;
+        P_comp[1] = filt_pos_0.y;
+        P_comp[2] = filt_pos_0.z;
 
-        // now we collect the data useful for localization.
+        float t_coef = float(pos_0.time - pos_1.time) / 2.0e6F;
 
-        // data directly used for localization
-        Relative_position_data Loc_data[last_index];
-        // how many elements in Loc_data. Note that this is not necessarily
-        // equivalent to last_index, because some might not have position info
-        // up to date.
-        size_t Loc_data_count = 0;
+        I_comp[0] += t_coef * (pos_0.x + pos_1.x);
+        I_comp[1] += t_coef * (pos_0.y + pos_1.y);
+        I_comp[2] += t_coef * (pos_0.z + pos_1.z);
 
-        // add to Loc_data
-        for (size_t i = 0; i < last_index; i++)
+        t_coef = 1.0e6F / float(pos_0.time - pos_1.time);
+
+        // store old D_component for acceleration computation
+        float old_D_comp[3] = {D_comp[0], D_comp[1], D_comp[2]};
+
+        // use kalmann filter to get new D component
+        constexpr float D_error_increase_rate = 500e-6F;
+        float D_xy_var_this = t_coef * t_coef * (pos_0.var_xy + pos_1.var_xy);
+        float D_z_var_this = t_coef * t_coef * (pos_0.var_z + pos_1.var_z);
+        float var_drift = square(float(pos_0.time - D_last_update_time) * D_error_increase_rate);
+
+        // determine z and var_z
+        float tmpv = 1.0F / (D_z_var_this + D_z_var + var_drift);
+        D_comp[2] = (D_comp[2] * D_z_var_this + (t_coef * (pos_0.z - pos_1.z)) * (D_z_var + var_drift)) * tmpv;
+        D_z_var = D_z_var_this * (D_z_var + var_drift) * tmpv;
+
+        // similar for xy and var_xy
+        tmpv = 1.0F / (D_xy_var_this + D_xy_var + var_drift);
+        D_comp[0] = (D_comp[0] * D_xy_var_this + (t_coef * (pos_0.x - pos_1.x)) * (D_xy_var + var_drift)) * tmpv;
+        D_comp[1] = (D_comp[1] * D_xy_var_this + (t_coef * (pos_0.y - pos_1.y)) * (D_xy_var + var_drift)) * tmpv;
+        D_xy_var = D_xy_var_this * (D_xy_var + var_drift) * tmpv;
+
+        // we take the simplest approach to acceleration computation
+        // if we want to use any more advanced methods, we might as well use
+        // Kalman filter in the first place we executing localization.
+        // Now it's just a very trivial exponential filter
+
+        // update coefficient, choose the time coefficient to be approximately
+        // averaging over 0.5s
+        float update_coef = clip(4e-6F * float(pos_0.time - D_last_update_time), 0.0F, 1.0F);
+
+        A_comp[0] = (1.0 - update_coef) * A_comp[0] + update_coef * 1.0e6F * (D_comp[0] - old_D_comp[0]) / float(pos_0.time - D_last_update_time);
+        A_comp[1] = (1.0 - update_coef) * A_comp[1] + update_coef * 1.0e6F * (D_comp[1] - old_D_comp[1]) / float(pos_0.time - D_last_update_time);
+        A_comp[2] = (1.0 - update_coef) * A_comp[2] + update_coef * 1.0e6F * (D_comp[2] - old_D_comp[2]) / float(pos_0.time - D_last_update_time);
+
+        D_last_update_time = pos_0.time;
+
+        // for (size_t i = 0; i < 3; i++)
+        // {
+        //     FB_val[i] = K_P * P_comp[i] + K_I * I_comp[i] + K_D * D_comp[i];
+        // }
+
+        // cap the duration!
+        constexpr int64_t Duration_max_time = 25000;
+
+        // compute timing for callback_1
+        LED_timing_t Callback_dat_1;
+
+        Callback_dat_1.duration = clip(int64_t(0.005F * norm(P_comp[0], P_comp[1]) / pos_0.angular_velocity), 0LL, Duration_max_time);
+        Callback_dat_1.t_start = pos_0.rotation_time * 5 - Callback_dat_1.duration / 2 - int64_t((LED_angle_offset + pos_0.angle_0 - atan2f(P_comp[1], P_comp[0])) / pos_0.angular_velocity);
+        Callback_dat_1.period = pos_0.rotation_time;
+
+        // push inside buffer
+        timing_buf_1.push(Callback_dat_1);
+
+        // compute timing for callback_2
+        LED_timing_t Callback_dat_2;
+
+        Callback_dat_2.duration = clip(int64_t(0.005F * norm(D_comp[0], D_comp[1]) / pos_0.angular_velocity), 0LL, Duration_max_time);
+        Callback_dat_2.t_start = pos_0.rotation_time * 5 - Callback_dat_2.duration / 2 - int64_t((LED_angle_offset + pos_0.angle_0 - atan2f(D_comp[1], D_comp[0])) / pos_0.angular_velocity);
+        Callback_dat_2.period = pos_0.rotation_time;
+
+        // push inside buffer
+        timing_buf_2.push(Callback_dat_2);
+
+        // compute timing for callback_3
+        LED_timing_t Callback_dat_3;
+
+        Callback_dat_3.duration = clip(int64_t(0.005F * norm(A_comp[0], A_comp[1]) / pos_0.angular_velocity), 0LL, Duration_max_time);
+        Callback_dat_3.t_start = pos_0.rotation_time * 5 - Callback_dat_3.duration / 2 - int64_t((LED_angle_offset + pos_0.angle_0 - atan2f(A_comp[1], A_comp[0])) / pos_0.angular_velocity);
+        Callback_dat_3.period = pos_0.rotation_time;
+
+        // push inside buffer
+        timing_buf_3.push(Callback_dat_3);
+
+        // check if first time, if so, start ISR
+        if (!ISR_started)
         {
-            // position found?
-            bool position_found = 0;
-            // robot ID
-            uint32_t rid = time_list[i].robot_ID;
-            // this Loc_data
-            Relative_position_data &this_Loc_data = Loc_data[Loc_data_count];
-            // search for robot ID in pos_list and check for its validity
-            for (auto &msg : pos_list)
+            ISR_started = true;
+
+            // Callback/ISR 1
+            callback_args_1.buffer = &timing_buf_1;
+            callback_args_1.Last_LED_timing = Callback_dat_1;
+            callback_args_1.LED_num = 0;
+            callback_args_1.LED_state = false;
+            callback_args_1.Last_trig_time = 0;
+            callback_args_1.Next_trig_time = 0;
+
+            const esp_timer_create_args_t oneshot_timer_callback_args_1 = {
+                .callback = &LED_callback,
+                /* argument specified here will be passed to timer callback function */
+                .arg = (void *)(&callback_args_1),
+                .dispatch_method = ESP_TIMER_TASK,
+                .name = "position"};
+
+            esp_timer_create(&oneshot_timer_callback_args_1, &(callback_args_1.handle));
+
+            // Callback/ISR 2
+            callback_args_2.buffer = &timing_buf_2;
+            callback_args_2.Last_LED_timing = Callback_dat_2;
+            callback_args_2.LED_num = 1;
+            callback_args_2.LED_state = false;
+            callback_args_2.Last_trig_time = 0;
+            callback_args_2.Next_trig_time = 0;
+
+            const esp_timer_create_args_t oneshot_timer_callback_args_2 = {
+                .callback = &LED_callback,
+                /* argument specified here will be passed to timer callback function */
+                .arg = (void *)(&callback_args_2),
+                .dispatch_method = ESP_TIMER_TASK,
+                .name = "velocity"};
+
+            esp_timer_create(&oneshot_timer_callback_args_2, &(callback_args_2.handle));
+
+            // Callback/ISR 3
+            callback_args_3.buffer = &timing_buf_3;
+            callback_args_3.Last_LED_timing = Callback_dat_3;
+            callback_args_3.LED_num = 2;
+            callback_args_3.LED_state = false;
+            callback_args_3.Last_trig_time = 0;
+            callback_args_3.Next_trig_time = 0;
+
+            const esp_timer_create_args_t oneshot_timer_callback_args_3 = {
+                .callback = &LED_callback,
+                /* argument specified here will be passed to timer callback function */
+                .arg = (void *)(&callback_args_3),
+                .dispatch_method = ESP_TIMER_TASK,
+                .name = "acceleration"};
+
+            esp_timer_create(&oneshot_timer_callback_args_3, &(callback_args_3.handle));
+        }
+
+        // how long before/after the trigger time should we prevent triggering
+        // in us
+        constexpr uint64_t No_operation_time = 200ULL;
+
+        // updating timer info
+        // not sure if clipping is necessary, but we will add it anyways,
+        // it's not gonna influence anything.
+        int64_t t_delay = clip((Callback_dat_1.t_start - (esp_timer_get_time() % Callback_dat_1.period)) % Callback_dat_1.period, Delay_min_time, 1000000LL);
+
+        if (callback_args_1.LED_state == false)
+        {
+            int64_t t_now = esp_timer_get_time();
+            // make sure that we won't reset the timer just after LED turns on.
+            // also make sure that we won't reset the timer just before LED
+            // turns on.
+            if (t_now - callback_args_1.Last_trig_time > No_operation_time && (callback_args_1.Next_trig_time == 0 || callback_args_1.Next_trig_time - t_now > No_operation_time))
             {
-                // find robot and update content
-                if (msg.robot_ID == rid)
-                {
-                    this_Loc_data.Robot_ID = rid;
-                    this_Loc_data.pos[0] = std::bit_cast<int16_t>(msg.content[0]);
-                    this_Loc_data.pos[1] = std::bit_cast<int16_t>(msg.content[1]);
-                    this_Loc_data.pos[2] = std::bit_cast<int16_t>(msg.content[2]);
-                    position_found = 1;
-                    break;
-                }
-            }
-            // if we found the position, setup the data
-            if (position_found)
-            {
-                // check if timing data is reasonable
-                uint64_t t_diff = time_list[i].time_arr[1] - time_list[i].time_arr[2] + IR::RX::Left_right_timing_offset;
-                // because the robot is rotating anti-clockwise when viewed from
-                // top, then left receiver will see the emitter first. thus the
-                // first reception time of the right receiver should be larger
-                // than the left.
-                if (t_diff > Min_valid_time && t_diff < Max_valid_time)
-                {
-                    this_Loc_data.angle = float(((time_list[i].time_arr[1] + time_list[i].time_arr[2]) >> 1) % rotation_time) * angular_velocity;
-                    this_Loc_data.angle_err = Relative_angle_error;
-                    this_Loc_data.dist = (Left_right_distance / (2.0f * sin(float(t_diff) * angular_velocity * 0.5f)));
-                    this_Loc_data.dist_err = Distance_error(this_Loc_data.dist);
-                    this_Loc_data.elev = this_Loc_data.dist * tan((time_list[i].time_arr[0] - ((time_list[i].time_arr[1] + time_list[i].time_arr[2]) >> 1) + IR::RX::Center_timing_offset) * angular_velocity * Tilting_angle_multiplyer);
-                    this_Loc_data.elev_err = Elevation_error(this_Loc_data.dist, this_Loc_data.elev);
-                    Loc_data_count++;
-                }
+                callback_args_1.Next_trig_time = t_now + t_delay;
+                esp_timer_stop(callback_args_1.handle);
+                esp_timer_start_once(callback_args_1.handle, t_delay);
             }
         }
 
-        // for now we only localize for those with 3 beacons
-        if (Loc_data_count == 3)
+        t_delay = clip((Callback_dat_2.t_start - (esp_timer_get_time() % Callback_dat_2.period)) % Callback_dat_2.period, Delay_min_time, 1000000LL);
+
+        if (callback_args_2.LED_state == false)
         {
-            Position_data res = Execute_localization(Loc_data, Loc_data_count);
-            res.rotation_time = rotation_time;
-            res.angular_velocity = angular_velocity;
-            // do something with the res, add it to a queue or something else.
-            // we can setup the interrupt here and let it turn on/off the lights.
-
-            // store data in stack
-            Position_stack.push(res);
-
-            // // indicate when position of robot is computed
-            // LIT_R;
-            // delayMicroseconds(1000);
-            // QUENCH_R;
-
-            static bool FB_LED_ISR_started = 0;
-
-            if (!FB_LED_ISR_started)
+            int64_t t_now = esp_timer_get_time();
+            // make sure that we won't reset the timer just after LED turns on.
+            // also make sure that we won't reset the timer just before LED
+            // turns on.
+            if (t_now - callback_args_2.Last_trig_time > No_operation_time && (callback_args_2.Next_trig_time == 0 || callback_args_2.Next_trig_time - t_now > No_operation_time))
             {
-                FB_LED_ISR_started = 1;
-
-                // config timer to transmit TX once in a while
-                // we are using timer 1 to prevent confiction
-                // timer ticks 1MHz
-                LED_trigger_timer = timerBegin(1, 80, true);
-                // add timer interrupt
-                timerAttachInterrupt(LED_trigger_timer, &FB_LED_ISR, true);
-                timerAlarmWrite(LED_trigger_timer, 10000UL, false);
-                timerAlarmEnable(LED_trigger_timer);
+                callback_args_2.Next_trig_time = t_now + t_delay;
+                esp_timer_stop(callback_args_2.handle);
+                esp_timer_start_once(callback_args_2.handle, t_delay);
             }
-
-            // // store and print out the data later.
-            // // for now we end pushing after we have > 400 elements
-            // // and we setup the LED to be always on to indicate that the data has been filled.
-            // if (Position_stack.n_elem < 295)
-            // {
-            //     LIT_R;
-            //     LIT_G;
-            //     LIT_B;
-            //     delayMicroseconds(500);
-            //     QUENCH_R;
-            //     QUENCH_G;
-            //     QUENCH_B;
-            //
-            //     All_PD tmp;
-            //     tmp.rel_pos_dat[0] = Loc_data[0];
-            //     tmp.rel_pos_dat[1] = Loc_data[1];
-            //     tmp.rel_pos_dat[2] = Loc_data[2];
-            //     tmp.pos_dat = res;
-            //
-            //     Position_stack.push(tmp);
-            // }
-            // // if just finished reception
-            // else if (Data_finished == 0)
-            // {
-            //     LIT_R;
-            //     LIT_G;
-            //     LIT_B;
-            //     delayMicroseconds(10000);
-            //     QUENCH_R;
-            //     QUENCH_G;
-            //     QUENCH_B;
-            //
-            //     Data_finished = 1;
-            //     xTaskCreatePinnedToCore(
-            //         Print_data_task,
-            //         "Print_data_task",
-            //         20000,
-            //         NULL,
-            //         15,
-            //         NULL,
-            //         0);
-            // }
         }
+
+        t_delay = clip((Callback_dat_3.t_start - (esp_timer_get_time() % Callback_dat_3.period)) % Callback_dat_3.period, Delay_min_time, 1000000LL);
+
+        if (callback_args_3.LED_state == false)
+        {
+            int64_t t_now = esp_timer_get_time();
+            // make sure that we won't reset the timer just after LED turns on.
+            // also make sure that we won't reset the timer just before LED
+            // turns on.
+            if (t_now - callback_args_3.Last_trig_time > No_operation_time && (callback_args_3.Next_trig_time == 0 || callback_args_3.Next_trig_time - t_now > No_operation_time))
+            {
+                callback_args_3.Next_trig_time = t_now + t_delay;
+                esp_timer_stop(callback_args_3.handle);
+                esp_timer_start_once(callback_args_3.handle, t_delay);
+            }
+        }
+        // QUENCH_G;
     }
 }

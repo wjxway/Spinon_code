@@ -29,11 +29,20 @@ void LED_off_task(void *pvParameters);
 /**
  * @brief send me some messages!
  */
-void Send_message_task(void *pvParameters);
+void Buffer_data_task(void *pvParameters);
 
 /**
- * @brief try localization (a fairly simple and messy solution)
+ * @brief convert localization information to LED states and manages LED_FB_ISR
+ * 
+ * @param pvParameters 
  */
-void Simple_localization_task(void *pvParameters);
+void LED_control_task(void *pvParameters);
+
+/**
+ * @brief similar to LED_control task, but actually turns the motor.
+ * 
+ * @param pvParameters 
+ */
+void Motor_control_task(void *pvParameters);
 
 #endif

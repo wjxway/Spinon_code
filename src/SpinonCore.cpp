@@ -8,6 +8,7 @@
 #include <FastIO.hpp>
 #include <MotorCtrl.hpp>
 #include <IrCommunication.hpp>
+#include <Localization.hpp>
 #include "Tasks.hpp"
 
 uint64_t rec_finish_time = 0;
@@ -77,6 +78,10 @@ void real_setup(void *pvParameters)
 
     DEBUG_C(Serial.println("RX inited"));
 
+    IR::Localization::Init();
+
+    DEBUG_C(Serial.println("Localization inited"));
+
     DEBUG_C(Serial.println("Init finished, launching tasks!"));
 
     // // monitor the performance of cores
@@ -89,34 +94,45 @@ void real_setup(void *pvParameters)
     //     NULL,
     //     0);
 
-    // // quench LED!
-    // xTaskCreatePinnedToCore(
-    //     LED_off_task,
-    //     "LED_off_task",
-    //     10000,
-    //     NULL,
-    //     2,
-    //     NULL,
-    //     0);
-
-    // // send me messages through serial!
-    // xTaskCreatePinnedToCore(
-    //     Send_message_task,
-    //     "sendmsgtask",
-    //     20000,
-    //     NULL,
-    //     3,
-    //     NULL,
-    //     0);
-    
-    auto task_status = xTaskCreatePinnedToCore(
-        Simple_localization_task,
-        "simploctask",
-        30000,
+    // quench LED!
+    xTaskCreatePinnedToCore(
+        LED_off_task,
+        "LED_off_task",
+        10000,
         NULL,
-        5,
+        2,
         NULL,
         0);
+
+    // Light LED based on position
+    TaskHandle_t LED_control_handle;
+
+    auto task_status = xTaskCreatePinnedToCore(
+        LED_control_task,
+        "ledcontroltask",
+        50000,
+        NULL,
+        8,
+        &LED_control_handle,
+        0);
+
+    // trigger LED_control_task when localization is updated.
+    IR::Localization::Add_Localization_Notification(LED_control_handle);
+
+    // // buffer data when new localization is executed
+    // TaskHandle_t Buffer_data_handle;
+
+    // auto task_status = xTaskCreatePinnedToCore(
+    //     Buffer_data_task,
+    //     "Buffer_data_task",
+    //     50000,
+    //     NULL,
+    //     8,
+    //     &Buffer_data_handle,
+    //     0);
+
+    // // trigger buffer data when localization is updated.
+    // IR::Localization::Add_Localization_Notification(Buffer_data_handle);
 
     if (task_status == pdTRUE)
     {

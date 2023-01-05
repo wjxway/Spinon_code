@@ -7,6 +7,7 @@ namespace
     constexpr uint32_t Msg_content_bits = 16;
 } // anonymous namespace
 
+// NOLINTBEGIN
 uint16_t crc4_itu(const uint16_t data) noexcept
 {
     uint16_t data1 = data;
@@ -46,3 +47,4 @@ uint16_t crc12_cdma(const uint16_t *const data, const size_t length) noexcept
     }
     return crc;
 }
+// NOLINTEND
