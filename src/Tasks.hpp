@@ -58,4 +58,11 @@ void LED_control_task(void *pvParameters);
  */
 void Motor_control_task(void *pvParameters);
 
+/**
+ * @brief read thruster value through serial and transmit through TX
+ * 
+ * @param pvParameters 
+ */
+void Motor_TX_task(void *pvParameters);
+
 #endif
