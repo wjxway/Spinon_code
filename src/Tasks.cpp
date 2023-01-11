@@ -767,8 +767,73 @@ void Motor_control_task(void *pvParameters)
 
         if (msg.content_length)
         {
-            LED_set(0, float(msg.content[0]) / float((1<<Motor::PWM_resolution)-1));
+            LED_set(0, float(msg.content[0]) / float((1 << Motor::PWM_resolution) - 1));
             Motor::Set_speed(msg.content[0]);
+        }
+    }
+}
+
+void Motor_TX_task(void *pvParameters)
+{
+    while (true)
+    {
+        vTaskDelay(10);
+        if (Serial.available())
+        {
+            char c = Serial.read();
+
+            uint16_t tval, reg, val;
+
+            switch (c)
+            {
+            // thrust value
+            case 't':
+                tval = Serial.parseInt();
+
+                Serial.print("Thrust => ");
+                Serial.println(tval);
+
+                IR::TX::Add_to_schedule(1, {tval}, 2);
+                break;
+
+            // register value
+            case 'r':
+                reg = Serial.parseInt();
+                val = Serial.parseInt();
+
+                if(reg==0)
+                {
+                    Serial.println("Reset!");
+                    IR::TX::Add_to_schedule(2, {0}, 3, -1, 2);
+
+                    IR::TX::Add_to_schedule(1, {0}, 2);
+                }
+                else if (reg < 2 && reg > 24 || val > UINT8_MAX)
+                {
+                    Serial.println("Invalid register/value!");
+                }
+                else
+                {
+                    Serial.print("Register ");
+                    Serial.print(reg);
+                    Serial.print(" => ");
+                    Serial.println(val);
+
+                    val += reg << 8;
+
+                    IR::TX::Add_to_schedule(2, {val}, 3, -1, 2);
+                }
+                break;
+
+            // invalids
+            default:
+                Serial.println("Invalid input!");
+            }
+
+            while (Serial.available())
+            {
+                Serial.read();
+            }
         }
     }
 }
