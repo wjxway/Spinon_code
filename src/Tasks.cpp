@@ -12,6 +12,8 @@
 #include <vector>
 #include <esp_timer.h>
 
+#include <MotorCtrl.hpp>
+
 #define _USE_MATH_DEFINES
 #include <cmath>
 
@@ -324,6 +326,38 @@ void Buffer_data_task(void *pvParameters)
     }
 }
 
+namespace
+{
+    // R,G,B LED corresponds to offset + 0,1,2
+    constexpr uint32_t LED_LEDC_channel_offset = 1U;
+
+    // LEDC frequency for LED
+    constexpr uint32_t LED_PWM_frequency = 40000U;
+
+    // LEDC resolution for LED
+    constexpr uint32_t LED_PWM_resolution = 10U;
+} // anonymous namespace
+
+void LED_PWM_init()
+{
+    ledcSetup(LED_LEDC_channel_offset, LED_PWM_frequency, LED_PWM_resolution);
+    ledcAttachPin(LED_PIN_R, LED_LEDC_channel_offset);
+    ledcWrite(LED_LEDC_channel_offset, (1 << LED_PWM_resolution) - 1);
+
+    ledcSetup(LED_LEDC_channel_offset + 1, LED_PWM_frequency, LED_PWM_resolution);
+    ledcAttachPin(LED_PIN_G, LED_LEDC_channel_offset + 1);
+    ledcWrite(LED_LEDC_channel_offset + 1, (1 << LED_PWM_resolution) - 1);
+
+    ledcSetup(LED_LEDC_channel_offset + 2, LED_PWM_frequency, LED_PWM_resolution);
+    ledcAttachPin(LED_PIN_B, LED_LEDC_channel_offset + 2);
+    ledcWrite(LED_LEDC_channel_offset + 2, (1 << LED_PWM_resolution) - 1);
+}
+
+void LED_set(uint32_t color, float duty)
+{
+    ledcWrite(LED_LEDC_channel_offset + color, uint32_t((1 - duty) * float((1 << LED_PWM_resolution) - 1)));
+}
+
 // anonymous namespace to hide stuffs
 namespace
 {
@@ -332,6 +366,8 @@ namespace
         int64_t t_start;
         int64_t duration;
         int64_t period;
+        float intensity_on = 1.0F;
+        float intensity_off = 0.0F;
     };
 
     /**
@@ -377,18 +413,7 @@ namespace
         // time when it should be on again. Let's use green LED only here.
         if (arg->LED_state)
         {
-            switch (arg->LED_num)
-            {
-            case 0:
-                QUENCH_R;
-                break;
-            case 1:
-                QUENCH_G;
-                break;
-            case 2:
-                QUENCH_B;
-                break;
-            }
+            LED_set(arg->LED_num, arg->Last_LED_timing.intensity_off);
             arg->LED_state = false;
 
             // get localization data
@@ -402,18 +427,7 @@ namespace
         }
         else
         {
-            switch (arg->LED_num)
-            {
-            case 0:
-                LIT_R;
-                break;
-            case 1:
-                LIT_G;
-                break;
-            case 2:
-                LIT_B;
-                break;
-            }
+            LED_set(arg->LED_num, arg->Last_LED_timing.intensity_on);
             arg->LED_state = true;
             next_time = arg->Last_LED_timing.duration;
         }
@@ -431,11 +445,17 @@ namespace
 
 void LED_control_task(void *pvParameters)
 {
-    constexpr float K_P = 1.0F;
+    constexpr float K_P_XY = 1.0e-3F;
+    constexpr float K_P_Z = 1.0e-3F;
     // K_D has time unit of s
-    constexpr float K_D = 0.0F;
-    // K_I has time unit of 1/s
-    constexpr float K_I = 0.0F;
+    constexpr float K_D_XY = 0.0F;
+    constexpr float K_D_Z = 0.0F;
+    // // K_I has time unit of 1/s
+    // constexpr float K_I = 0.0F;
+    // K_A has time unit of s^2
+    constexpr float K_A_XY = 0.0F;
+    // gravity compensation
+    constexpr float Gravity_compensation = 0.5F;
 
     // position data is valid for 1s
     constexpr int64_t Position_expire_time = 1000000LL;
@@ -539,15 +559,22 @@ void LED_control_task(void *pvParameters)
 
         D_last_update_time = pos_0.time;
 
+        FB_val[0] = -K_P_XY * P_comp[0] - K_D_XY * D_comp[0] - K_A_XY * A_comp[0];
+        FB_val[1] = -K_P_XY * P_comp[1] - K_D_XY * D_comp[1] - K_A_XY * A_comp[1];
+        FB_val[2] = -K_P_Z * P_comp[2] - K_D_Z * D_comp[2] + Gravity_compensation;
+
         // for (size_t i = 0; i < 3; i++)
         // {
         //     FB_val[i] = K_P * P_comp[i] + K_I * I_comp[i] + K_D * D_comp[i];
         // }
 
+        // all computation has been finished till now
+        // from now on it's the boring setup interrupt part
+
         // cap the duration!
         constexpr int64_t Duration_max_time = 25000;
 
-        // compute timing for callback_1
+        // compute timing for callback_1 that use LED to indicate position
         LED_timing_t Callback_dat_1;
 
         Callback_dat_1.duration = clip(int64_t(0.005F * norm(P_comp[0], P_comp[1]) / pos_0.angular_velocity), 0LL, Duration_max_time);
@@ -557,7 +584,7 @@ void LED_control_task(void *pvParameters)
         // push inside buffer
         timing_buf_1.push(Callback_dat_1);
 
-        // compute timing for callback_2
+        // compute timing for callback_2 that use LED to indicate velocity
         LED_timing_t Callback_dat_2;
 
         Callback_dat_2.duration = clip(int64_t(0.005F * norm(D_comp[0], D_comp[1]) / pos_0.angular_velocity), 0LL, Duration_max_time);
@@ -567,12 +594,40 @@ void LED_control_task(void *pvParameters)
         // push inside buffer
         timing_buf_2.push(Callback_dat_2);
 
-        // compute timing for callback_3
+        // // compute timing for callback_3 that use LED to indicate acceleration
+        // LED_timing_t Callback_dat_3;
+
+        // Callback_dat_3.duration = clip(int64_t(0.005F * norm(A_comp[0], A_comp[1]) / pos_0.angular_velocity), 0LL, Duration_max_time);
+        // Callback_dat_3.t_start = pos_0.rotation_time * 5 - Callback_dat_3.duration / 2 - int64_t((LED_angle_offset + pos_0.angle_0 - atan2f(A_comp[1], A_comp[0])) / pos_0.angular_velocity);
+        // Callback_dat_3.period = pos_0.rotation_time;
+
+        // // push inside buffer
+        // timing_buf_3.push(Callback_dat_3);
+
+        // compute timing for callback_3 that use LED to indicate feedback value
         LED_timing_t Callback_dat_3;
 
-        Callback_dat_3.duration = clip(int64_t(0.005F * norm(A_comp[0], A_comp[1]) / pos_0.angular_velocity), 0LL, Duration_max_time);
-        Callback_dat_3.t_start = pos_0.rotation_time * 5 - Callback_dat_3.duration / 2 - int64_t((LED_angle_offset + pos_0.angle_0 - atan2f(A_comp[1], A_comp[0])) / pos_0.angular_velocity);
+        Callback_dat_3.duration = pos_0.rotation_time / 2;
+        Callback_dat_3.t_start = pos_0.rotation_time * 5 - Callback_dat_3.duration / 2 - int64_t((LED_angle_offset + pos_0.angle_0 - atan2f(FB_val[1], FB_val[0])) / pos_0.angular_velocity);
         Callback_dat_3.period = pos_0.rotation_time;
+
+        float add_val = norm(FB_val[0], FB_val[1]);
+        if (FB_val[2] > 0.5F)
+        {
+            if (FB_val[2] + add_val > 1.0F)
+            {
+                add_val = 1.0F - FB_val[2];
+            }
+        }
+        else
+        {
+            if (FB_val[2] < add_val)
+            {
+                add_val = FB_val[2];
+            }
+        }
+        Callback_dat_3.intensity_off = FB_val[2] - add_val;
+        Callback_dat_3.intensity_on = FB_val[2] + add_val;
 
         // push inside buffer
         timing_buf_3.push(Callback_dat_3);
@@ -689,5 +744,31 @@ void LED_control_task(void *pvParameters)
             }
         }
         // QUENCH_G;
+    }
+}
+
+void Motor_control_task(void *pvParameters)
+{
+    while (true)
+    {
+        // wait till next message is received
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        // get data
+        uint32_t io_flag;
+        IR::RX::Parsed_msg_completed msg;
+        do
+        {
+            io_flag = IR::RX::Get_io_flag();
+
+            msg = IR::RX::Get_latest_msg_by_type(1);
+
+        } while (io_flag != IR::RX::Get_io_flag());
+
+        if (msg.content_length)
+        {
+            LED_set(0, float(msg.content[0]) / float((1<<Motor::PWM_resolution)-1));
+            Motor::Set_speed(msg.content[0]);
+        }
     }
 }

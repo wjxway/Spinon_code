@@ -21,7 +21,7 @@ namespace Motor
      *          93.6kHz --- 7 bits
      *         187.2kHz --- 6 bits
      */
-    constexpr uint32_t PWM_resolution = 7U;
+    constexpr uint32_t PWM_resolution = 8U;
 
     /**
      * @brief set so that it fits the PWM resolution.

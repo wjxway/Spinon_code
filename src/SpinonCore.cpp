@@ -60,10 +60,18 @@ void real_setup(void *pvParameters)
 
     DEBUG_C(Serial.println("Pin setup finished"));
 
-    // Motor::Init();
-    // Motor::Set_speed(30);
+    // LED_PWM_init();
 
-    // DEBUG_C(Serial.println("Motor started"));
+    // only setup first channel
+    ledcSetup(1, 40000, 10);
+    ledcAttachPin(LED_PIN_R, 1);
+    ledcWrite(1, (1 << 10) - 1);
+
+    Motor::Init();
+    Motor::Set_speed(0);
+    LED_set(0, float(0) / float((1 << Motor::PWM_resolution) - 1));
+
+    DEBUG_C(Serial.println("Motor started"));
 
     // IR::TX::Init();
 
@@ -78,9 +86,8 @@ void real_setup(void *pvParameters)
 
     DEBUG_C(Serial.println("RX inited"));
 
-    IR::Localization::Init();
-
-    DEBUG_C(Serial.println("Localization inited"));
+    // IR::Localization::Init();
+    // DEBUG_C(Serial.println("Localization inited"));
 
     DEBUG_C(Serial.println("Init finished, launching tasks!"));
 
@@ -104,20 +111,34 @@ void real_setup(void *pvParameters)
         NULL,
         0);
 
-    // Light LED based on position
-    TaskHandle_t LED_control_handle;
+    // // Light LED based on position
+    // TaskHandle_t LED_control_handle;
+
+    // auto task_status = xTaskCreatePinnedToCore(
+    //     LED_control_task,
+    //     "LED_control_task",
+    //     50000,
+    //     NULL,
+    //     8,
+    //     &LED_control_handle,
+    //     0);
+
+    // // trigger LED_control_task when localization is updated.
+    // IR::Localization::Add_Localization_Notification(LED_control_handle);
+
+    // turn on motor based on signal
+    TaskHandle_t Motor_control_handle;
 
     auto task_status = xTaskCreatePinnedToCore(
-        LED_control_task,
-        "ledcontroltask",
+        Motor_control_task,
+        "Motor_control_task",
         50000,
         NULL,
         8,
-        &LED_control_handle,
+        &Motor_control_handle,
         0);
 
-    // trigger LED_control_task when localization is updated.
-    IR::Localization::Add_Localization_Notification(LED_control_handle);
+    IR::RX::Add_RX_Notification(Motor_control_handle);
 
     // // buffer data when new localization is executed
     // TaskHandle_t Buffer_data_handle;

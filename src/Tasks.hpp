@@ -32,6 +32,19 @@ void LED_off_task(void *pvParameters);
 void Buffer_data_task(void *pvParameters);
 
 /**
+ * @brief initialize LED PWM using LEDC
+ */
+void LED_PWM_init();
+
+/**
+ * @brief convenience function to set LED intensity
+ * 
+ * @param color 0,1,2 for R,G,B
+ * @param duty 0~1 for intensity (duty)
+ */
+void LED_set(uint32_t color,float duty);
+
+/**
  * @brief convert localization information to LED states and manages LED_FB_ISR
  * 
  * @param pvParameters 

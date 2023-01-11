@@ -39,7 +39,7 @@ namespace IR
          * @brief Create or reset data, then add to schedule.
          *
          * @param type msg_type of data
-         * @param raw raw data, each uint32_t should contain Msg_content_bits of
+         * @param raw raw data, each uint16_t should contain Msg_content_bits of
          * data.
          * @param priority1 priority of this task
          * @param expiration_count how much individual transmissions before this

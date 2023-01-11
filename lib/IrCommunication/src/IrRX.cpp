@@ -586,13 +586,6 @@ namespace IR
                 // bit i indicates whether signal from channel i is valid.
                 uint32_t valid = 0U;
 
-#if MSG_SIMPLE_LED_ON
-                if (intr_st_1)
-                {
-                    LIT_B;
-                }
-#endif
-
                 do
                 {
                     // parse RMT item into a uint32_t
@@ -666,6 +659,13 @@ namespace IR
                         last_RX_time = rec_time;
                         // add element to the pool if parsing is successful and consistent
                         raw_msg_buffer.push(Trans_info{raw | emitter_pos, valid, rec_time});
+
+#if MSG_SIMPLE_LED_ON
+                        if (intr_st_1)
+                        {
+                            LIT_B;
+                        }
+#endif
                     }
 
                 } while (false);

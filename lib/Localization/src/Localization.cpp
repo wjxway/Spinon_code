@@ -1034,7 +1034,7 @@ namespace IR
                     Serial.print(Single_transmission_msg_type + 1);
                     Serial.print(" , ");
                     Serial.print(Msg_type_max);
-                    Serial.println(" ]");)
+                    Serial.println(" ]"));
 
                 return false;
             }

@@ -61,7 +61,7 @@ namespace IR
                         // notify user if msg_type is not proper.
                         DEBUG_C(
                             if (n_msg > 1)
-                                Serial.println("Feeding multiple transmission data into single transmission messages! Only the first data will be sent!");)
+                                Serial.println("Feeding multiple transmission data into single transmission messages! Only the first data will be sent!"));
                         // resize, generate RMT_item, and setup pointer
                         data.resize(RMT_TX_length);
                         Generate_RMT_item(data.data(), Msg_single_t{{This_robot_ID, msg_type, msg_ID_init, crc4_itu(raw[0]), raw[0]}}.raw);
@@ -424,7 +424,7 @@ namespace IR
             // initialization of RMT
             DEBUG_C(
                 if (rmt_config(&rmt_tx) != ESP_OK)
-                    Serial.println("RMT TX_1 init failed!");)
+                    Serial.println("RMT TX_1 init failed!"));
 
             // set source clk to APB clock
             rmt_set_source_clk(RMT_TX_channel_1, RMT_BASECLK_APB);
@@ -456,7 +456,7 @@ namespace IR
             // initialization of RMT
             DEBUG_C(
                 if (rmt_config(&rmt_tx_2) != ESP_OK)
-                    Serial.println("RMT TX_2 init failed!");)
+                    Serial.println("RMT TX_2 init failed!"));
 
             // set source clk to APB clock
             rmt_set_source_clk(RMT_TX_channel_2, RMT_BASECLK_APB);
