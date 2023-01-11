@@ -767,30 +767,8 @@ void Motor_control_task(void *pvParameters)
 
         if (msg.content_length)
         {
-            LED_set(0, float(msg.content[0]) / float((1 << Motor::PWM_resolution) - 1));
+            LED_set(0, float(msg.content[0]) / float((1<<Motor::PWM_resolution)-1));
             Motor::Set_speed(msg.content[0]);
-        }
-    }
-}
-
-void Motor_TX_task(void *pvParameters)
-{
-    while (true)
-    {
-        vTaskDelay(10);
-        if (Serial.available())
-        {
-            long val = Serial.parseInt();
-
-            while (Serial.available())
-            {
-                Serial.read();
-            }
-
-            Serial.print("Thruster @ ");
-            Serial.println(val);
-
-            IR::TX::Add_to_schedule(1, {uint16_t(val)}, 2);
         }
     }
 }
