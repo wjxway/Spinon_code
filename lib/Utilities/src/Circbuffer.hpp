@@ -131,7 +131,7 @@ public:
         if (n_elem)
         {
             temp = *head;
-            
+
             head = start + (head + 1 - start) % max_size;
 
             n_elem--;
@@ -363,6 +363,44 @@ public:
         } while (head_invalid());
 
         return empty ? T{} : temp;
+    }
+
+    /**
+     * @brief (thread safe!) check if empty.
+     *
+     * @return true for empty, false for populated
+     */
+    bool Empty_Q()
+    {
+        T temp{};
+        bool empty = false;
+
+        bool not_first_time = 0;
+
+        do
+        {
+            // do not run this part for the first run
+            if (not_first_time)
+            {
+                // reset head
+                head = orig->head;
+                head_rounds = orig->head_rounds;
+            }
+            else
+                not_first_time = 1;
+
+            // it's not empty as long as head!=tail
+            // even if concurrency happens here and make it true, the header must be invalid, so it will loop again.
+            if (head != orig->tail)
+            {
+                empty = false;
+                temp = *head;
+            }
+            else
+                empty = true;
+        } while (head_invalid());
+
+        return empty;
     }
 
     /**
