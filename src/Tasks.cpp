@@ -749,48 +749,40 @@ void LED_control_task(void *pvParameters)
 
 void Motor_control_task(void *pvParameters)
 {
+    // get data
+    auto buf_1 = IR::RX::Get_msg_buffer_by_type(1);
+    auto buf_2 = IR::RX::Get_msg_buffer_by_type(2);
+
     while (true)
     {
         // wait till next message is received
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-        // get data
-        uint32_t io_flag;
-        IR::RX::Parsed_msg_completed msg;
-        do
+        if (!buf_1.Empty_Q())
         {
-            io_flag = IR::RX::Get_io_flag();
+            auto msg = buf_1.pop();
 
-            msg = IR::RX::Get_latest_msg_by_type(1);
-
-        } while (io_flag != IR::RX::Get_io_flag());
-
-        if (msg.content_length)
-        {
             LED_set(0, float(msg.content[0]) / float((1 << Motor::PWM_resolution) - 1));
             Motor::Set_speed(msg.content[0]);
         }
-    }
-}
 
-void Motor_TX_task(void *pvParameters)
-{
-    while (true)
-    {
-        vTaskDelay(10);
-        if (Serial.available())
+        if (!buf_2.Empty_Q())
         {
-            long val = Serial.parseInt();
+            auto msg = buf_2.pop();
 
-            while (Serial.available())
+            LIT_G;
+            vTaskDelay(500);
+            QUENCH_G;
+
+            // reset command
+            if (msg.content[0] == 0)
             {
-                Serial.read();
+                Motor::Init();
             }
-
-            Serial.print("Thruster @ ");
-            Serial.println(val);
-
-            IR::TX::Add_to_schedule(1, {uint16_t(val)}, 2);
+            else
+            {
+                Motor::Config_register((msg.content[0] >> 8) & 0xFF, msg.content[0] & 0xFF);
+            }
         }
     }
 }

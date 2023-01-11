@@ -9,7 +9,6 @@
 #include <MotorCtrl.hpp>
 #include <IrCommunication.hpp>
 #include <Localization.hpp>
-#include <BitCast.hpp>
 #include "Tasks.hpp"
 
 uint64_t rec_finish_time = 0;
@@ -44,44 +43,126 @@ void real_setup(void *pvParameters)
     // please keep it here! or the RMT might be buggy!
     delay(10);
 
-    IR::TX::Init();
+    // test output
+    pinMode(DEBUG_PIN_1, OUTPUT);
+    pinMode(DEBUG_PIN_2, OUTPUT);
 
-    DEBUG_C(Serial.println("TX inited"));
+    // LED output
+    pinMode(LED_PIN_R, OUTPUT);
+    pinMode(LED_PIN_G, OUTPUT);
+    pinMode(LED_PIN_B, OUTPUT);
 
-    IR::TX::Add_to_schedule(1, {0U}, 2);
-    Serial.println("Thruster @ 0");
+    digitalWrite(LED_PIN_R, HIGH);
+    digitalWrite(LED_PIN_G, HIGH);
+    digitalWrite(LED_PIN_B, HIGH);
 
-    // // this is the data task that has type 4 and transmit the robot's position
-    // switch (This_robot_ID)
-    // {
-    // case 1:
-    //     IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)0), std::bit_cast<uint16_t>((int16_t)300), std::bit_cast<uint16_t>((int16_t)0)}, 2);
-    //     break;
-    // case 2:
-    //     IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)260), std::bit_cast<uint16_t>((int16_t)-150), std::bit_cast<uint16_t>((int16_t)0)}, 2);
-    //     break;
-    // case 3:
-    //     IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)-260), std::bit_cast<uint16_t>((int16_t)-150), std::bit_cast<uint16_t>((int16_t)0)}, 2);
-    //     break;
-    // default:
-    //     Serial.println("This_robot_ID Error!");
-    //     blink_led(20);
-    //     break;
-    // }
+    blink_led(5);
 
-    DEBUG_C(Serial.println("TX data set"));
+    DEBUG_C(Serial.println("Pin setup finished"));
 
-    // update thruster value through Serial
+    // LED_PWM_init();
+
+    // only setup first channel
+    ledcSetup(1, 40000, 10);
+    ledcAttachPin(LED_PIN_R, 1);
+    ledcWrite(1, (1 << 10) - 1);
+
+    Motor::Init();
+    Motor::Set_speed(0);
+    LED_set(0, float(0) / float((1 << Motor::PWM_resolution) - 1));
+
+    DEBUG_C(Serial.println("Motor started"));
+
+    // IR::TX::Init();
+
+    // DEBUG_C(Serial.println("TX inited"));
+
+    // // this is the data task that has type 4 and transmit {0x1234, 0xFEDC}
+    // IR::TX::Add_to_schedule(4, {0x0123, 0xFEDC}, 2, -1, 2);
+
+    // DEBUG_C(Serial.println("TX data set"));
+
+    IR::RX::Init();
+
+    DEBUG_C(Serial.println("RX inited"));
+
+    // IR::Localization::Init();
+    // DEBUG_C(Serial.println("Localization inited"));
+
+    DEBUG_C(Serial.println("Init finished, launching tasks!"));
+
+    // // monitor the performance of cores
+    // xTaskCreatePinnedToCore(
+    //     Idle_stats_task,
+    //     "idle0",
+    //     10000,
+    //     NULL,
+    //     1,
+    //     NULL,
+    //     0);
+
+    // quench LED!
     xTaskCreatePinnedToCore(
-        Motor_TX_task,
-        "Motor_TX_task",
+        LED_off_task,
+        "LED_off_task",
         10000,
         NULL,
-        5,
+        2,
         NULL,
         0);
 
-    DEBUG_C(Serial.println("Init finished"));
+    // // Light LED based on position
+    // TaskHandle_t LED_control_handle;
+
+    // auto task_status = xTaskCreatePinnedToCore(
+    //     LED_control_task,
+    //     "LED_control_task",
+    //     50000,
+    //     NULL,
+    //     8,
+    //     &LED_control_handle,
+    //     0);
+
+    // // trigger LED_control_task when localization is updated.
+    // IR::Localization::Add_Localization_Notification(LED_control_handle);
+
+    // turn on motor based on signal
+    TaskHandle_t Motor_control_handle;
+
+    auto task_status = xTaskCreatePinnedToCore(
+        Motor_control_task,
+        "Motor_control_task",
+        50000,
+        NULL,
+        8,
+        &Motor_control_handle,
+        0);
+
+    IR::RX::Add_RX_Notification(Motor_control_handle);
+
+    // // buffer data when new localization is executed
+    // TaskHandle_t Buffer_data_handle;
+
+    // auto task_status = xTaskCreatePinnedToCore(
+    //     Buffer_data_task,
+    //     "Buffer_data_task",
+    //     50000,
+    //     NULL,
+    //     8,
+    //     &Buffer_data_handle,
+    //     0);
+
+    // // trigger buffer data when localization is updated.
+    // IR::Localization::Add_Localization_Notification(Buffer_data_handle);
+
+    if (task_status == pdTRUE)
+    {
+        Serial.println("All tasks launched!");
+    }
+    else
+    {
+        Serial.println("Task cannot be allocated!");
+    }
 
     // remove this task after use
     vTaskDelete(NULL);
