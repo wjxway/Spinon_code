@@ -777,7 +777,14 @@ void Motor_control_task(void *pvParameters)
             // reset command
             if (msg.content[0] == 0)
             {
-                Motor::Init();
+                Motor::Set_speed(0);
+                delayMicroseconds(1000000);
+
+                // initial config
+                for (uint8_t addr = 0U; addr < 23U; addr++)
+                {
+                    Motor::Config_register(addr + 2U, Motor::Default_config[addr]);
+                }
             }
             else
             {
