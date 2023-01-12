@@ -111,34 +111,34 @@ void real_setup(void *pvParameters)
         NULL,
         0);
 
-    // // Light LED based on position
-    // TaskHandle_t LED_control_handle;
-
-    // auto task_status = xTaskCreatePinnedToCore(
-    //     LED_control_task,
-    //     "LED_control_task",
-    //     50000,
-    //     NULL,
-    //     8,
-    //     &LED_control_handle,
-    //     0);
-
-    // // trigger LED_control_task when localization is updated.
-    // IR::Localization::Add_Localization_Notification(LED_control_handle);
-
-    // turn on motor based on signal
-    TaskHandle_t Motor_control_handle;
+    // Light LED based on position
+    TaskHandle_t LED_control_handle;
 
     auto task_status = xTaskCreatePinnedToCore(
-        Motor_control_task,
-        "Motor_control_task",
+        LED_control_task,
+        "LED_control_task",
         50000,
         NULL,
         8,
-        &Motor_control_handle,
+        &LED_control_handle,
         0);
 
-    IR::RX::Add_RX_Notification(Motor_control_handle);
+    // trigger LED_control_task when localization is updated.
+    IR::Localization::Add_Localization_Notification(LED_control_handle);
+
+    // // turn on motor based on signal
+    // TaskHandle_t Motor_control_handle;
+
+    // auto task_status = xTaskCreatePinnedToCore(
+    //     Motor_control_task,
+    //     "Motor_control_task",
+    //     50000,
+    //     NULL,
+    //     8,
+    //     &Motor_control_handle,
+    //     0);
+
+    // IR::RX::Add_RX_Notification(Motor_control_handle);
 
     // // buffer data when new localization is executed
     // TaskHandle_t Buffer_data_handle;
