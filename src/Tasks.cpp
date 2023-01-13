@@ -611,6 +611,8 @@ void LED_control_task(void *pvParameters)
         Callback_dat_3.t_start = pos_0.rotation_time * 5 - Callback_dat_3.duration / 2 - int64_t((LED_angle_offset + pos_0.angle_0 - atan2f(FB_val[1], FB_val[0])) / pos_0.angular_velocity);
         Callback_dat_3.period = pos_0.rotation_time;
 
+        // clip add_val to make sure that the average is still the average and the values will not exceed limits.
+        // similar for motor settings.
         float add_val = norm(FB_val[0], FB_val[1]);
         if (FB_val[2] > 0.5F)
         {
