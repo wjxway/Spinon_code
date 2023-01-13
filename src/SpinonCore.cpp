@@ -62,16 +62,16 @@ void real_setup(void *pvParameters)
 
     // LED_PWM_init();
 
-    // only setup first channel
-    ledcSetup(1, 40000, 10);
-    ledcAttachPin(LED_PIN_R, 1);
-    ledcWrite(1, (1 << 10) - 1);
+    // // only setup first channel
+    // ledcSetup(1, 40000, 10);
+    // ledcAttachPin(LED_PIN_R, 1);
+    // ledcWrite(1, (1 << 10) - 1);
 
-    Motor::Init();
-    Motor::Set_speed(0);
-    LED_set(0, float(0) / float((1 << Motor::PWM_resolution) - 1));
+    // Motor::Init();
+    // Motor::Set_speed(0);
+    // LED_set(0, float(0) / float((1 << Motor::PWM_resolution) - 1));
 
-    DEBUG_C(Serial.println("Motor started"));
+    // DEBUG_C(Serial.println("Motor started"));
 
     // IR::TX::Init();
 
@@ -86,8 +86,8 @@ void real_setup(void *pvParameters)
 
     DEBUG_C(Serial.println("RX inited"));
 
-    // IR::Localization::Init();
-    // DEBUG_C(Serial.println("Localization inited"));
+    IR::Localization::Init();
+    DEBUG_C(Serial.println("Localization inited"));
 
     DEBUG_C(Serial.println("Init finished, launching tasks!"));
 
