@@ -7,6 +7,11 @@
 
 #include <cstdint>
 
+/**
+ * @brief whether we allow overdriving motor to gain higher thrust
+ */
+#define MOTOR_OVERDRIVE_ENABLED 1
+
 namespace Motor
 {
     /**
@@ -48,6 +53,35 @@ namespace Motor
         0x00, 0xE6, 0x03, 0x16, 0x0A, // 16~20
         0x8F, 0x56, 0x3F, 0xC0,       // 21~24
     };
+
+    /**
+     * @brief when below this thrust and not zero, round up to this thrust.
+     */
+    constexpr float Min_thrust = 4.0F;
+
+    /**
+     * @brief max thrust achievable in grams
+     */
+    constexpr float Max_thrust = 23.0F;
+
+#if MOTOR_OVERDRIVE_ENABLED
+    /**
+     * @brief at high speed, we might want to switch to 192kHz to reduce peak
+     * current and obtain higher thrust. This value is for register 22.
+     */
+    constexpr uint8_t Overdrive_config = 0x5E;
+
+    /**
+     * @brief if lower than this thrust, automatically exit overdrive mode to
+     * prevent failure of reboot and grant higher resolution.
+     */
+    constexpr float Min_thrust_overdrive = 8.0F;
+
+    /**
+     * @brief max thrust in overdrive mode in grams
+     */
+    constexpr float Max_thrust_overdrive = 28.0F;
+#endif
 
     // /**
     //  * @brief default register configuration
@@ -132,6 +166,22 @@ namespace Motor
      * @brief release the brake
      */
     void Active_brake_release();
+
+    /**
+     * @brief set thrust to approximately a certain value
+     *
+     * @param thrust desired thrust value in grams.
+     */
+    void Set_thrust(const float thrust);
+
+#if MOTOR_OVERDRIVE_ENABLED
+    /**
+     * @brief enter or exit overdrive mode which grant higher thrust!
+     *
+     * @param state true for enter, false for exit.
+     */
+    void Set_overdrive(bool state);
+#endif
 } // namespace Motor
 
 #endif
