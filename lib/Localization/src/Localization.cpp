@@ -145,9 +145,9 @@ namespace IR
              * right receiver.
              * @return constexpr float distance estimation in mm
              */
-            constexpr float Distance_expectation(const float LR_angle)
+            float Distance_expectation(const float LR_angle)
             {
-                return 59.58F / LR_angle - 14.22F;
+                return 28.942F / sin((LR_angle + 0.0267436F) / 2.0F) - 9.29335F;
             }
 
             /**
@@ -157,7 +157,7 @@ namespace IR
              * right receiver.
              * @return constexpr float error estimation
              */
-            constexpr float Distance_error(const float LR_angle)
+            float Distance_error(const float LR_angle)
             {
                 return Distance_error_mult * square(Distance_expectation(LR_angle));
             }
@@ -171,9 +171,9 @@ namespace IR
              * and average of LR receiver.
              * @return constexpr float elevation estimation
              */
-            constexpr float Elevation_expectation(const float LR_angle, const float Cent_angle)
+            float Elevation_expectation(const float LR_angle, const float Cent_angle)
             {
-                return Distance_expectation(LR_angle) * tan(Cent_angle) * Tilting_angle_multiplyer - 25.0F;
+                return Distance_expectation(LR_angle) * tan(Cent_angle + 0.0436332F) * Tilting_angle_multiplyer;
             }
 
             /**
@@ -185,7 +185,7 @@ namespace IR
              * and average of LR receiver.
              * @return constexpr float error estimation
              */
-            constexpr float Elevation_error(const float LR_angle, const float Cent_angle)
+            float Elevation_error(const float LR_angle, const float Cent_angle)
             {
                 return (Tilting_angle_multiplyer * sqrt(square(tan(Cent_angle) * Distance_error(LR_angle)) + square(Distance_expectation(LR_angle) * Angle_error / cos(Cent_angle))));
             }
@@ -824,8 +824,8 @@ namespace IR
                                 {
                                     this_Loc_data.dist = Distance_expectation(Compensated_LR_diff);
                                     this_Loc_data.dist_err = Distance_error(Compensated_LR_diff);
-                                    this_Loc_data.elev = Elevation_expectation(Compensated_LR_diff,Cent_diff);
-                                    this_Loc_data.elev_err = Elevation_error(Compensated_LR_diff,Cent_diff);
+                                    this_Loc_data.elev = Elevation_expectation(Compensated_LR_diff, Cent_diff);
+                                    this_Loc_data.elev_err = Elevation_error(Compensated_LR_diff, Cent_diff);
                                 }
                                 else
                                 {

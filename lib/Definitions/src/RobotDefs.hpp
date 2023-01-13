@@ -49,12 +49,11 @@ namespace IR
         /**
          * @brief angle offset between left and right receiver channel in rad
          *
-         * @note The actual left-right angle is LR_diff + LR_angle_compensation
-         * * Cent_diff
+         * @note The actual left-right angle is LR_diff + LR_angle_compensation * Cent_diff
          * 
          * @note not useful in calibration mode
          */
-        constexpr float LR_angle_compensation = -0.12F;
+        constexpr float LR_angle_compensation = 0.0F;
 
         /**
          * @brief orientation angle offset.

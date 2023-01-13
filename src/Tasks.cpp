@@ -252,7 +252,7 @@ namespace
 
                 for (auto &pdat : Position_buffer)
                 {
-                    std::string v = std::string("x : ") + std::to_string(pdat.x) + std::string("y : ") + std::to_string(pdat.y) + std::string("z : ") + std::to_string(pdat.z) + std::string("var_xy : ") + std::to_string(pdat.var_xy) + std::string("var_z : ") + std::to_string(pdat.var_z) + std::string("w : ") + std::to_string(pdat.angular_velocity) + std::string("err_factor : ") + std::to_string(pdat.mean_error_factor) + "\n";
+                    std::string v = std::string("x : ") + std::to_string(pdat.x) + std::string(", y : ") + std::to_string(pdat.y) + std::string(", z : ") + std::to_string(pdat.z) + std::string(", var_xy : ") + std::to_string(pdat.var_xy) + std::string(", var_z : ") + std::to_string(pdat.var_z) + std::string(", w : ") + std::to_string(pdat.angular_velocity) + std::string(", err_factor : ") + std::to_string(pdat.mean_error_factor);
 
                     Serial.println(v.c_str());
                 }

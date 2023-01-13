@@ -14,7 +14,7 @@
  * @note in calibration mode, we basically output all raw measurement data we
  * obtained through serial. (buffer might be required)
  */
-// #define LOCALIZATION_CALIBRATION_MODE_ON 1
+// #define LOCALIZATION_CALIBRATION_MODE 1
 
 namespace IR
 {

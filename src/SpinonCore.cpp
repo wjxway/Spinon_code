@@ -119,6 +119,10 @@ void real_setup(void *pvParameters)
     // // trigger LED_control_task when localization is updated.
     // IR::Localization::Add_Localization_Notification(LED_control_handle);
 
+#if LOCALIZATION_CALIBRATION_MODE
+    Serial.println("Single measurement calibration!");
+#else
+    Serial.println("Overall localization!");
     // buffer data when new localization is executed
     TaskHandle_t Buffer_data_handle;
 
@@ -142,6 +146,7 @@ void real_setup(void *pvParameters)
     {
         Serial.println("Task cannot be allocated!");
     }
+#endif
 
     // remove this task after use
     vTaskDelete(NULL);
