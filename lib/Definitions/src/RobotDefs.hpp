@@ -38,7 +38,10 @@ const uint32_t This_robot_ID = 12U;
 #define RMT_TX_CHANNEL_COUNT 2
 
 /**
- * @brief set to 1 to enter calibration mode where we output all raw data.
+ * @brief should we be in calibration mode?
+ * 
+ * @note in calibration mode, we basically output all raw measurement data we
+ * obtained through serial. (buffer might be required)
  */
 // #define LOCALIZATION_CALIBRATION_MODE 1
 
@@ -54,7 +57,7 @@ namespace IR
          * 
          * @note not useful in calibration mode
          */
-        constexpr float LR_angle_compensation = -0.12F;
+        constexpr float LR_angle_compensation = 0.0F;
 
         /**
          * @brief orientation angle offset.

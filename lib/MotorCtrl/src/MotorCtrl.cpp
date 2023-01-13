@@ -1,5 +1,6 @@
 #include "MotorCtrl.hpp"
 #include <FastIO.hpp>
+#include <FastMath.hpp>
 #include <PinDefs.hpp>
 #include <Wire.h>
 
@@ -17,6 +18,11 @@ namespace Motor
 		uint32_t Last_set_speed = 0U;
 
 		/**
+		 * @brief whether we are in overdrive mode which grant higher thrust!
+		 */
+		bool Overdrive_state = false;
+
+		/**
 		 * @brief an ISR that get triggered when alert is fired.
 		 *
 		 * @note actively brake the motor for now.
@@ -25,10 +31,24 @@ namespace Motor
 		{
 			Active_brake();
 		}
+
+		/**
+		 * @brief compute throttle value based on thrust force
+		 *
+		 * @param thrust thrust value in gram
+		 * @return uint32_t corresponding throttle value
+		 */
+		constexpr uint32_t Compute_throttle(float thrust)
+		{
+			return uint32_t(4.25F * thrust + 17.1F);
+		}
 	} // anonymous namespace
 
 	uint32_t Init()
 	{
+		// always disable overdrive in the beginning
+		Overdrive_state = false;
+
 		// pin modes
 		pinMode(MOTOR_ALERT_PIN, INPUT_PULLUP);
 		pinMode(MOTOR_SPD_FB_PIN, INPUT_PULLUP);
@@ -135,4 +155,31 @@ namespace Motor
 	{
 		clrbit(MOTOR_BRAKE_PIN);
 	}
+
+	void Set_overdrive(bool state)
+	{
+		if (state != Overdrive_state)
+		{
+			Config_register(22, state ? Overdrive_config : Default_config[20]);
+		}
+	}
+
+	void Set_thrust(const float thrust)
+	{
+		if (Overdrive_state)
+		{
+			// exit overdrive mode when thrust value is too small.
+			// Or we might fail to start up again.
+			if (thrust >= Min_thrust_overdrive)
+			{
+				Set_speed(Compute_throttle(math::fast::clip(thrust, Min_thrust_overdrive, Max_thrust_overdrive)));
+				return;
+			}
+
+			Set_overdrive(false);
+		}
+
+		Set_speed(Compute_throttle(math::fast::clip(thrust, Min_thrust, Max_thrust)));
+	}
+
 } // namespace Motor

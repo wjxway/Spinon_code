@@ -60,8 +60,16 @@ void real_setup(void *pvParameters)
 
     DEBUG_C(Serial.println("Pin setup finished"));
 
+    // LED_PWM_init();
+
+    // // only setup first channel
+    // ledcSetup(1, 40000, 10);
+    // ledcAttachPin(LED_PIN_R, 1);
+    // ledcWrite(1, (1 << 10) - 1);
+
     // Motor::Init();
-    // Motor::Set_speed(30);
+    // Motor::Set_speed(0);
+    // LED_set(0, float(0) / float((1 << Motor::PWM_resolution) - 1));
 
     // DEBUG_C(Serial.println("Motor started"));
 
@@ -79,7 +87,6 @@ void real_setup(void *pvParameters)
     DEBUG_C(Serial.println("RX inited"));
 
     IR::Localization::Init();
-
     DEBUG_C(Serial.println("Localization inited"));
 
     DEBUG_C(Serial.println("Init finished, launching tasks!"));
@@ -109,7 +116,7 @@ void real_setup(void *pvParameters)
 
     auto task_status = xTaskCreatePinnedToCore(
         LED_control_task,
-        "ledcontroltask",
+        "LED_control_task",
         50000,
         NULL,
         8,
@@ -118,6 +125,20 @@ void real_setup(void *pvParameters)
 
     // trigger LED_control_task when localization is updated.
     IR::Localization::Add_Localization_Notification(LED_control_handle);
+
+    // // turn on motor based on signal
+    // TaskHandle_t Motor_test_handle;
+
+    // auto task_status = xTaskCreatePinnedToCore(
+    //     Motor_test_task,
+    //     "Motor_test_task",
+    //     50000,
+    //     NULL,
+    //     8,
+    //     &Motor_test_handle,
+    //     0);
+
+    // IR::RX::Add_RX_Notification(Motor_test_handle);
 
     // // buffer data when new localization is executed
     // TaskHandle_t Buffer_data_handle;
