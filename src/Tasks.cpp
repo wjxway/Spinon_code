@@ -237,9 +237,8 @@ std::string n2hexstr(I w, size_t hex_len = sizeof(I) << 1)
 namespace
 {
     size_t record_count = 0U;
-    constexpr size_t start_record_count = 300U;
     constexpr size_t Position_buffer_max_size = 300U;
-    std::vector<IR::Localization::Position_data> Position_buffer;
+    Circbuffer<IR::Localization::Position_data, Position_buffer_max_size + 5> Position_buffer;
 
     void Send_message_task(void *pvParameters)
     {
@@ -255,8 +254,13 @@ namespace
                     Serial.read();
                 }
 
-                for (auto &pdat : Position_buffer)
+                Serial.print("Now is ");
+                Serial.println(esp_timer_get_time());
+
+                while (Position_buffer.n_elem > 0)
                 {
+                    auto pdat = Position_buffer.pop();
+
                     std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", x : ") + std::to_string(pdat.x) + std::string(", y : ") + std::to_string(pdat.y) + std::string(", z : ") + std::to_string(pdat.z) + std::string(", var_xy : ") + std::to_string(pdat.var_xy) + std::string(", var_z : ") + std::to_string(pdat.var_z) + std::string(", w : ") + std::to_string(pdat.angular_velocity) + std::string(", err_factor : ") + std::to_string(pdat.mean_error_factor) + "\n";
 
                     Serial.print(v.c_str());
@@ -271,7 +275,8 @@ void Buffer_data_task(void *pvParameters)
     // position data is valid for 1s
     constexpr int64_t Position_expire_time = 1000000LL;
 
-    Position_buffer.reserve(Position_buffer_max_size + 1);
+    // if send message task has been started.
+    bool send_task_not_started = true;
 
     while (true)
     {
@@ -280,48 +285,47 @@ void Buffer_data_task(void *pvParameters)
 
         record_count++;
 
-        if (record_count > start_record_count && Position_buffer.size() < Position_buffer_max_size)
+        // get data
+        uint32_t io_flag;
+        IR::Localization::Position_data pos_0;
+        bool not_enough_data = false;
+        do
         {
-            // get data
-            uint32_t io_flag;
-            IR::Localization::Position_data pos_0;
-            bool not_enough_data = false;
-            do
+            io_flag = IR::Localization::Get_io_flag();
+
+            // check if there's enough data to use
+            if (IR::Localization::Get_position_data_count(Position_expire_time) == 0)
             {
-                io_flag = IR::Localization::Get_io_flag();
-
-                // check if there's enough data to use
-                if (IR::Localization::Get_position_data_count(Position_expire_time) == 0)
-                {
-                    not_enough_data = true;
-                    break;
-                }
-
-                // pos_0 = IR::Localization::Get_position();
-                pos_0 = IR::Localization::Get_filtered_position();
-            } while (io_flag != IR::Localization::Get_io_flag());
-
-            if (not_enough_data)
-            {
-                continue;
+                not_enough_data = true;
+                break;
             }
 
-            Position_buffer.push_back(pos_0);
+            pos_0 = IR::Localization::Get_position();
+            // pos_0 = IR::Localization::Get_filtered_position();
+        } while (io_flag != IR::Localization::Get_io_flag());
 
-            if (Position_buffer.size() == Position_buffer_max_size)
-            {
-                LIT_G;
+        if (not_enough_data)
+        {
+            continue;
+        }
 
-                // send me messages through serial!
-                xTaskCreatePinnedToCore(
-                    Send_message_task,
-                    "Send_message_task",
-                    20000,
-                    NULL,
-                    3,
-                    NULL,
-                    0);
-            }
+        Position_buffer.push(pos_0);
+
+        if (send_task_not_started && Position_buffer.n_elem >= Position_buffer_max_size)
+        {
+            send_task_not_started = false;
+
+            LIT_G;
+
+            // send me messages through serial!
+            xTaskCreatePinnedToCore(
+                Send_message_task,
+                "Send_message_task",
+                10000,
+                NULL,
+                3,
+                NULL,
+                0);
         }
     }
 }

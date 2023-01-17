@@ -139,7 +139,6 @@ namespace IR
              */
             Circbuffer<Position_data, Position_stack_length> Filtered_position_stack;
 
-
             /**
              * @brief compute distance based on angle
              *
@@ -577,6 +576,7 @@ namespace IR
                 // record single round time.
                 rotation_time /= rotation_count;
 
+                // return std::make_pair(rotation_time, last_index);
                 return std::make_pair(rotation_time, last_index);
             }
 
@@ -880,9 +880,12 @@ namespace IR
                     //
                     // determine if the old data is valid
                     bool old_valid = true;
+                    // why the old data is invalid
+                    uint32_t old_invalid_reason = 0;
                     if (Filtered_position_stack.n_elem == 0)
                     {
                         old_valid = false;
+                        old_invalid_reason = 1;
                     }
                     else
                     {
@@ -892,10 +895,12 @@ namespace IR
                         if ((last_message_time - last.time) > Position_expire_time)
                         {
                             old_valid = false;
+                            old_invalid_reason = 2;
                         }
                         else if (square(last.x - xmean) + square(last.y - ymean) >= square(Max_Communication_distance))
                         {
                             old_valid = false;
+                            old_invalid_reason = 3;
                         }
                     }
 
@@ -916,10 +921,10 @@ namespace IR
                         res = Execute_localization(Loc_data, xmean, ymean);
                     }
 
-                    // // additional sanity check here. so if localization
-                    // // result is too far from the beacon position, this
-                    // // result cannot be valid, we don't push!
-                    if (square(res.x - xmean) + square(res.y - ymean) >= square(Max_Communication_distance))
+                    // additional sanity check here. if localization result is
+                    // too far from the beacon position, or if the error factor
+                    // is too large, this result cannot be valid, we don't push!
+                    if (square(res.x - xmean) + square(res.y - ymean) >= square(Max_Communication_distance) || res.mean_error_factor > 2)
                     {
                         continue;
                     }
@@ -945,6 +950,7 @@ namespace IR
                         filt.rotation_time = rotation_time;
                         filt.angular_velocity = angular_velocity;
                         filt.time = last_message_time;
+                        // filt.mean_error_factor=0;
 
                         // determine how much variance should be added to the
                         // old measurement due to drifting of drone
@@ -975,6 +981,7 @@ namespace IR
                     // directly push into the filtered stack.
                     else
                     {
+                        // res.mean_error_factor=old_invalid_reason;
                         Filtered_position_stack.push(res);
                     }
 

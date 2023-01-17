@@ -87,6 +87,7 @@ void real_setup(void *pvParameters)
     DEBUG_C(Serial.println("RX inited"));
 
     IR::Localization::Init();
+
     DEBUG_C(Serial.println("Localization inited"));
 
     DEBUG_C(Serial.println("Init finished, launching tasks!"));
@@ -101,23 +102,25 @@ void real_setup(void *pvParameters)
     //     NULL,
     //     0);
 
-    // quench LED!
-    xTaskCreatePinnedToCore(
-        LED_off_task,
-        "LED_off_task",
-        10000,
-        NULL,
-        2,
-        NULL,
-        0);
+    // // quench LED!
+    // xTaskCreatePinnedToCore(
+    //     LED_off_task,
+    //     "LED_off_task",
+    //     10000,
+    //     NULL,
+    //     2,
+    //     NULL,
+    //     0);
 
     // Light LED based on position
     TaskHandle_t LED_control_handle;
 
+    LED_PWM_init();
+
     auto task_status = xTaskCreatePinnedToCore(
         LED_control_task,
         "LED_control_task",
-        50000,
+        10000,
         NULL,
         8,
         &LED_control_handle,
@@ -140,20 +143,20 @@ void real_setup(void *pvParameters)
 
     // IR::RX::Add_RX_Notification(Motor_test_handle);
 
-    // // buffer data when new localization is executed
-    // TaskHandle_t Buffer_data_handle;
+    // buffer data when new localization is executed
+    TaskHandle_t Buffer_data_handle;
 
-    // auto task_status = xTaskCreatePinnedToCore(
-    //     Buffer_data_task,
-    //     "Buffer_data_task",
-    //     50000,
-    //     NULL,
-    //     8,
-    //     &Buffer_data_handle,
-    //     0);
+    task_status = xTaskCreatePinnedToCore(
+        Buffer_data_task,
+        "Buffer_data_task",
+        10000,
+        NULL,
+        8,
+        &Buffer_data_handle,
+        0);
 
-    // // trigger buffer data when localization is updated.
-    // IR::Localization::Add_Localization_Notification(Buffer_data_handle);
+    // trigger buffer data when localization is updated.
+    IR::Localization::Add_Localization_Notification(Buffer_data_handle);
 
     if (task_status == pdTRUE)
     {
