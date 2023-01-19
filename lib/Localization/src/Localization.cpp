@@ -413,9 +413,8 @@ namespace IR
 
 #if LOCALIZATION_CALIBRATION_MODE
             size_t record_count = 0U;
-            constexpr size_t start_record_count = 300U;
-            constexpr size_t Relative_measurement_buffer_max_size = 300U;
-            std::vector<std::vector<Relative_position_data>> Relative_measurement_buffer;
+            constexpr size_t Relative_measurement_buffer_max_size = 200U;
+            Circbuffer<std::vector<Relative_position_data>, Relative_measurement_buffer_max_size + 4> Relative_measurement_buffer;
 
             void Print_data_task(void *pvParameters)
             {
@@ -431,16 +430,46 @@ namespace IR
                             Serial.read();
                         }
 
-                        for (auto &all_dat : Relative_measurement_buffer)
+                        // uint32_t curr_flag = RX::Get_io_flag();
+
+                        // // timing info
+                        // uint32_t time_count;
+                        // RX::Msg_timing_t time_list[RX::Timing_buffer_history_size];
+
+                        // // get data
+                        // do
+                        // {
+                        //     curr_flag = RX::Get_io_flag();
+
+                        //     time_count = RX::Get_timing_data(time_list);
+                        // } while (curr_flag != RX::Get_io_flag());
+
+                        // Serial.print("Time buffer count = ");
+                        // Serial.println(time_count);
+
+                        // // print global timing data
+                        // for (int i = 0; i < time_count; i++)
+                        // {
+                        //     std::string v = "";
+                        //     auto &tli = time_list[i];
+
+                        //     v += "rid: " + std::to_string(tli.robot_ID) + ", rec: " + std::to_string(tli.receiver) + ", t0: " + std::to_string(tli.time_arr[0]) + ", t1: " + std::to_string(tli.time_arr[1]) + ", t2: " + std::to_string(tli.time_arr[2]) + ", valid: " + std::to_string(tli.timing_valid_Q) + ", emit_pos: " + std::to_string(tli.emitter_pos) + "\n\n";
+
+                        //     Serial.print(v.c_str());
+                        // }
+
+                        while (Relative_measurement_buffer.n_elem > 0)
                         {
+                            auto all_dat = Relative_measurement_buffer.pop();
+
                             std::string v = "";
                             v.reserve(1000);
 
-                            v += std::string("Angular velocity: ") + std::to_string(all_dat[0].angle_err) + "\n";
+                            v += std::string("Angular velocity: ") + std::to_string(all_dat[0].dist_err) + "\n";
 
                             for (auto &dat : all_dat)
                             {
-                                v += std::string("  ID: ") + std::to_string(dat.Robot_ID) + ", x0: " + std::to_string(dat.pos[0]) + ", y0: " + std::to_string(dat.pos[1]) + ", z0: " + std::to_string(dat.pos[2]) + ", LR angle diff: " + std::to_string(dat.dist) + ", Center angle diff: " + std::to_string(dat.elev) + ", ang: " + std::to_string(dat.angle) + "\n";
+                                v += std::string("  ID: ") + std::to_string(dat.Robot_ID) + ", x0: " + std::to_string(dat.pos[0]) + ", y0: " + std::to_string(dat.pos[1]) + ", z0: " + std::to_string(dat.pos[2]) + ", LR angle diff: " + std::to_string(dat.dist) + ", Center angle diff: " + std::to_string(dat.elev) + ", ang: " + std::to_string(dat.angle) + ", t_avg: " + std::to_string(dat.angle_err) + "\n";
                             }
 
                             v += "\n";
@@ -576,7 +605,6 @@ namespace IR
                 // record single round time.
                 rotation_time /= rotation_count;
 
-                // return std::make_pair(rotation_time, last_index);
                 return std::make_pair(rotation_time, last_index);
             }
 
@@ -625,6 +653,7 @@ namespace IR
             void Localization_task(void *pvParameters)
             {
                 uint32_t last_flag = 0;
+                int64_t prev_last_message_time = 0;
                 TickType_t prev_wake_time = xTaskGetTickCount();
                 while (true)
                 {
@@ -752,7 +781,7 @@ namespace IR
                             }
 
                             this_Loc_data.angle = float(avg_time % rotation_time) * angular_velocity;
-                            this_Loc_data.angle_err = 1.0F;
+                            this_Loc_data.angle_err = avg_time;
                             this_Loc_data.dist = float(int64_t(time_list[i].time_arr[1] - time_list[i].time_arr[2])) * angular_velocity;
                             this_Loc_data.dist_err = 1.0F; // set to 1.0F because I want to distinguish invalid data.
                             this_Loc_data.elev = (time_list[i].time_arr[0] - avg_time) * angular_velocity;
@@ -818,35 +847,38 @@ namespace IR
                     }
 
                     // we quit if this time is the same as the last time, because that means there's nothing new in this data.
-                    if (last_message_time == Position_stack.peek_tail().time)
+                    if (last_message_time <= prev_last_message_time)
                     {
                         continue;
                     }
+                    prev_last_message_time = last_message_time;
 
 #if LOCALIZATION_CALIBRATION_MODE
                     if (Loc_data.size() >= 2)
                     {
                         record_count++;
-                        if (record_count >= start_record_count && Relative_measurement_buffer.size() < Relative_measurement_buffer_max_size)
+                        // exploit this angle error to store angular velocity.
+                        Loc_data[0].dist_err = angular_velocity;
+
+                        Relative_measurement_buffer.push(Loc_data);
+
+                        static bool Print_data_not_started = true;
+
+                        if (Print_data_not_started && Relative_measurement_buffer.n_elem >= Relative_measurement_buffer_max_size)
                         {
-                            // exploit this angle error to store angular velocity.
-                            Loc_data[0].angle_err = angular_velocity;
+                            Print_data_not_started = false;
 
-                            Relative_measurement_buffer.push_back(Loc_data);
-                            if (Relative_measurement_buffer.size() == Relative_measurement_buffer_max_size)
-                            {
-                                LIT_G;
+                            LIT_G;
 
-                                // send me messages through serial!
-                                xTaskCreatePinnedToCore(
-                                    Print_data_task,
-                                    "Print_data_task",
-                                    20000,
-                                    NULL,
-                                    3,
-                                    NULL,
-                                    0);
-                            }
+                            // send me messages through serial!
+                            xTaskCreatePinnedToCore(
+                                Print_data_task,
+                                "Print_data_task",
+                                20000,
+                                NULL,
+                                3,
+                                NULL,
+                                0);
                         }
                     }
 #else

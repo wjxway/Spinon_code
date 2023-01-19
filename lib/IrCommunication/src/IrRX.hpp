@@ -32,7 +32,7 @@ namespace IR
         /**
          * @brief how frequently will preprocess task be triggered, in ms.
          */
-        constexpr uint32_t Preprocess_trigger_period = 30;
+        constexpr uint32_t Preprocess_trigger_period = 20;
 
         /**
          * @brief priority of Preprocess task, note that all other user tasks

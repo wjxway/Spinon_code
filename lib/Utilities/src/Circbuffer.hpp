@@ -107,6 +107,7 @@ public:
         if (n_elem == max_size - 1)
         {
             head = start + (head + 1 - start) % max_size;
+            head_rounds += (head == start);
         }
         else
         {
@@ -133,6 +134,7 @@ public:
             temp = *head;
 
             head = start + (head + 1 - start) % max_size;
+            head_rounds += (head == start);
 
             n_elem--;
         }
@@ -290,9 +292,8 @@ public:
     T pop()
     {
         T temp{};
-        uint32_t empty = 0;
-
-        bool not_first_time = 0;
+        bool empty = false;
+        bool not_first_time = false;
 
         do
         {
@@ -304,23 +305,34 @@ public:
                 head_rounds = orig->head_rounds;
             }
             else
-                not_first_time = 1;
+            {
+                not_first_time = true;
+            }
 
             // it's not empty as long as head!=tail
             // even if concurrency happens here and make it true, the header must be invalid, so it will loop again.
             if (head != orig->tail)
             {
-                empty = 0;
-
+                empty = false;
                 temp = *head;
-                head = start + (head + 1 - start) % max_size;
             }
             // when empty, return T{}
             else
-                empty = 1;
+            {
+                empty = true;
+            }
         } while (head_invalid());
 
-        return empty ? T{} : temp;
+        // if not empty, increment head
+        if (!empty)
+        {
+            head = start + (head + 1 - start) % max_size;
+            head_rounds += (head == start);
+
+            return temp;
+        }
+
+        return T{};
     }
 
     /**
@@ -334,9 +346,8 @@ public:
     T peek()
     {
         T temp{};
-        uint32_t empty = 0;
-
-        bool not_first_time = 0;
+        bool empty = false;
+        bool not_first_time = false;
 
         do
         {
@@ -348,18 +359,22 @@ public:
                 head_rounds = orig->head_rounds;
             }
             else
-                not_first_time = 1;
+            {
+                not_first_time = true;
+            }
 
             // it's not empty as long as head!=tail
             // even if concurrency happens here and make it true, the header must be invalid, so it will loop again.
             if (head != orig->tail)
             {
-                empty = 0;
+                empty = false;
                 temp = *head;
             }
             // when empty, return T{}
             else
-                empty = 1;
+            {
+                empty = true;
+            }
         } while (head_invalid());
 
         return empty ? T{} : temp;
@@ -372,10 +387,8 @@ public:
      */
     bool Empty_Q()
     {
-        T temp{};
         bool empty = false;
-
-        bool not_first_time = 0;
+        bool not_first_time = false;
 
         do
         {
@@ -387,17 +400,20 @@ public:
                 head_rounds = orig->head_rounds;
             }
             else
-                not_first_time = 1;
+            {
+                not_first_time = true;
+            }
 
             // it's not empty as long as head!=tail
             // even if concurrency happens here and make it true, the header must be invalid, so it will loop again.
             if (head != orig->tail)
             {
                 empty = false;
-                temp = *head;
             }
             else
+            {
                 empty = true;
+            }
         } while (head_invalid());
 
         return empty;
