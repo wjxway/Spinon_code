@@ -33,8 +33,10 @@ void Buffer_data_task(void *pvParameters);
 
 /**
  * @brief initialize LED PWM using LEDC
+ * 
+ * @param channels bit 0,1,2 for R,G,B
  */
-void LED_PWM_init();
+void LED_PWM_init(uint32_t channels);
 
 /**
  * @brief convenience function to set LED intensity
@@ -57,5 +59,21 @@ void LED_control_task(void *pvParameters);
  * @param pvParameters 
  */
 void Motor_control_task(void *pvParameters);
+
+/**
+ * @brief a task that monitors update of motor control commands and slower /
+ * turn off the motor for safety.
+ * 
+ * @param pvParameters 
+ */
+void Motor_monitor_task(void *pvParameters);
+
+
+/**
+ * @brief test motor thrust - speed curve
+ * 
+ * @param pvParameters 
+ */
+void Motor_test_task(void *pvParameters);
 
 #endif

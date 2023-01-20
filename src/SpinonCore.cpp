@@ -60,15 +60,10 @@ void real_setup(void *pvParameters)
 
     DEBUG_C(Serial.println("Pin setup finished"));
 
-    // LED_PWM_init();
+    Motor::Init();
+    Motor::Set_speed(0);
+    Motor::Active_brake();
 
-    // // only setup first channel
-    // ledcSetup(1, 40000, 10);
-    // ledcAttachPin(LED_PIN_R, 1);
-    // ledcWrite(1, (1 << 10) - 1);
-
-    // Motor::Init();
-    // Motor::Set_speed(0);
     // LED_set(0, float(0) / float((1 << Motor::PWM_resolution) - 1));
 
     // DEBUG_C(Serial.println("Motor started"));
@@ -102,61 +97,92 @@ void real_setup(void *pvParameters)
     //     NULL,
     //     0);
 
-    // // quench LED!
-    // xTaskCreatePinnedToCore(
-    //     LED_off_task,
-    //     "LED_off_task",
-    //     10000,
-    //     NULL,
-    //     2,
-    //     NULL,
-    //     0);
-
-    // Light LED based on position
-    TaskHandle_t LED_control_handle;
-
-    LED_PWM_init();
-
-    auto task_status = xTaskCreatePinnedToCore(
-        LED_control_task,
-        "LED_control_task",
+    // quench LED!
+    xTaskCreatePinnedToCore(
+        LED_off_task,
+        "LED_off_task",
         10000,
         NULL,
-        8,
-        &LED_control_handle,
-        0);
-
-    // trigger LED_control_task when localization is updated.
-    IR::Localization::Add_Localization_Notification(LED_control_handle);
-
-    // buffer data when new localization is executed
-    TaskHandle_t Buffer_data_handle;
-
-    task_status = xTaskCreatePinnedToCore(
-        Buffer_data_task,
-        "Buffer_data_task",
-        10000,
+        2,
         NULL,
-        8,
-        &Buffer_data_handle,
         0);
 
-    // trigger buffer data when localization is updated.
-    IR::Localization::Add_Localization_Notification(Buffer_data_handle);
 
-    // // turn on motor based on signal
-    // TaskHandle_t Motor_test_handle;
+    // // test motor thrust - speed curve
+    // TaskHandle_t motor_test_handle;
 
     // auto task_status = xTaskCreatePinnedToCore(
     //     Motor_test_task,
     //     "Motor_test_task",
-    //     50000,
+    //     10000,
     //     NULL,
     //     8,
-    //     &Motor_test_handle,
+    //     &motor_test_handle,
+    //     0);
+    
+    // IR::RX::Add_RX_Notification(motor_test_handle);
+
+
+    // // Light LED based on position
+    // TaskHandle_t LED_control_handle;
+
+    // LED_PWM_init(7U);
+
+    // auto task_status = xTaskCreatePinnedToCore(
+    //     LED_control_task,
+    //     "LED_control_task",
+    //     10000,
+    //     NULL,
+    //     8,
+    //     &LED_control_handle,
     //     0);
 
-    // IR::RX::Add_RX_Notification(Motor_test_handle);
+    // // trigger LED_control_task when localization is updated.
+    // IR::Localization::Add_Localization_Notification(LED_control_handle);
+
+
+    // // buffer data when new localization is executed
+    // TaskHandle_t Buffer_data_handle;
+
+    // task_status = xTaskCreatePinnedToCore(
+    //     Buffer_data_task,
+    //     "Buffer_data_task",
+    //     10000,
+    //     NULL,
+    //     8,
+    //     &Buffer_data_handle,
+    //     0);
+
+    // // trigger buffer data when localization is updated.
+    // IR::Localization::Add_Localization_Notification(Buffer_data_handle);
+
+
+    // Light LED and control motor based on position
+    TaskHandle_t Motor_control_handle;
+
+    LED_PWM_init(3U);
+
+    auto task_status = xTaskCreatePinnedToCore(
+        Motor_control_task,
+        "Motor_control_task",
+        20000,
+        NULL,
+        8,
+        &Motor_control_handle,
+        0);
+
+    // trigger Motor_control when localization is updated.
+    IR::Localization::Add_Localization_Notification(Motor_control_handle);
+
+    // monitor motor's state
+    task_status = xTaskCreatePinnedToCore(
+        Motor_monitor_task,
+        "Motor_monitor_task",
+        10000,
+        NULL,
+        3,
+        NULL,
+        0);
 
     if (task_status == pdTRUE)
     {

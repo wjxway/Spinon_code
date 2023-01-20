@@ -333,7 +333,8 @@ void Buffer_data_task(void *pvParameters)
 namespace
 {
     // R,G,B LED corresponds to offset + 0,1,2
-    constexpr uint32_t LED_LEDC_channel_offset = 1U;
+    // be aware that this might collide with Motor PWM
+    constexpr uint32_t LED_LEDC_channel_offset = 4U;
 
     // LEDC frequency for LED
     constexpr uint32_t LED_PWM_frequency = 40000U;
@@ -342,19 +343,28 @@ namespace
     constexpr uint32_t LED_PWM_resolution = 10U;
 } // anonymous namespace
 
-void LED_PWM_init()
+void LED_PWM_init(uint32_t channels)
 {
-    ledcSetup(LED_LEDC_channel_offset, LED_PWM_frequency, LED_PWM_resolution);
-    ledcAttachPin(LED_PIN_R, LED_LEDC_channel_offset);
-    ledcWrite(LED_LEDC_channel_offset, (1 << LED_PWM_resolution) - 1);
+    if (channels & 1)
+    {
+        ledcSetup(LED_LEDC_channel_offset, LED_PWM_frequency, LED_PWM_resolution);
+        ledcAttachPin(LED_PIN_R, LED_LEDC_channel_offset);
+        ledcWrite(LED_LEDC_channel_offset, (1 << LED_PWM_resolution) - 1);
+    }
 
-    ledcSetup(LED_LEDC_channel_offset + 1, LED_PWM_frequency, LED_PWM_resolution);
-    ledcAttachPin(LED_PIN_G, LED_LEDC_channel_offset + 1);
-    ledcWrite(LED_LEDC_channel_offset + 1, (1 << LED_PWM_resolution) - 1);
+    if (channels & 2)
+    {
+        ledcSetup(LED_LEDC_channel_offset + 1, LED_PWM_frequency, LED_PWM_resolution);
+        ledcAttachPin(LED_PIN_G, LED_LEDC_channel_offset + 1);
+        ledcWrite(LED_LEDC_channel_offset + 1, (1 << LED_PWM_resolution) - 1);
+    }
 
-    ledcSetup(LED_LEDC_channel_offset + 2, LED_PWM_frequency, LED_PWM_resolution);
-    ledcAttachPin(LED_PIN_B, LED_LEDC_channel_offset + 2);
-    ledcWrite(LED_LEDC_channel_offset + 2, (1 << LED_PWM_resolution) - 1);
+    if (channels & 4)
+    {
+        ledcSetup(LED_LEDC_channel_offset + 2, LED_PWM_frequency, LED_PWM_resolution);
+        ledcAttachPin(LED_PIN_B, LED_LEDC_channel_offset + 2);
+        ledcWrite(LED_LEDC_channel_offset + 2, (1 << LED_PWM_resolution) - 1);
+    }
 }
 
 void LED_set(uint32_t color, float duty)
@@ -377,7 +387,12 @@ namespace
     /**
      * @brief relative angle of LED
      */
-    constexpr float LED_angle_offset = 0.8818719385800353F;
+    constexpr float LED_angle_offset = 0.88187194F;
+
+    /**
+     * @brief relative angle of motor
+     */
+    constexpr float Motor_angle_offset = 0.174533F;
 
     /**
      * @brief minimum delay time, if lower than this, we trigger after this.
@@ -445,12 +460,83 @@ namespace
         esp_timer_start_once(arg->handle, next_time);
     }
 
+    struct Motor_timing_t
+    {
+        int64_t t_start;
+        int64_t duration;
+        int64_t period;
+        float thrust_0 = 0.0F;
+        float thrust_1 = 0.0F;
+    };
+
+    struct Motor_callback_args
+    {
+        bool Motor_state;                      // current state of motor
+        Motor_timing_t Last_motor_timing;      // last timing info used by the callback
+        int64_t Last_trig_time;                // last time we updated the trigger info
+        int64_t Next_trig_time;                // when will we trig next time
+        Circbuffer<Motor_timing_t, 5> *buffer; // timing info buffer
+        esp_timer_handle_t handle;             // callback handler
+    };
+
+    Motor_callback_args callback_args_m;
+    Circbuffer<Motor_timing_t, 5> timing_buf_m;
+
+    /**
+     * @brief a task that turn motor based on robot's position
+     *
+     * @param void* v_arg arguments
+     */
+    void IRAM_ATTR Motor_callback(void *v_arg)
+    {
+        uint64_t t_now = esp_timer_get_time();
+
+        Motor_callback_args *arg = (Motor_callback_args *)v_arg;
+
+        // how long should we delay before next switch
+        uint64_t next_time;
+
+        // this is for indication of XY position feedback.
+        // if currently LED is on, then we should turn it off, and also setup the
+        // time when it should be on again. Let's use green LED only here.
+        if (arg->Motor_state)
+        {
+            Motor::Set_thrust(arg->Last_motor_timing.thrust_0);
+            arg->Motor_state = false;
+
+            // get localization data
+            auto temp = arg->buffer->peek_tail();
+            // now this temp is used, update Last_LED_timing
+            arg->Last_motor_timing = temp;
+
+            // update time
+            // make sure that we won't trigger again in 1/4 cycles
+            next_time = ((temp.t_start - (t_now % temp.period) - (temp.period >> 2)) % temp.period) + (temp.period >> 2);
+        }
+        else
+        {
+            Motor::Set_thrust(arg->Last_motor_timing.thrust_1);
+            arg->Motor_state = true;
+            next_time = arg->Last_motor_timing.duration;
+        }
+
+        // not sure if this is necessary, but we will add it anyways, it's not gonna influence anything.
+        next_time = (next_time < Delay_min_time) ? Delay_min_time : next_time;
+        // reset timer
+        arg->Last_trig_time = t_now;
+        arg->Next_trig_time = t_now + next_time;
+        esp_timer_stop(arg->handle);
+        esp_timer_start_once(arg->handle, next_time);
+    }
+
+    int64_t Last_position_update_time = 0;
+    int64_t Reach_target_speed_time = 0;
 } // anonymous namespace
 
 void LED_control_task(void *pvParameters)
 {
-    constexpr float K_P_XY = 1.0e-3F;
-    constexpr float K_P_Z = 1.0e-3F;
+    constexpr float K_P_XY = 2.0e-3F;
+    constexpr float K_P_Z = 3.0e-3F;
     // K_D has time unit of s
     constexpr float K_D_XY = 0.0F;
     constexpr float K_D_Z = 0.0F;
@@ -617,6 +703,7 @@ void LED_control_task(void *pvParameters)
 
         // clip add_val to make sure that the average is still the average and the values will not exceed limits.
         // similar for motor settings.
+        FB_val[2] = clip(FB_val[2], 0.1F, 0.9F);
         float add_val = norm(FB_val[0], FB_val[1]);
         if (FB_val[2] > 0.5F)
         {
@@ -769,6 +856,7 @@ void Motor_test_task(void *pvParameters)
             auto msg = buf_1.pop();
 
             LED_set(0, float(msg.content[0]) / float((1 << Motor::PWM_resolution) - 1));
+            Serial.println(msg.content[0]);
             Motor::Set_speed(msg.content[0]);
         }
 
@@ -795,6 +883,350 @@ void Motor_test_task(void *pvParameters)
             else
             {
                 Motor::Config_register((msg.content[0] >> 8) & 0xFF, msg.content[0] & 0xFF);
+            }
+        }
+    }
+}
+
+void Motor_control_task(void *pvParameters)
+{
+    constexpr float K_P_XY = 1.0e-2F;
+    constexpr float K_P_Z = 1.5e-2F;
+    // K_D has time unit of s
+    constexpr float K_D_XY = 2.0e-2F;
+    constexpr float K_D_Z = 1.0e-2F;
+    // // K_I has time unit of 1/s
+    // constexpr float K_I = 0.0F;
+    // K_A has time unit of s^2
+    constexpr float K_A_XY = 0.0F;
+
+    // position data is valid for 1s
+    constexpr int64_t Position_expire_time = 1000000LL;
+
+    bool ISR_started = false;
+
+    // PID components
+    float I_comp[3] = {0.0F, 0.0F, 0.0F};
+    float D_comp[3] = {0.0F, 0.0F, 0.0F};
+    // variance of D_comp
+    float D_xy_var = 1.0e6F, D_z_var = 1.0e6F;
+    int64_t D_last_update_time = 0;
+    float P_comp[3], FB_val[3];
+
+    // acceleration component
+    float A_comp[3] = {0.0F, 0.0F, 0.0F};
+
+    while (true)
+    {
+        // wait till next localization is done
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        // LIT_G;
+
+        // get data
+        uint32_t io_flag;
+        IR::Localization::Position_data filt_pos_0, filt_pos_1, pos_0, pos_1;
+        bool not_enough_data = false;
+        do
+        {
+            io_flag = IR::Localization::Get_io_flag();
+
+            // check if there's enough data to use
+            if (IR::Localization::Get_position_data_count(Position_expire_time) < 2)
+            {
+                not_enough_data = true;
+                break;
+            }
+
+            // use unfiltered position for D/I terms
+            pos_0 = IR::Localization::Get_position(0);
+            pos_1 = IR::Localization::Get_position(1);
+
+            // use filtered position for P terms
+            filt_pos_0 = IR::Localization::Get_filtered_position(0);
+            filt_pos_1 = IR::Localization::Get_filtered_position(1);
+
+        } while (io_flag != IR::Localization::Get_io_flag());
+
+        // if not, just wait!
+        if (not_enough_data)
+        {
+            // QUENCH_G;
+            continue;
+        }
+
+        // release brake when speed reached a certain threshold
+        constexpr float Rotation_speed_start = 0.00009F;
+        if (Reach_target_speed_time == 0 && filt_pos_0.angular_velocity > Rotation_speed_start)
+        {
+            Motor::Active_brake_release();
+            Reach_target_speed_time = esp_timer_get_time();
+        }
+
+        Last_position_update_time = esp_timer_get_time();
+
+        P_comp[0] = filt_pos_0.x;
+        P_comp[1] = filt_pos_0.y;
+        P_comp[2] = filt_pos_0.z;
+
+        float t_coef = float(pos_0.time - pos_1.time) / 2.0e6F;
+
+        I_comp[0] += t_coef * (pos_0.x + pos_1.x);
+        I_comp[1] += t_coef * (pos_0.y + pos_1.y);
+        I_comp[2] += t_coef * (pos_0.z + pos_1.z);
+
+        t_coef = 1.0e6F / float(pos_0.time - pos_1.time);
+
+        // store old D_component for acceleration computation
+        float old_D_comp[3] = {D_comp[0], D_comp[1], D_comp[2]};
+
+        // use kalmann filter to get new D component
+        constexpr float D_error_increase_rate = 500e-6F;
+        float D_xy_var_this = t_coef * t_coef * (pos_0.var_xy + pos_1.var_xy);
+        float D_z_var_this = t_coef * t_coef * (pos_0.var_z + pos_1.var_z);
+        float var_drift = square(float(pos_0.time - D_last_update_time) * D_error_increase_rate);
+
+        // determine z and var_z
+        float tmpv = 1.0F / (D_z_var_this + D_z_var + var_drift);
+        D_comp[2] = (D_comp[2] * D_z_var_this + (t_coef * (pos_0.z - pos_1.z)) * (D_z_var + var_drift)) * tmpv;
+        D_z_var = D_z_var_this * (D_z_var + var_drift) * tmpv;
+
+        // similar for xy and var_xy
+        tmpv = 1.0F / (D_xy_var_this + D_xy_var + var_drift);
+        D_comp[0] = (D_comp[0] * D_xy_var_this + (t_coef * (pos_0.x - pos_1.x)) * (D_xy_var + var_drift)) * tmpv;
+        D_comp[1] = (D_comp[1] * D_xy_var_this + (t_coef * (pos_0.y - pos_1.y)) * (D_xy_var + var_drift)) * tmpv;
+        D_xy_var = D_xy_var_this * (D_xy_var + var_drift) * tmpv;
+
+        // we take the simplest approach to acceleration computation
+        // if we want to use any more advanced methods, we might as well use
+        // Kalman filter in the first place we executing localization.
+        // Now it's just a very trivial exponential filter
+
+        // update coefficient, choose the time coefficient to be approximately
+        // averaging over 0.5s
+        float update_coef = clip(4e-6F * float(pos_0.time - D_last_update_time), 0.0F, 1.0F);
+
+        A_comp[0] = (1.0 - update_coef) * A_comp[0] + update_coef * 1.0e6F * (D_comp[0] - old_D_comp[0]) / float(pos_0.time - D_last_update_time);
+        A_comp[1] = (1.0 - update_coef) * A_comp[1] + update_coef * 1.0e6F * (D_comp[1] - old_D_comp[1]) / float(pos_0.time - D_last_update_time);
+        A_comp[2] = (1.0 - update_coef) * A_comp[2] + update_coef * 1.0e6F * (D_comp[2] - old_D_comp[2]) / float(pos_0.time - D_last_update_time);
+
+        D_last_update_time = pos_0.time;
+
+        FB_val[0] = -K_P_XY * P_comp[0] - K_D_XY * D_comp[0] - K_A_XY * A_comp[0];
+        FB_val[1] = -K_P_XY * P_comp[1] - K_D_XY * D_comp[1] - K_A_XY * A_comp[1];
+        FB_val[2] = -K_P_Z * P_comp[2] - K_D_Z * D_comp[2] + Robot_mass;
+
+        // for (size_t i = 0; i < 3; i++)
+        // {
+        //     FB_val[i] = K_P * P_comp[i] + K_I * I_comp[i] + K_D * D_comp[i];
+        // }
+
+        // all computation has been finished till now
+        // from now on it's the boring setup interrupt part
+
+        // cap the duration!
+        constexpr int64_t Duration_max_time = 25000;
+
+        // compute timing for callback_1 that use LED to indicate position
+        LED_timing_t Callback_dat_1;
+
+        Callback_dat_1.duration = clip(int64_t(0.005F * norm(P_comp[0], P_comp[1]) / pos_0.angular_velocity), 0LL, Duration_max_time);
+        Callback_dat_1.t_start = pos_0.rotation_time * 5 - Callback_dat_1.duration / 2 - int64_t((LED_angle_offset + pos_0.angle_0 - atan2f(P_comp[1], P_comp[0])) / pos_0.angular_velocity);
+        Callback_dat_1.period = pos_0.rotation_time;
+
+        // push inside buffer
+        timing_buf_1.push(Callback_dat_1);
+
+        // compute timing for callback_2 that use LED to indicate velocity
+        LED_timing_t Callback_dat_2;
+
+        Callback_dat_2.duration = clip(int64_t(0.005F * norm(D_comp[0], D_comp[1]) / pos_0.angular_velocity), 0LL, Duration_max_time);
+        Callback_dat_2.t_start = pos_0.rotation_time * 5 - Callback_dat_2.duration / 2 - int64_t((LED_angle_offset + pos_0.angle_0 - atan2f(D_comp[1], D_comp[0])) / pos_0.angular_velocity);
+        Callback_dat_2.period = pos_0.rotation_time;
+
+        // push inside buffer
+        timing_buf_2.push(Callback_dat_2);
+
+        // compute timing for callback_3 that use LED to indicate feedback value
+        Motor_timing_t Callback_dat_m;
+
+        Callback_dat_m.duration = pos_0.rotation_time / 2;
+        Callback_dat_m.t_start = pos_0.rotation_time * 5 - Callback_dat_m.duration / 2 - int64_t((Motor_angle_offset + pos_0.angle_0 - atan2f(FB_val[1], FB_val[0])) / pos_0.angular_velocity);
+        Callback_dat_m.period = pos_0.rotation_time;
+
+        // clip add_val to make sure that the average is still the average and the values will not exceed limits.
+        // similar for motor settings.
+        FB_val[2] = clip(FB_val[2], Motor::Min_thrust, Motor::Max_thrust);
+
+        float add_val = norm(FB_val[0], FB_val[1]);
+        if (FB_val[2] > (Motor::Max_thrust + Motor::Min_thrust) / 2)
+        {
+            if (FB_val[2] + add_val > Motor::Max_thrust)
+            {
+                add_val = Motor::Max_thrust - FB_val[2];
+            }
+        }
+        else
+        {
+            if (FB_val[2] - add_val < Motor::Min_thrust)
+            {
+                add_val = FB_val[2] - Motor::Min_thrust;
+            }
+        }
+        Callback_dat_m.thrust_0 = FB_val[2] + add_val;
+        Callback_dat_m.thrust_1 = FB_val[2] - add_val;
+
+        // push inside buffer
+        timing_buf_m.push(Callback_dat_m);
+
+        // check if first time, if so, start ISR
+        if (!ISR_started)
+        {
+            ISR_started = true;
+
+            // Callback/ISR 1
+            callback_args_1.buffer = &timing_buf_1;
+            callback_args_1.Last_LED_timing = Callback_dat_1;
+            callback_args_1.LED_num = 0;
+            callback_args_1.LED_state = false;
+            callback_args_1.Last_trig_time = 0;
+            callback_args_1.Next_trig_time = 0;
+
+            const esp_timer_create_args_t oneshot_timer_callback_args_1 = {
+                .callback = &LED_callback,
+                /* argument specified here will be passed to timer callback function */
+                .arg = (void *)(&callback_args_1),
+                .dispatch_method = ESP_TIMER_TASK,
+                .name = "position"};
+
+            esp_timer_create(&oneshot_timer_callback_args_1, &(callback_args_1.handle));
+
+            // Callback/ISR 2
+            callback_args_2.buffer = &timing_buf_2;
+            callback_args_2.Last_LED_timing = Callback_dat_2;
+            callback_args_2.LED_num = 1;
+            callback_args_2.LED_state = false;
+            callback_args_2.Last_trig_time = 0;
+            callback_args_2.Next_trig_time = 0;
+
+            const esp_timer_create_args_t oneshot_timer_callback_args_2 = {
+                .callback = &LED_callback,
+                /* argument specified here will be passed to timer callback function */
+                .arg = (void *)(&callback_args_2),
+                .dispatch_method = ESP_TIMER_TASK,
+                .name = "velocity"};
+
+            esp_timer_create(&oneshot_timer_callback_args_2, &(callback_args_2.handle));
+
+            // Callback/ISR 3
+            callback_args_m.buffer = &timing_buf_m;
+            callback_args_m.Last_motor_timing = Callback_dat_m;
+            callback_args_m.Motor_state = false;
+            callback_args_m.Last_trig_time = 0;
+            callback_args_m.Next_trig_time = 0;
+
+            const esp_timer_create_args_t oneshot_timer_callback_args_m = {
+                .callback = &Motor_callback,
+                /* argument specified here will be passed to timer callback function */
+                .arg = (void *)(&callback_args_m),
+                .dispatch_method = ESP_TIMER_TASK,
+                .name = "motor"};
+
+            esp_timer_create(&oneshot_timer_callback_args_m, &(callback_args_m.handle));
+        }
+
+        // how long before/after the trigger time should we prevent triggering
+        // in us
+        constexpr uint64_t No_operation_time = 200ULL;
+
+        // updating timer info
+        // not sure if clipping is necessary, but we will add it anyways,
+        // it's not gonna influence anything.
+        int64_t t_delay = clip((Callback_dat_1.t_start - (esp_timer_get_time() % Callback_dat_1.period)) % Callback_dat_1.period, Delay_min_time, 1000000LL);
+
+        if (callback_args_1.LED_state == false)
+        {
+            int64_t t_now = esp_timer_get_time();
+            // make sure that we won't reset the timer just after LED turns on.
+            // also make sure that we won't reset the timer just before LED
+            // turns on.
+            if (t_now - callback_args_1.Last_trig_time > No_operation_time && (callback_args_1.Next_trig_time == 0 || callback_args_1.Next_trig_time - t_now > No_operation_time))
+            {
+                callback_args_1.Next_trig_time = t_now + t_delay;
+                esp_timer_stop(callback_args_1.handle);
+                esp_timer_start_once(callback_args_1.handle, t_delay);
+            }
+        }
+
+        t_delay = clip((Callback_dat_2.t_start - (esp_timer_get_time() % Callback_dat_2.period)) % Callback_dat_2.period, Delay_min_time, 1000000LL);
+
+        if (callback_args_2.LED_state == false)
+        {
+            int64_t t_now = esp_timer_get_time();
+            // make sure that we won't reset the timer just after LED turns on.
+            // also make sure that we won't reset the timer just before LED
+            // turns on.
+            if (t_now - callback_args_2.Last_trig_time > No_operation_time && (callback_args_2.Next_trig_time == 0 || callback_args_2.Next_trig_time - t_now > No_operation_time))
+            {
+                callback_args_2.Next_trig_time = t_now + t_delay;
+                esp_timer_stop(callback_args_2.handle);
+                esp_timer_start_once(callback_args_2.handle, t_delay);
+            }
+        }
+
+        t_delay = clip((Callback_dat_m.t_start - (esp_timer_get_time() % Callback_dat_m.period)) % Callback_dat_m.period, Delay_min_time, 1000000LL);
+
+        if (callback_args_m.Motor_state == false)
+        {
+            int64_t t_now = esp_timer_get_time();
+            // make sure that we won't reset the timer just after motor turns +.
+            // also make sure that we won't reset the timer just before motor
+            // turns on.
+            if (t_now - callback_args_m.Last_trig_time > No_operation_time && (callback_args_m.Next_trig_time == 0 || callback_args_m.Next_trig_time - t_now > No_operation_time))
+            {
+                callback_args_m.Next_trig_time = t_now + t_delay;
+                esp_timer_stop(callback_args_m.handle);
+                esp_timer_start_once(callback_args_m.handle, t_delay);
+            }
+        }
+        // QUENCH_G;
+    }
+}
+
+void Motor_monitor_task(void *pvParameters)
+{
+    // when will we activate this task after first localization
+    constexpr uint64_t Activate_task_time = 2000000;
+
+    // when will we lower the motor power after no position update
+    constexpr uint64_t Power_low_threshold = 100000;
+
+    // when power low, what's the thrust?
+    constexpr float Power_low_value = 0.8F;
+
+    // when will we turn off motor power after no position update
+    constexpr uint64_t Power_off_threshold = 2000000;
+
+    while (true)
+    {
+        vTaskDelay(20);
+
+        int64_t t_now = esp_timer_get_time();
+
+        if (Reach_target_speed_time != 0)
+        {
+            if (t_now - Last_position_update_time >= Power_off_threshold)
+            {
+                Motor::Set_speed(0);
+                Motor::Active_brake();
+            }
+
+            if (t_now - Last_position_update_time >= Power_low_threshold)
+            {
+                callback_args_m.Last_motor_timing.thrust_0 = Power_low_value * Robot_mass;
+                callback_args_m.Last_motor_timing.thrust_1 = Power_low_value * Robot_mass;
+
+                Motor::Set_thrust(Power_low_value * Robot_mass);
             }
         }
     }

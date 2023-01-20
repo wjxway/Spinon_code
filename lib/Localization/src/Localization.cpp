@@ -174,7 +174,7 @@ namespace IR
              */
             float Elevation_expectation(const float LR_angle, const float Cent_angle)
             {
-                return Distance_expectation(LR_angle) * tan(Cent_angle + 0.0436332F) * Tilting_angle_multiplyer;
+                return -Distance_expectation(LR_angle) * tan(Cent_angle + 0.0436332F) * Tilting_angle_multiplyer;
             }
 
             /**

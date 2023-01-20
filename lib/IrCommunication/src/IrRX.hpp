@@ -20,7 +20,7 @@
  * @brief if we should turn on simple LED when any message (regardless of
  * validity) is received by any receiver?
  */
-// #define MSG_SIMPLE_LED_ON 1
+#define MSG_SIMPLE_LED_ON 1
 
 namespace IR
 {

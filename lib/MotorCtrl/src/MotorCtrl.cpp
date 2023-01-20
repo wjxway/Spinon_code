@@ -18,6 +18,11 @@ namespace Motor
 		uint32_t Last_set_speed = 0U;
 
 		/**
+		 * @brief if in brake mode, if so, no thrust command is valid!
+		 */
+		bool Brake_mode = false;
+
+		/**
 		 * @brief whether we are in overdrive mode which grant higher thrust!
 		 */
 		bool Overdrive_state = false;
@@ -102,8 +107,11 @@ namespace Motor
 
 	void Set_speed(const uint32_t duty)
 	{
-		Last_set_speed = duty;
-		ledcWrite(Motor_LEDC_PWM_channel, duty);
+		if (!Brake_mode)
+		{
+			Last_set_speed = duty;
+			ledcWrite(Motor_LEDC_PWM_channel, duty);
+		}
 	}
 
 	uint32_t Get_last_set_speed()
@@ -147,12 +155,14 @@ namespace Motor
 
 	void Active_brake()
 	{
+		Brake_mode = true;
 		Last_set_speed = 0U;
 		setbit(MOTOR_BRAKE_PIN);
 	}
 
 	void Active_brake_release()
 	{
+		Brake_mode = false;
 		clrbit(MOTOR_BRAKE_PIN);
 	}
 
