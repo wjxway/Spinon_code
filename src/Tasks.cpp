@@ -278,6 +278,16 @@ void Buffer_data_task(void *pvParameters)
     // if send message task has been started.
     bool send_task_not_started = true;
 
+    // send me messages through serial!
+    xTaskCreatePinnedToCore(
+        Send_message_task,
+        "Send_message_task",
+        8000,
+        NULL,
+        3,
+        NULL,
+        0);
+
     while (true)
     {
         // wait till next localization is done
@@ -314,18 +324,7 @@ void Buffer_data_task(void *pvParameters)
         if (send_task_not_started && Position_buffer.n_elem >= Position_buffer_max_size)
         {
             send_task_not_started = false;
-
             LIT_G;
-
-            // send me messages through serial!
-            xTaskCreatePinnedToCore(
-                Send_message_task,
-                "Send_message_task",
-                10000,
-                NULL,
-                3,
-                NULL,
-                0);
         }
     }
 }
@@ -482,6 +481,8 @@ namespace
     Motor_callback_args callback_args_m;
     Circbuffer<Motor_timing_t, 5> timing_buf_m;
 
+    bool FB_control_on = false;
+
     /**
      * @brief a task that turn motor based on robot's position
      *
@@ -501,7 +502,10 @@ namespace
         // time when it should be on again. Let's use green LED only here.
         if (arg->Motor_state)
         {
-            Motor::Set_thrust(arg->Last_motor_timing.thrust_0);
+            if (FB_control_on)
+            {
+                Motor::Set_thrust(arg->Last_motor_timing.thrust_0);
+            }
             arg->Motor_state = false;
 
             // get localization data
@@ -515,7 +519,10 @@ namespace
         }
         else
         {
-            Motor::Set_thrust(arg->Last_motor_timing.thrust_1);
+            if (FB_control_on)
+            {
+                Motor::Set_thrust(arg->Last_motor_timing.thrust_1);
+            }
             arg->Motor_state = true;
             next_time = arg->Last_motor_timing.duration;
         }
@@ -530,7 +537,7 @@ namespace
     }
 
     int64_t Last_position_update_time = 0;
-    int64_t Reach_target_speed_time = 0;
+    int64_t Reach_target_height_time = 0;
 } // anonymous namespace
 
 void LED_control_task(void *pvParameters)
@@ -891,10 +898,10 @@ void Motor_test_task(void *pvParameters)
 void Motor_control_task(void *pvParameters)
 {
     constexpr float K_P_XY = 1.0e-2F;
-    constexpr float K_P_Z = 1.5e-2F;
+    constexpr float K_P_Z = 2.0e-2F;
     // K_D has time unit of s
     constexpr float K_D_XY = 2.0e-2F;
-    constexpr float K_D_Z = 1.0e-2F;
+    constexpr float K_D_Z = 5.0e-2F;
     // // K_I has time unit of 1/s
     // constexpr float K_I = 0.0F;
     // K_A has time unit of s^2
@@ -955,12 +962,28 @@ void Motor_control_task(void *pvParameters)
             continue;
         }
 
-        // release brake when speed reached a certain threshold
-        constexpr float Rotation_speed_start = 0.00009F;
-        if (Reach_target_speed_time == 0 && filt_pos_0.angular_velocity > Rotation_speed_start)
+        // pre-control actions
+        if (!FB_control_on)
         {
-            Motor::Active_brake_release();
-            Reach_target_speed_time = esp_timer_get_time();
+            // release brake when speed reached a certain threshold
+            constexpr float Rotation_speed_start = 0.00009F;
+            // when control is not on (before launch and just launched), what should
+            // the thrust be?
+            constexpr float Idle_thrust = 10.0F;
+            if (filt_pos_0.angular_velocity > Rotation_speed_start)
+            {
+                Motor::Active_brake_release();
+                delayMicroseconds(100);
+                Motor::Set_thrust(Idle_thrust);
+            }
+
+            // start control when robot reached certain height
+            constexpr float Control_start_height = -50.0F;
+            if (Reach_target_height_time == 0 && pos_0.z > Control_start_height)
+            {
+                FB_control_on = true;
+                Reach_target_height_time = esp_timer_get_time();
+            }
         }
 
         Last_position_update_time = esp_timer_get_time();
@@ -1195,17 +1218,14 @@ void Motor_control_task(void *pvParameters)
 
 void Motor_monitor_task(void *pvParameters)
 {
-    // when will we activate this task after first localization
-    constexpr uint64_t Activate_task_time = 2000000;
-
     // when will we lower the motor power after no position update
-    constexpr uint64_t Power_low_threshold = 100000;
+    constexpr uint64_t Power_low_threshold = 60000;
 
     // when power low, what's the thrust?
-    constexpr float Power_low_value = 0.8F;
+    constexpr float Power_low_value = 0.7F;
 
     // when will we turn off motor power after no position update
-    constexpr uint64_t Power_off_threshold = 2000000;
+    constexpr uint64_t Power_off_threshold = 1000000;
 
     while (true)
     {
@@ -1213,7 +1233,7 @@ void Motor_monitor_task(void *pvParameters)
 
         int64_t t_now = esp_timer_get_time();
 
-        if (Reach_target_speed_time != 0)
+        if (Reach_target_height_time != 0)
         {
             if (t_now - Last_position_update_time >= Power_off_threshold)
             {
