@@ -481,8 +481,6 @@ namespace
     Motor_callback_args callback_args_m;
     Circbuffer<Motor_timing_t, 5> timing_buf_m;
 
-    bool FB_control_on = false;
-
     /**
      * @brief a task that turn motor based on robot's position
      *
@@ -502,10 +500,7 @@ namespace
         // time when it should be on again. Let's use green LED only here.
         if (arg->Motor_state)
         {
-            if (FB_control_on)
-            {
-                Motor::Set_thrust(arg->Last_motor_timing.thrust_0);
-            }
+            Motor::Set_thrust(arg->Last_motor_timing.thrust_0);
             arg->Motor_state = false;
 
             // get localization data
@@ -519,10 +514,7 @@ namespace
         }
         else
         {
-            if (FB_control_on)
-            {
-                Motor::Set_thrust(arg->Last_motor_timing.thrust_1);
-            }
+            Motor::Set_thrust(arg->Last_motor_timing.thrust_1);
             arg->Motor_state = true;
             next_time = arg->Last_motor_timing.duration;
         }
@@ -537,7 +529,7 @@ namespace
     }
 
     int64_t Last_position_update_time = 0;
-    int64_t Reach_target_height_time = 0;
+    int64_t Reach_target_speed_time = 0;
 } // anonymous namespace
 
 void LED_control_task(void *pvParameters)
@@ -963,27 +955,13 @@ void Motor_control_task(void *pvParameters)
         }
 
         // pre-control actions
-        if (!FB_control_on)
+        static bool control_on = false;
+        // release brake when speed reached a certain threshold
+        constexpr float Rotation_speed_start = 0.00009F;
+        if (Reach_target_speed_time == 0 && filt_pos_0.angular_velocity > Rotation_speed_start)
         {
-            // release brake when speed reached a certain threshold
-            constexpr float Rotation_speed_start = 0.00009F;
-            // when control is not on (before launch and just launched), what should
-            // the thrust be?
-            constexpr float Idle_thrust = 10.0F;
-            if (filt_pos_0.angular_velocity > Rotation_speed_start)
-            {
-                Motor::Active_brake_release();
-                delayMicroseconds(100);
-                Motor::Set_thrust(Idle_thrust);
-            }
-
-            // start control when robot reached certain height
-            constexpr float Control_start_height = -50.0F;
-            if (Reach_target_height_time == 0 && pos_0.z > Control_start_height)
-            {
-                FB_control_on = true;
-                Reach_target_height_time = esp_timer_get_time();
-            }
+            Reach_target_speed_time = esp_timer_get_time();
+            Motor::Active_brake_release();
         }
 
         Last_position_update_time = esp_timer_get_time();
@@ -1222,7 +1200,7 @@ void Motor_monitor_task(void *pvParameters)
     constexpr uint64_t Power_low_threshold = 60000;
 
     // when power low, what's the thrust?
-    constexpr float Power_low_value = 0.7F;
+    constexpr float Power_low_value = 0.8F;
 
     // when will we turn off motor power after no position update
     constexpr uint64_t Power_off_threshold = 1000000;
@@ -1233,7 +1211,7 @@ void Motor_monitor_task(void *pvParameters)
 
         int64_t t_now = esp_timer_get_time();
 
-        if (Reach_target_height_time != 0)
+        if (Reach_target_speed_time != 0)
         {
             if (t_now - Last_position_update_time >= Power_off_threshold)
             {
