@@ -236,9 +236,20 @@ std::string n2hexstr(I w, size_t hex_len = sizeof(I) << 1)
 
 namespace
 {
-    size_t record_count = 0U;
+    struct FB_info
+    {
+        float thrust_0;
+        float thrust_1;
+        int64_t time;
+    };
+
+    constexpr size_t FB_buffer_max_size = 500U;
+    Circbuffer<FB_info, FB_buffer_max_size + 5> FB_buffer;
+
     constexpr size_t Position_buffer_max_size = 300U;
     Circbuffer<IR::Localization::Position_data, Position_buffer_max_size + 5> Position_buffer;
+
+    Circbuffer<IR::Localization::Position_data, Position_buffer_max_size + 5> Filtered_Position_buffer;
 
     void Send_message_task(void *pvParameters)
     {
@@ -257,11 +268,32 @@ namespace
                 Serial.print("Now is ");
                 Serial.println(esp_timer_get_time());
 
+                Serial.println("---- Unfiltered position ----");
                 while (Position_buffer.n_elem > 0)
                 {
                     auto pdat = Position_buffer.pop();
 
                     std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", x : ") + std::to_string(pdat.x) + std::string(", y : ") + std::to_string(pdat.y) + std::string(", z : ") + std::to_string(pdat.z) + std::string(", var_xy : ") + std::to_string(pdat.var_xy) + std::string(", var_z : ") + std::to_string(pdat.var_z) + std::string(", w : ") + std::to_string(pdat.angular_velocity) + std::string(", err_factor : ") + std::to_string(pdat.mean_error_factor) + "\n";
+
+                    Serial.print(v.c_str());
+                }
+
+                Serial.println("---- Filtered position ----");
+                while (Filtered_Position_buffer.n_elem > 0)
+                {
+                    auto pdat = Filtered_Position_buffer.pop();
+
+                    std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", x : ") + std::to_string(pdat.x) + std::string(", y : ") + std::to_string(pdat.y) + std::string(", z : ") + std::to_string(pdat.z) + std::string(", var_xy : ") + std::to_string(pdat.var_xy) + std::string(", var_z : ") + std::to_string(pdat.var_z) + std::string(", w : ") + std::to_string(pdat.angular_velocity) + std::string(", err_factor : ") + std::to_string(pdat.mean_error_factor) + "\n";
+
+                    Serial.print(v.c_str());
+                }
+
+                Serial.println("---- Motor feedback data ----");
+                while (FB_buffer.n_elem > 0)
+                {
+                    auto fdat = FB_buffer.pop();
+
+                    std::string v = std::string("update_t : ") + std::to_string(fdat.time) + std::string(", thrust_0 : ") + std::to_string(fdat.thrust_0) + std::string(", thrust_1 : ") + std::to_string(fdat.thrust_1) + "\n";
 
                     Serial.print(v.c_str());
                 }
@@ -293,11 +325,9 @@ void Buffer_data_task(void *pvParameters)
         // wait till next localization is done
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-        record_count++;
-
         // get data
         uint32_t io_flag;
-        IR::Localization::Position_data pos_0;
+        IR::Localization::Position_data pos_0, pos_1;
         bool not_enough_data = false;
         do
         {
@@ -311,7 +341,7 @@ void Buffer_data_task(void *pvParameters)
             }
 
             pos_0 = IR::Localization::Get_position();
-            // pos_0 = IR::Localization::Get_filtered_position();
+            pos_1 = IR::Localization::Get_filtered_position();
         } while (io_flag != IR::Localization::Get_io_flag());
 
         if (not_enough_data)
@@ -320,12 +350,13 @@ void Buffer_data_task(void *pvParameters)
         }
 
         Position_buffer.push(pos_0);
+        Filtered_Position_buffer.push(pos_1);
 
-        if (send_task_not_started && Position_buffer.n_elem >= Position_buffer_max_size)
-        {
-            send_task_not_started = false;
-            LIT_G;
-        }
+        // if (send_task_not_started && Position_buffer.n_elem >= Position_buffer_max_size)
+        // {
+        //     send_task_not_started = false;
+        //     LIT_G;
+        // }
     }
 }
 
@@ -481,6 +512,9 @@ namespace
     Motor_callback_args callback_args_m;
     Circbuffer<Motor_timing_t, 5> timing_buf_m;
 
+    int64_t Last_position_update_time = 0;
+    int64_t Reach_target_speed_time = 0;
+
     /**
      * @brief a task that turn motor based on robot's position
      *
@@ -488,7 +522,7 @@ namespace
      */
     void IRAM_ATTR Motor_callback(void *v_arg)
     {
-        uint64_t t_now = esp_timer_get_time();
+        int64_t t_now = esp_timer_get_time();
 
         Motor_callback_args *arg = (Motor_callback_args *)v_arg;
 
@@ -500,8 +534,17 @@ namespace
         // time when it should be on again. Let's use green LED only here.
         if (arg->Motor_state)
         {
-            Motor::Set_thrust(arg->Last_motor_timing.thrust_0);
+            if (Reach_target_speed_time)
+            {
+                Motor::Set_thrust(arg->Last_motor_timing.thrust_0);
+            }
             arg->Motor_state = false;
+
+            // if not ended, we record the FB info
+            if (!Motor::Get_brake_status())
+            {
+                FB_buffer.push(FB_info{arg->Last_motor_timing.thrust_0, arg->Last_motor_timing.thrust_1, t_now});
+            }
 
             // get localization data
             auto temp = arg->buffer->peek_tail();
@@ -514,7 +557,10 @@ namespace
         }
         else
         {
-            Motor::Set_thrust(arg->Last_motor_timing.thrust_1);
+            if (Reach_target_speed_time)
+            {
+                Motor::Set_thrust(arg->Last_motor_timing.thrust_1);
+            }
             arg->Motor_state = true;
             next_time = arg->Last_motor_timing.duration;
         }
@@ -527,14 +573,11 @@ namespace
         esp_timer_stop(arg->handle);
         esp_timer_start_once(arg->handle, next_time);
     }
-
-    int64_t Last_position_update_time = 0;
-    int64_t Reach_target_speed_time = 0;
 } // anonymous namespace
 
 void LED_control_task(void *pvParameters)
 {
-    constexpr float K_P_XY = 2.0e-3F;
+    constexpr float K_P_XY = 0.0e-3F;
     constexpr float K_P_Z = 3.0e-3F;
     // K_D has time unit of s
     constexpr float K_D_XY = 0.0F;
@@ -889,11 +932,11 @@ void Motor_test_task(void *pvParameters)
 
 void Motor_control_task(void *pvParameters)
 {
-    constexpr float K_P_XY = 1.0e-2F;
-    constexpr float K_P_Z = 2.0e-2F;
+    constexpr float K_P_XY = 0.0e-2F;
+    constexpr float K_P_Z = 3.0e-2F;
     // K_D has time unit of s
-    constexpr float K_D_XY = 2.0e-2F;
-    constexpr float K_D_Z = 5.0e-2F;
+    constexpr float K_D_XY = 0.0e-2F;
+    constexpr float K_D_Z = 6.0e-2F;
     // // K_I has time unit of 1/s
     // constexpr float K_I = 0.0F;
     // K_A has time unit of s^2
@@ -955,13 +998,38 @@ void Motor_control_task(void *pvParameters)
         }
 
         // pre-control actions
-        static bool control_on = false;
+        // 0 for [0,speed1), 1 for [speed1,speed2), 2 for [speed2,inf)
+        static int control_on = 0;
         // release brake when speed reached a certain threshold
-        constexpr float Rotation_speed_start = 0.00009F;
-        if (Reach_target_speed_time == 0 && filt_pos_0.angular_velocity > Rotation_speed_start)
+        constexpr float Rotation_speed_start_1 = 0.000090F;
+        constexpr float Rotation_speed_start_2 = 0.000115F;
+        // pre-start thurst ratio
+        constexpr float Init_thrust_ratio = 0.8F;
+        switch (control_on)
         {
-            Reach_target_speed_time = esp_timer_get_time();
-            Motor::Active_brake_release();
+        case 0:
+            if (filt_pos_0.angular_velocity >= Rotation_speed_start_1)
+            {
+                control_on = 1;
+                Motor::Active_brake_release();
+                Motor::Set_thrust(Init_thrust_ratio * Robot_mass);
+            }
+            break;
+        case 1:
+            if (filt_pos_0.angular_velocity >= Rotation_speed_start_2)
+            {
+                control_on = 2;
+                // enable overdrive
+                Motor::Set_overdrive(true);
+                Reach_target_speed_time = esp_timer_get_time();
+
+                I_comp[0]=0;
+                I_comp[1]=0;
+                I_comp[2]=0;
+            }
+            break;
+        default:
+            break;
         }
 
         Last_position_update_time = esp_timer_get_time();
@@ -1055,23 +1123,34 @@ void Motor_control_task(void *pvParameters)
         Callback_dat_m.t_start = pos_0.rotation_time * 5 - Callback_dat_m.duration / 2 - int64_t((Motor_angle_offset + pos_0.angle_0 - atan2f(FB_val[1], FB_val[0])) / pos_0.angular_velocity);
         Callback_dat_m.period = pos_0.rotation_time;
 
+        float min_thrust, max_thrust;
+        if (Motor::Get_overdrive_mode())
+        {
+            min_thrust = Motor::Min_thrust_overdrive;
+            max_thrust = Motor::Max_thrust_overdrive;
+        }
+        else
+        {
+            min_thrust = Motor::Min_thrust;
+            max_thrust = Motor::Max_thrust;
+        }
         // clip add_val to make sure that the average is still the average and the values will not exceed limits.
         // similar for motor settings.
-        FB_val[2] = clip(FB_val[2], Motor::Min_thrust, Motor::Max_thrust);
+        FB_val[2] = clip(FB_val[2], min_thrust, max_thrust);
 
         float add_val = norm(FB_val[0], FB_val[1]);
-        if (FB_val[2] > (Motor::Max_thrust + Motor::Min_thrust) / 2)
+        if (FB_val[2] > (max_thrust + min_thrust) / 2)
         {
-            if (FB_val[2] + add_val > Motor::Max_thrust)
+            if (FB_val[2] + add_val > max_thrust)
             {
-                add_val = Motor::Max_thrust - FB_val[2];
+                add_val = max_thrust - FB_val[2];
             }
         }
         else
         {
-            if (FB_val[2] - add_val < Motor::Min_thrust)
+            if (FB_val[2] - add_val < min_thrust)
             {
-                add_val = FB_val[2] - Motor::Min_thrust;
+                add_val = FB_val[2] - min_thrust;
             }
         }
         Callback_dat_m.thrust_0 = FB_val[2] + add_val;

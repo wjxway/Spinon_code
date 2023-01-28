@@ -166,11 +166,26 @@ namespace Motor
 		clrbit(MOTOR_BRAKE_PIN);
 	}
 
+	bool Get_brake_status()
+	{
+		return Brake_mode;
+	}
+
 	void Set_overdrive(bool state)
 	{
 		if (state != Overdrive_state)
 		{
+			Overdrive_state = state;
 			Config_register(22, state ? Overdrive_config : Default_config[20]);
+
+			if (state)
+			{
+				Set_speed(math::fast::clip(Last_set_speed, Compute_throttle(Min_thrust_overdrive), Compute_throttle(Max_thrust_overdrive)));
+			}
+			else
+			{
+				Set_speed(math::fast::clip(Last_set_speed, Compute_throttle(Min_thrust), Compute_throttle(Max_thrust)));
+			}
 		}
 	}
 
@@ -192,4 +207,8 @@ namespace Motor
 		Set_speed(Compute_throttle(math::fast::clip(thrust, Min_thrust, Max_thrust)));
 	}
 
+	bool Get_overdrive_mode()
+	{
+		return Overdrive_state;
+	}
 } // namespace Motor

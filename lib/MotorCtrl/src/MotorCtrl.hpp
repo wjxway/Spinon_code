@@ -62,7 +62,7 @@ namespace Motor
     /**
      * @brief max thrust achievable in grams
      */
-    constexpr float Max_thrust = 23.0F;
+    constexpr float Max_thrust = 22.5F;
 
 #if MOTOR_OVERDRIVE_ENABLED
     /**
@@ -81,6 +81,7 @@ namespace Motor
      * @brief max thrust in overdrive mode in grams
      */
     constexpr float Max_thrust_overdrive = 28.0F;
+    // constexpr float Max_thrust_overdrive = 25.0F;
 #endif
 
     // /**
@@ -168,6 +169,13 @@ namespace Motor
     void Active_brake_release();
 
     /**
+     * @brief Get brake status
+     * 
+     * @return true brake enabled
+     */
+    bool Get_brake_status();
+
+    /**
      * @brief set thrust to approximately a certain value
      *
      * @param thrust desired thrust value in grams.
@@ -181,6 +189,13 @@ namespace Motor
      * @param state true for enter, false for exit.
      */
     void Set_overdrive(bool state);
+
+    /**
+     * @brief whether we are in overdrive mode or not
+     * 
+     * @return true overdrive mode enabled
+     */
+    bool Get_overdrive_mode();
 #endif
 } // namespace Motor
 
