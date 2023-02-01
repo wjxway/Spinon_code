@@ -933,10 +933,10 @@ void Motor_test_task(void *pvParameters)
 void Motor_control_task(void *pvParameters)
 {
     constexpr float K_P_XY = 0.0e-2F;
-    constexpr float K_P_Z = 3.0e-2F;
+    constexpr float K_P_Z = 1.0e-2F;
     // K_D has time unit of s
     constexpr float K_D_XY = 0.0e-2F;
-    constexpr float K_D_Z = 6.0e-2F;
+    constexpr float K_D_Z = 1.0e-2F;
     // // K_I has time unit of 1/s
     // constexpr float K_I = 0.0F;
     // K_A has time unit of s^2
@@ -1004,7 +1004,7 @@ void Motor_control_task(void *pvParameters)
         constexpr float Rotation_speed_start_1 = 0.000090F;
         constexpr float Rotation_speed_start_2 = 0.000115F;
         // pre-start thurst ratio
-        constexpr float Init_thrust_ratio = 0.8F;
+        constexpr float Init_thrust_ratio = 0.5F;
         switch (control_on)
         {
         case 0:
@@ -1019,8 +1019,8 @@ void Motor_control_task(void *pvParameters)
             if (filt_pos_0.angular_velocity >= Rotation_speed_start_2)
             {
                 control_on = 2;
-                // enable overdrive
-                Motor::Set_overdrive(true);
+                // // enable overdrive
+                // Motor::Set_overdrive(true);
                 Reach_target_speed_time = esp_timer_get_time();
 
                 I_comp[0]=0;
