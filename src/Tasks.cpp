@@ -578,10 +578,10 @@ namespace
 void LED_control_task(void *pvParameters)
 {
     constexpr float K_P_XY = 0.0e-3F;
-    constexpr float K_P_Z = 3.0e-3F;
+    constexpr float K_P_Z = 1.0e-2F;
     // K_D has time unit of s
     constexpr float K_D_XY = 0.0F;
-    constexpr float K_D_Z = 0.0F;
+    constexpr float K_D_Z = 1.0e-2F;
     // // K_I has time unit of 1/s
     // constexpr float K_I = 0.0F;
     // K_A has time unit of s^2
@@ -1019,13 +1019,13 @@ void Motor_control_task(void *pvParameters)
             if (filt_pos_0.angular_velocity >= Rotation_speed_start_2)
             {
                 control_on = 2;
-                // // enable overdrive
-                // Motor::Set_overdrive(true);
+                // enable overdrive
+                Motor::Set_overdrive(true);
                 Reach_target_speed_time = esp_timer_get_time();
 
-                I_comp[0]=0;
-                I_comp[1]=0;
-                I_comp[2]=0;
+                I_comp[0] = 0;
+                I_comp[1] = 0;
+                I_comp[2] = 0;
             }
             break;
         default:
@@ -1084,6 +1084,15 @@ void Motor_control_task(void *pvParameters)
         FB_val[0] = -K_P_XY * P_comp[0] - K_D_XY * D_comp[0] - K_A_XY * A_comp[0];
         FB_val[1] = -K_P_XY * P_comp[1] - K_D_XY * D_comp[1] - K_A_XY * A_comp[1];
         FB_val[2] = -K_P_Z * P_comp[2] - K_D_Z * D_comp[2] + Robot_mass;
+
+        // if (pos_0.z < -0.1F)
+        // {
+        //     FB_val[2] = 22.0F;
+        // }
+        // else if (pos_0.z > 0.10F)
+        // {
+        //     FB_val[2] = 15.0F;
+        // }
 
         // for (size_t i = 0; i < 3; i++)
         // {

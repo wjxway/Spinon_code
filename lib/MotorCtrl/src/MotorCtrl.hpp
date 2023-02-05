@@ -80,8 +80,8 @@ namespace Motor
     /**
      * @brief max thrust in overdrive mode in grams
      */
-    constexpr float Max_thrust_overdrive = 28.0F;
-    // constexpr float Max_thrust_overdrive = 25.0F;
+    // constexpr float Max_thrust_overdrive = 28.0F;
+    constexpr float Max_thrust_overdrive = 25.0F;
 #endif
 
     // /**
