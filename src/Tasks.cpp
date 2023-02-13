@@ -941,6 +941,8 @@ void Motor_control_task(void *pvParameters)
     // constexpr float K_I = 0.0F;
     // K_A has time unit of s^2
     constexpr float K_A_XY = 0.0F;
+    // rotation angle of execution in rad.
+    constexpr float K_rot = 0.0F;
 
     // position data is valid for 1s
     constexpr int64_t Position_expire_time = 1000000LL;
@@ -1129,7 +1131,7 @@ void Motor_control_task(void *pvParameters)
         Motor_timing_t Callback_dat_m;
 
         Callback_dat_m.duration = pos_0.rotation_time / 2;
-        Callback_dat_m.t_start = pos_0.rotation_time * 5 - Callback_dat_m.duration / 2 - int64_t((Motor_angle_offset + pos_0.angle_0 - atan2f(FB_val[1], FB_val[0])) / pos_0.angular_velocity);
+        Callback_dat_m.t_start = pos_0.rotation_time * 5 - Callback_dat_m.duration / 2 - int64_t((Motor_angle_offset + pos_0.angle_0 - atan2f(FB_val[1], FB_val[0]) - K_rot) / pos_0.angular_velocity);
         Callback_dat_m.period = pos_0.rotation_time;
 
         float min_thrust, max_thrust;

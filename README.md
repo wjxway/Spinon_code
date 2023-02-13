@@ -1,5 +1,5 @@
-# Roton_code
-Code for Roton. Please check https://github.com/wjxway/Roton for more details.
+# Spinon_code
+Code for Spinon. Please check https://github.com/wjxway/Spinon for more details.
 
 ## Warning
 This code base is compatible with ESP32 arduino release v2.0.6 and ESP-IDF v4.4.3
