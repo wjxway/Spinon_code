@@ -933,10 +933,10 @@ void Motor_test_task(void *pvParameters)
 void Motor_control_task(void *pvParameters)
 {
     constexpr float K_P_XY = 0.0e-2F;
-    constexpr float K_P_Z = 1.0e-2F;
+    constexpr float K_P_Z = 5e-3F;
     // K_D has time unit of s
     constexpr float K_D_XY = 0.0e-2F;
-    constexpr float K_D_Z = 1.0e-2F;
+    constexpr float K_D_Z = 8e-3F;
     // // K_I has time unit of 1/s
     // constexpr float K_I = 0.0F;
     // K_A has time unit of s^2
