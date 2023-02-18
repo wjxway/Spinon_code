@@ -23,7 +23,7 @@ void loop()
 {
     Serial.print("\n----DATA START----\n");
 
-    for (int i = 0; i < 1000; i++)
+    for (size_t i = 0; i < 1000; i++)
     {
         auto res = IR::Sense::Transmit_and_sense(i);
 
