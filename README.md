@@ -11,7 +11,7 @@ To get as many GPIO as possible, we fixed the interal LDO's voltage at 3.3V and 
 To get the board to work correctly, you have to use espefuse.py to burn the fuse and solidify the voltage.
 
 ```
-    espefuse.py set_flash_voltage 3.3V
+    espefuse.exe --port COMxxx set_flash_voltage 3.3V
 ```
 
 And then the board will function as expected.

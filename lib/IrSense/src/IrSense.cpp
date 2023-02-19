@@ -20,6 +20,11 @@ namespace IR
 
     namespace Sense
     {
+        /**
+         * @brief ADC SPI SCK frequency
+         */
+        constexpr uint32_t ADC_SCK_frequency = 40000000U;
+
         namespace
         {
             // AD7381-4 driver
@@ -40,12 +45,13 @@ namespace IR
                 // spi init
                 hspi = new SPIClass(HSPI);
                 hspi->begin();
-                hspi->beginTransaction(SPISettings(40000000, MSBFIRST, SPI_MODE2));
 
+                hspi->beginTransaction(SPISettings(ADC_SCK_frequency, MSBFIRST, SPI_MODE2));
                 clrbit(SENSE_SS);
                 // set to 1-wire mode
                 hspi->transfer16(0xA300);
                 setbit(SENSE_SS);
+                hspi->endTransaction();
             }
 
             /**
@@ -66,17 +72,19 @@ namespace IR
                 delay500ns;
 
                 // read out
+                hspi->beginTransaction(SPISettings(ADC_SCK_frequency, MSBFIRST, SPI_MODE2));
                 clrbit(SENSE_SS);
                 // we only read first 3 channels, 3*14 = 42 bits < 6 bytes
                 // if this becomes a problem, just switch to 7 bits and read all channels
                 hspi->transferBytes(in, out, 6);
                 setbit(SENSE_SS);
+                hspi->endTransaction();
 
                 // convert to actual reading
                 std::reverse(out, out + 8);
                 uint64_t val = *(reinterpret_cast<uint64_t *>(out));
 
-                for (size_t i = 0; i < RMT_RX_CHANNEL_COUNT; i++)
+                for (size_t i = 1; i < RMT_RX_CHANNEL_COUNT + 1; i++)
                 {
                     data[i] = int16_t(((val >> (64 - 14 * i)) & 0x3FFF) ^ 0x2000) - 0x2000;
                 }
