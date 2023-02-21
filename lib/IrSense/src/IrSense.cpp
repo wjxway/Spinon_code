@@ -27,15 +27,12 @@ namespace IR
 
         namespace
         {
-            // AD7381-4 driver
-
             // SPI interface
             SPIClass *hspi;
 
+            // LTC1408/LTC2351 driver
             /**
              * @brief initialize ADC
-             *
-             * @note 1 wire MISO SPI interface, other options to default.
              */
             void ADC_init()
             {
@@ -45,52 +42,97 @@ namespace IR
                 // spi init
                 hspi = new SPIClass(HSPI);
                 hspi->begin();
-
-                hspi->beginTransaction(SPISettings(ADC_SCK_frequency, MSBFIRST, SPI_MODE2));
-                clrbit(SENSE_SS);
-                // set to 1-wire mode
-                hspi->transfer16(0xA300);
-                setbit(SENSE_SS);
-                hspi->endTransaction();
             }
 
             /**
              * @brief read all channels of ADC (simultaneous sampling)
              *
-             * @return std::array<int32_t, RMT_RX_CHANNEL_COUNT> data
+             * @return std::array<int16_t, RMT_RX_CHANNEL_COUNT> data
              */
-            std::array<int32_t, RMT_RX_CHANNEL_COUNT> ADC_read()
+            std::array<int16_t, RMT_RX_CHANNEL_COUNT> ADC_read()
             {
-                std::array<int32_t, RMT_RX_CHANNEL_COUNT> data;
-                uint8_t in[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-                uint8_t out[8];
-
-                // convert
-                clrbit(SENSE_SS);
-                delay100ns;
-                setbit(SENSE_SS);
-                delay500ns;
+                std::array<int16_t, RMT_RX_CHANNEL_COUNT> data;
+                uint8_t in[6] = {0, 0, 0, 0, 0, 0};
+                uint8_t out[6];
 
                 // read out
-                hspi->beginTransaction(SPISettings(ADC_SCK_frequency, MSBFIRST, SPI_MODE2));
-                clrbit(SENSE_SS);
-                // we only read first 3 channels, 3*14 = 42 bits < 6 bytes
-                // if this becomes a problem, just switch to 7 bits and read all channels
-                hspi->transferBytes(in, out, 6);
+                hspi->beginTransaction(SPISettings(ADC_SCK_frequency, MSBFIRST, SPI_MODE3));
                 setbit(SENSE_SS);
+                delay50ns;
+                clrbit(SENSE_SS);
+                // we only read first 3 channels, 2 bytes each.
+                hspi->transferBytes(in, out, 6);
                 hspi->endTransaction();
 
-                // convert to actual reading
-                std::reverse(out, out + 8);
-                uint64_t val = *(reinterpret_cast<uint64_t *>(out));
-
-                for (size_t i = 1; i < RMT_RX_CHANNEL_COUNT + 1; i++)
+                // two complement
+                for (size_t i = 0; i < RMT_RX_CHANNEL_COUNT; i++)
                 {
-                    data[i] = int16_t(((val >> (64 - 14 * i)) & 0x3FFF) ^ 0x2000) - 0x2000;
+                    data[i] = (((int16_t(out[2 * i] & 0x3F) << 8) + out[2 * i + 1]) ^ 0x2000) - 0x2000;
                 }
 
                 return data;
             }
+
+            // // AD7381-4 driver
+            // /**
+            //  * @brief initialize ADC
+            //  *
+            //  * @note 1 wire MISO SPI interface, other options to default.
+            //  */
+            // void ADC_init()
+            // {
+            //     pinMode(SENSE_SS, OUTPUT);
+            //     setbit(SENSE_SS);
+
+            //     // spi init
+            //     hspi = new SPIClass(HSPI);
+            //     hspi->begin();
+
+            //     hspi->beginTransaction(SPISettings(ADC_SCK_frequency, MSBFIRST, SPI_MODE2));
+            //     clrbit(SENSE_SS);
+            //     // set to 1-wire mode
+            //     hspi->transfer16(0xA300);
+            //     setbit(SENSE_SS);
+            //     hspi->endTransaction();
+            // }
+
+            // /**
+            //  * @brief read all channels of ADC (simultaneous sampling)
+            //  *
+            //  * @return std::array<int16_t, RMT_RX_CHANNEL_COUNT> data
+            //  */
+            // std::array<int16_t, RMT_RX_CHANNEL_COUNT> ADC_read()
+            // {
+            //     std::array<int32_t, RMT_RX_CHANNEL_COUNT> data;
+            //     uint8_t in[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+            //     uint8_t out[8];
+
+            //     // convert
+            //     clrbit(SENSE_SS);
+            //     delay100ns;
+            //     setbit(SENSE_SS);
+            //     delay500ns;
+
+            //     // read out
+            //     hspi->beginTransaction(SPISettings(ADC_SCK_frequency, MSBFIRST, SPI_MODE2));
+            //     clrbit(SENSE_SS);
+            //     // we only read first 3 channels, 3*14 = 42 bits < 6 bytes
+            //     // if this becomes a problem, just switch to 7 bits and read all channels
+            //     hspi->transferBytes(in, out, 6);
+            //     setbit(SENSE_SS);
+            //     hspi->endTransaction();
+
+            //     // convert to actual reading
+            //     std::reverse(out, out + 8);
+            //     uint64_t val = *(reinterpret_cast<uint64_t *>(out));
+
+            //     for (size_t i = 1; i < RMT_RX_CHANNEL_COUNT + 1; i++)
+            //     {
+            //         data[i] = int16_t(((val >> (64 - 14 * i)) & 0x3FFF) ^ 0x2000) - 0x2000;
+            //     }
+
+            //     return data;
+            // }
 
             /**
              * @brief data transmitted for sensing
@@ -140,7 +182,7 @@ namespace IR
             DEBUG_C(Serial.println("TX_Sense message generation successful!"));
         }
 
-        std::array<int32_t, RMT_RX_CHANNEL_COUNT> Transmit_and_sense(int32_t ticks_delay)
+        std::array<int16_t, RMT_RX_CHANNEL_COUNT> Transmit_and_sense(int32_t ticks_delay)
         {
             // write register for RMT TX channel 1
             for (size_t i = 0; i < RMT_TX_length; i++)

@@ -27,7 +27,7 @@ namespace IR
          * pulse. This function is not compatible with IrCommunication interface
          * now!
          */
-        std::array<int32_t,RMT_RX_CHANNEL_COUNT> Transmit_and_sense(int32_t ticks_delay);
+        std::array<int16_t,RMT_RX_CHANNEL_COUNT> Transmit_and_sense(int32_t ticks_delay);
     } // namespace Sense
 } // namespace IR
 
