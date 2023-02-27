@@ -243,14 +243,69 @@ namespace
         int64_t time;
     };
 
-    constexpr size_t FB_buffer_max_size = 500U;
+    constexpr size_t FB_buffer_max_size = 300U;
     Circbuffer<FB_info, FB_buffer_max_size + 5> FB_buffer;
 
-    constexpr size_t Position_buffer_max_size = 300U;
+    constexpr size_t Position_buffer_max_size = 150U;
     Circbuffer<IR::Localization::Position_data, Position_buffer_max_size + 5> Position_buffer;
 
     Circbuffer<IR::Localization::Position_data, Position_buffer_max_size + 5> Filtered_Position_buffer;
 
+    // // this version sends position data and thrust values
+    // void Send_message_task(void *pvParameters)
+    // {
+    //     while (true)
+    //     {
+    //         vTaskDelay(50);
+    //         if (Serial.available())
+    //         {
+    //             delay(10);
+    //             // deplete serial buffer
+    //             while (Serial.available())
+    //             {
+    //                 Serial.read();
+    //             }
+
+    //             Serial.print("Now is ");
+    //             Serial.println(esp_timer_get_time());
+
+    //             Serial.println("---- Unfiltered position ----");
+    //             while (Position_buffer.n_elem > 0)
+    //             {
+    //                 auto pdat = Position_buffer.pop();
+
+    //                 std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", x : ") + std::to_string(pdat.x) + std::string(", y : ") + std::to_string(pdat.y) + std::string(", z : ") + std::to_string(pdat.z) + std::string(", var_xy : ") + std::to_string(pdat.var_xy) + std::string(", var_z : ") + std::to_string(pdat.var_z) + std::string(", w : ") + std::to_string(pdat.angular_velocity) + std::string(", err_factor : ") + std::to_string(pdat.mean_error_factor) + "\n";
+
+    //                 Serial.print(v.c_str());
+    //             }
+
+    //             Serial.println("---- Filtered position ----");
+    //             while (Filtered_Position_buffer.n_elem > 0)
+    //             {
+    //                 auto pdat = Filtered_Position_buffer.pop();
+
+    //                 std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", x : ") + std::to_string(pdat.x) + std::string(", y : ") + std::to_string(pdat.y) + std::string(", z : ") + std::to_string(pdat.z) + std::string(", var_xy : ") + std::to_string(pdat.var_xy) + std::string(", var_z : ") + std::to_string(pdat.var_z) + std::string(", w : ") + std::to_string(pdat.angular_velocity) + std::string(", err_factor : ") + std::to_string(pdat.mean_error_factor) + "\n";
+
+    //                 Serial.print(v.c_str());
+    //             }
+
+    //             Serial.println("---- Motor feedback data ----");
+    //             while (FB_buffer.n_elem > 0)
+    //             {
+    //                 auto fdat = FB_buffer.pop();
+
+    //                 std::string v = std::string("update_t : ") + std::to_string(fdat.time) + std::string(", thrust_0 : ") + std::to_string(fdat.thrust_0) + std::string(", thrust_1 : ") + std::to_string(fdat.thrust_1) + "\n";
+
+    //                 Serial.print(v.c_str());
+    //             }
+    //         }
+    //     }
+    // }
+
+    constexpr uint32_t Raw_timing_buf_size = 300;
+    Circbuffer<IR::RX::Msg_timing_t, Raw_timing_buf_size + 5> Raw_timing_buffer;
+
+    // this version sends raw timing readings
     void Send_message_task(void *pvParameters)
     {
         while (true)
@@ -288,6 +343,16 @@ namespace
                     Serial.print(v.c_str());
                 }
 
+                Serial.println("---- Raw timing ----");
+                while (Raw_timing_buffer.n_elem > 0)
+                {
+                    auto pdat = Raw_timing_buffer.pop();
+
+                    std::string v = std::string("ID : ") + std::to_string(pdat.robot_ID) + std::string(", t0 : ") + std::to_string(pdat.time_arr[0]) + std::string(", t1 : ") + std::to_string(pdat.time_arr[1]) + std::string(", t2 : ") + std::to_string(pdat.time_arr[2]) + "\n";
+
+                    Serial.print(v.c_str());
+                }
+
                 Serial.println("---- Motor feedback data ----");
                 while (FB_buffer.n_elem > 0)
                 {
@@ -302,6 +367,7 @@ namespace
     }
 }
 
+// this version buffer localization data
 void Buffer_data_task(void *pvParameters)
 {
     // position data is valid for 1s
@@ -357,6 +423,52 @@ void Buffer_data_task(void *pvParameters)
         //     send_task_not_started = false;
         //     LIT_G;
         // }
+    }
+}
+
+// this version buffer raw timing data
+void Buffer_raw_data_task(void *pvParameters)
+{
+    // if send message task has been started.
+    bool send_task_not_started = true;
+
+    // // send me messages through serial!
+    // xTaskCreatePinnedToCore(
+    //     Send_message_task,
+    //     "Send_message_task",
+    //     8000,
+    //     NULL,
+    //     3,
+    //     NULL,
+    //     0);
+
+    int64_t t_prev = 0, t_now = 0;
+
+    while (true)
+    {
+        // wait till next timing data is obtained
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        // get data
+        uint32_t io_flag;
+        uint32_t temp_size = 0;
+        IR::RX::Msg_timing_t temp[25];
+        do
+        {
+            t_now = esp_timer_get_time();
+
+            io_flag = IR::Localization::Get_io_flag();
+
+            temp_size = IR::RX::Get_timing_data(temp, t_now - t_prev);
+
+        } while (io_flag != IR::Localization::Get_io_flag());
+
+        for (int i = 0; i < temp_size; i++)
+        {
+            Raw_timing_buffer.push(temp[temp_size - i - 1]);
+        }
+
+        t_prev = t_now;
     }
 }
 
@@ -513,7 +625,7 @@ namespace
     Circbuffer<Motor_timing_t, 5> timing_buf_m;
 
     int64_t Last_position_update_time = 0;
-    int64_t Reach_target_speed_time = 0;
+    int64_t Reach_target_height_time = 0;
 
     /**
      * @brief a task that turn motor based on robot's position
@@ -534,7 +646,7 @@ namespace
         // time when it should be on again. Let's use green LED only here.
         if (arg->Motor_state)
         {
-            if (Reach_target_speed_time)
+            if (Reach_target_height_time)
             {
                 Motor::Set_thrust(arg->Last_motor_timing.thrust_0);
             }
@@ -557,7 +669,7 @@ namespace
         }
         else
         {
-            if (Reach_target_speed_time)
+            if (Reach_target_height_time)
             {
                 Motor::Set_thrust(arg->Last_motor_timing.thrust_1);
             }
@@ -933,7 +1045,7 @@ void Motor_test_task(void *pvParameters)
 void Motor_control_task(void *pvParameters)
 {
     constexpr float K_P_XY = 0.0e-2F;
-    constexpr float K_P_Z = 5.0e-3F;
+    constexpr float K_P_Z = 4.0e-3F;
     // K_D has time unit of s
     constexpr float K_D_XY = 0.0e-2F;
     constexpr float K_D_Z = 10.0e-3F;
@@ -1023,13 +1135,23 @@ void Motor_control_task(void *pvParameters)
                 control_on = 2;
                 // enable overdrive
                 Motor::Set_overdrive(true);
-                Reach_target_speed_time = esp_timer_get_time();
+                Motor::Set_thrust(21);
 
                 I_comp[0] = 0;
                 I_comp[1] = 0;
                 I_comp[2] = 0;
             }
             break;
+
+        case 2:
+            if (pos_0.z > -20.0F)
+            {
+                control_on = 3;
+
+                Reach_target_height_time = esp_timer_get_time();
+            }
+            break;
+
         default:
             break;
         }
@@ -1048,25 +1170,29 @@ void Motor_control_task(void *pvParameters)
 
         t_coef = 1.0e6F / float(pos_0.time - pos_1.time);
 
-        // store old D_component for acceleration computation
-        float old_D_comp[3] = {D_comp[0], D_comp[1], D_comp[2]};
+        // // store old D_component for acceleration computation
+        // float old_D_comp[3] = {D_comp[0], D_comp[1], D_comp[2]};
 
-        // use kalmann filter to get new D component
-        constexpr float D_error_increase_rate = 500e-6F;
-        float D_xy_var_this = t_coef * t_coef * (pos_0.var_xy + pos_1.var_xy);
-        float D_z_var_this = t_coef * t_coef * (pos_0.var_z + pos_1.var_z);
-        float var_drift = square(float(pos_0.time - D_last_update_time) * D_error_increase_rate);
+        // // use kalmann filter to get new D component
+        // constexpr float D_error_increase_rate = 500e-6F;
+        // float D_xy_var_this = t_coef * t_coef * (pos_0.var_xy + pos_1.var_xy);
+        // float D_z_var_this = t_coef * t_coef * (pos_0.var_z + pos_1.var_z);
+        // float var_drift = square(float(pos_0.time - D_last_update_time) * D_error_increase_rate);
 
-        // determine z and var_z
-        float tmpv = 1.0F / (D_z_var_this + D_z_var + var_drift);
-        D_comp[2] = (D_comp[2] * D_z_var_this + (t_coef * (pos_0.z - pos_1.z)) * (D_z_var + var_drift)) * tmpv;
-        D_z_var = D_z_var_this * (D_z_var + var_drift) * tmpv;
+        // // determine z and var_z
+        // float tmpv = 1.0F / (D_z_var_this + D_z_var + var_drift);
+        // D_comp[2] = (D_comp[2] * D_z_var_this + (t_coef * (pos_0.z - pos_1.z)) * (D_z_var + var_drift)) * tmpv;
+        // D_z_var = D_z_var_this * (D_z_var + var_drift) * tmpv;
 
-        // similar for xy and var_xy
-        tmpv = 1.0F / (D_xy_var_this + D_xy_var + var_drift);
-        D_comp[0] = (D_comp[0] * D_xy_var_this + (t_coef * (pos_0.x - pos_1.x)) * (D_xy_var + var_drift)) * tmpv;
-        D_comp[1] = (D_comp[1] * D_xy_var_this + (t_coef * (pos_0.y - pos_1.y)) * (D_xy_var + var_drift)) * tmpv;
-        D_xy_var = D_xy_var_this * (D_xy_var + var_drift) * tmpv;
+        // // similar for xy and var_xy
+        // tmpv = 1.0F / (D_xy_var_this + D_xy_var + var_drift);
+        // D_comp[0] = (D_comp[0] * D_xy_var_this + (t_coef * (pos_0.x - pos_1.x)) * (D_xy_var + var_drift)) * tmpv;
+        // D_comp[1] = (D_comp[1] * D_xy_var_this + (t_coef * (pos_0.y - pos_1.y)) * (D_xy_var + var_drift)) * tmpv;
+        // D_xy_var = D_xy_var_this * (D_xy_var + var_drift) * tmpv;
+
+        D_comp[0] = t_coef * (filt_pos_0.x - filt_pos_1.x);
+        D_comp[1] = t_coef * (filt_pos_0.y - filt_pos_1.y);
+        D_comp[2] = t_coef * (pos_0.z - pos_1.z);
 
         // we take the simplest approach to acceleration computation
         // if we want to use any more advanced methods, we might as well use
@@ -1077,15 +1203,17 @@ void Motor_control_task(void *pvParameters)
         // averaging over 0.5s
         float update_coef = clip(4e-6F * float(pos_0.time - D_last_update_time), 0.0F, 1.0F);
 
-        A_comp[0] = (1.0 - update_coef) * A_comp[0] + update_coef * 1.0e6F * (D_comp[0] - old_D_comp[0]) / float(pos_0.time - D_last_update_time);
-        A_comp[1] = (1.0 - update_coef) * A_comp[1] + update_coef * 1.0e6F * (D_comp[1] - old_D_comp[1]) / float(pos_0.time - D_last_update_time);
-        A_comp[2] = (1.0 - update_coef) * A_comp[2] + update_coef * 1.0e6F * (D_comp[2] - old_D_comp[2]) / float(pos_0.time - D_last_update_time);
+        // A_comp[0] = (1.0 - update_coef) * A_comp[0] + update_coef * 1.0e6F * (D_comp[0] - old_D_comp[0]) / float(pos_0.time - D_last_update_time);
+        // A_comp[1] = (1.0 - update_coef) * A_comp[1] + update_coef * 1.0e6F * (D_comp[1] - old_D_comp[1]) / float(pos_0.time - D_last_update_time);
+        // A_comp[2] = (1.0 - update_coef) * A_comp[2] + update_coef * 1.0e6F * (D_comp[2] - old_D_comp[2]) / float(pos_0.time - D_last_update_time);
 
         D_last_update_time = pos_0.time;
 
         FB_val[0] = -K_P_XY * P_comp[0] - K_D_XY * D_comp[0] - K_A_XY * A_comp[0];
         FB_val[1] = -K_P_XY * P_comp[1] - K_D_XY * D_comp[1] - K_A_XY * A_comp[1];
-        FB_val[2] = -K_P_Z * P_comp[2] - K_D_Z * D_comp[2] + Robot_mass;
+        // FB_val[2] = -K_P_Z * P_comp[2] - K_D_Z * D_comp[2] + Robot_mass;
+        // FB_val[2] = Robot_mass;
+        FB_val[2] = -(1.0F) * D_comp[2] + Robot_mass;
 
         // if (pos_0.z < -0.1F)
         // {
@@ -1094,11 +1222,6 @@ void Motor_control_task(void *pvParameters)
         // else if (pos_0.z > 0.10F)
         // {
         //     FB_val[2] = 15.0F;
-        // }
-
-        // for (size_t i = 0; i < 3; i++)
-        // {
-        //     FB_val[i] = K_P * P_comp[i] + K_I * I_comp[i] + K_D * D_comp[i];
         // }
 
         // all computation has been finished till now
@@ -1301,7 +1424,7 @@ void Motor_monitor_task(void *pvParameters)
 
         int64_t t_now = esp_timer_get_time();
 
-        if (Reach_target_speed_time != 0)
+        if (Reach_target_height_time != 0)
         {
             if (t_now - Last_position_update_time >= Power_off_threshold)
             {

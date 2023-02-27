@@ -142,6 +142,22 @@ void real_setup(void *pvParameters)
     // // trigger LED_control_task when localization is updated.
     // IR::Localization::Add_Localization_Notification(LED_control_handle);
 
+    // buffer data when new timing is obtained
+    TaskHandle_t Buffer_raw_data_handle;
+
+    task_status_temp = xTaskCreatePinnedToCore(
+        Buffer_raw_data_task,
+        "Buffer_raw_data_task",
+        8000,
+        NULL,
+        8,
+        &Buffer_raw_data_handle,
+        0);
+    task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
+
+    // trigger buffer data when new timing is obtained.
+    IR::RX::Add_RX_Notification(Buffer_raw_data_handle);
+
     // buffer data when new localization is executed
     TaskHandle_t Buffer_data_handle;
 

@@ -289,7 +289,7 @@ namespace IR
                 // maximum iterations we do
                 constexpr size_t Max_Position_Iterations = 10;
                 // when step size dropped below this, we quit!
-                constexpr float Error_tolerance = 0.5F;
+                constexpr float Error_tolerance = 0.05F;
 
                 // determine the rest iteratively, max Max_Position_Iterations times
                 for (size_t step = 0; step < Max_Position_Iterations; step++)
