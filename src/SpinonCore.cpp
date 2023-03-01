@@ -23,7 +23,7 @@ void loop()
 {
     Serial.print("\n----DATA START----\n");
 
-    for (size_t i = 0; i < 1000; i++)
+    for (size_t i = 0; i < 300; i++)
     {
         auto res = IR::Sense::Transmit_and_sense(i);
 
@@ -31,9 +31,12 @@ void loop()
         s += std::to_string(i) + " , CH1: " + std::to_string(res[0]) + " , CH2: " + std::to_string(res[1]) + " , CH3: " + std::to_string(res[2]);
 
         Serial.println(s.c_str());
+        Serial.flush();
 
         Feed_the_dog();
+
+        delayMicroseconds(2000);
     }
 
-    Serial.print("\n----DATA START----\n");
+    Serial.print("\n----DATA END----\n");
 }

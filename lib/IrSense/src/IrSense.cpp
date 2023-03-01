@@ -23,10 +23,22 @@ namespace IR
         /**
          * @brief ADC SPI SCK frequency
          */
-        constexpr uint32_t ADC_SCK_frequency = 40000000U;
+        constexpr uint32_t ADC_SCK_frequency = 10000000U;
 
         namespace
         {
+            char HexLookUp[] = "0123456789ABCDEF";
+            void bytes2hex(unsigned char *src, char *out, int len)
+            {
+                while (len--)
+                {
+                    *out++ = HexLookUp[*src >> 4];
+                    *out++ = HexLookUp[*src & 0x0F];
+                    src++;
+                }
+                *out = 0;
+            }
+
             // SPI interface
             SPIClass *hspi;
 
@@ -70,6 +82,10 @@ namespace IR
                     data[i] = (((int16_t(out[2 * i] & 0x3F) << 8) + out[2 * i + 1]) ^ 0x2000) - 0x2000;
                 }
 
+                // char str[15];
+                // bytes2hex(out,str,6);
+                // Serial.println(str);
+
                 return data;
             }
 
@@ -88,9 +104,27 @@ namespace IR
             //     hspi = new SPIClass(HSPI);
             //     hspi->begin();
 
+            //     // reset
             //     hspi->beginTransaction(SPISettings(ADC_SCK_frequency, MSBFIRST, SPI_MODE2));
             //     clrbit(SENSE_SS);
+            //     hspi->transfer16(0xA3FF);
+            //     setbit(SENSE_SS);
+            //     hspi->endTransaction();
+
+            //     delayMicroseconds(1000);
+
+            //     // set to enable RX CRC
+            //     hspi->beginTransaction(SPISettings(ADC_SCK_frequency, MSBFIRST, SPI_MODE2));
+            //     clrbit(SENSE_SS);
+            //     hspi->transfer16(0x9010);
+            //     setbit(SENSE_SS);
+            //     hspi->endTransaction();
+
+            //     delay1us;
+
             //     // set to 1-wire mode
+            //     hspi->beginTransaction(SPISettings(ADC_SCK_frequency, MSBFIRST, SPI_MODE2));
+            //     clrbit(SENSE_SS);
             //     hspi->transfer16(0xA300);
             //     setbit(SENSE_SS);
             //     hspi->endTransaction();
@@ -103,32 +137,33 @@ namespace IR
             //  */
             // std::array<int16_t, RMT_RX_CHANNEL_COUNT> ADC_read()
             // {
-            //     std::array<int32_t, RMT_RX_CHANNEL_COUNT> data;
+            //     std::array<uint16_t, RMT_RX_CHANNEL_COUNT> tmp;
+            //     std::array<int16_t, RMT_RX_CHANNEL_COUNT> data;
             //     uint8_t in[8] = {0, 0, 0, 0, 0, 0, 0, 0};
             //     uint8_t out[8];
 
             //     // convert
             //     clrbit(SENSE_SS);
-            //     delay100ns;
+            //     delay1us;
             //     setbit(SENSE_SS);
-            //     delay500ns;
+            //     delay1us;
 
             //     // read out
             //     hspi->beginTransaction(SPISettings(ADC_SCK_frequency, MSBFIRST, SPI_MODE2));
             //     clrbit(SENSE_SS);
             //     // we only read first 3 channels, 3*14 = 42 bits < 6 bytes
             //     // if this becomes a problem, just switch to 7 bits and read all channels
-            //     hspi->transferBytes(in, out, 6);
+            //     hspi->transferBytes(in, out, 8);
             //     setbit(SENSE_SS);
             //     hspi->endTransaction();
 
-            //     // convert to actual reading
-            //     std::reverse(out, out + 8);
-            //     uint64_t val = *(reinterpret_cast<uint64_t *>(out));
+            //     tmp[0] = (uint16_t(out[0] & 0x7F) << 7) | (out[1] >> 1);
+            //     tmp[1] = (uint16_t(out[1] & 0x01) << 13) | (uint16_t(out[2]) << 5) | (out[3] >> 3);
+            //     tmp[2] = (uint16_t(out[3] & 0x07) << 11) | (uint16_t(out[4]) << 3) | (out[5] >> 5);
 
-            //     for (size_t i = 1; i < RMT_RX_CHANNEL_COUNT + 1; i++)
+            //     for (size_t i = 0; i < 3; i++)
             //     {
-            //         data[i] = int16_t(((val >> (64 - 14 * i)) & 0x3FFF) ^ 0x2000) - 0x2000;
+            //         data[i] = int32_t(tmp[i] ^ 0x2000) - 0x2000;
             //     }
 
             //     return data;
