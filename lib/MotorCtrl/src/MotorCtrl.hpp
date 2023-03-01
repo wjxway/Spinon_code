@@ -75,7 +75,7 @@ namespace Motor
      * @brief if lower than this thrust, automatically exit overdrive mode to
      * prevent failure of reboot and grant higher resolution.
      */
-    constexpr float Min_thrust_overdrive = 19.0F;
+    constexpr float Min_thrust_overdrive = 14.0F;
 
     /**
      * @brief max thrust in overdrive mode in grams

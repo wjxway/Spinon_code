@@ -94,7 +94,7 @@ namespace IR
              * @note For now, we assume that the error increase rate is the same for all
              * three directions
              */
-            constexpr float Error_increase_rate = 50e-6F;
+            constexpr float Error_increase_rate = 150e-6F;
 
             /**
              * @brief after how long will we stop to use the old localization
@@ -375,7 +375,7 @@ namespace IR
                 for (size_t i = 0; i < data_len; i++)
                 {
                     float est_dist = norm(data[i].pos[0] - temp.x, data[i].pos[1] - temp.y);
-                    float est_elev = Elevation_expectation(est_dist, data[i].cent_angle);
+                    float est_elev = Elevation_expectation(est_dist, data[i].cent_angle) + data[i].pos[2];
 
                     float c = 1.0F / square(Elevation_error(est_dist, est_dist_err, data[i].cent_angle, data[i].cent_angle_err));
                     deno += c;

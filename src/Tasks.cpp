@@ -1045,7 +1045,7 @@ void Motor_test_task(void *pvParameters)
 void Motor_control_task(void *pvParameters)
 {
     constexpr float K_P_XY = 0.0e-2F;
-    constexpr float K_P_Z = 4.0e-3F;
+    constexpr float K_P_Z = 15.0e-3F;
     // K_D has time unit of s
     constexpr float K_D_XY = 0.0e-2F;
     constexpr float K_D_Z = 10.0e-3F;
@@ -1140,17 +1140,19 @@ void Motor_control_task(void *pvParameters)
                 I_comp[0] = 0;
                 I_comp[1] = 0;
                 I_comp[2] = 0;
-            }
-            break;
-
-        case 2:
-            if (pos_0.z > -20.0F)
-            {
-                control_on = 3;
 
                 Reach_target_height_time = esp_timer_get_time();
             }
             break;
+
+            // case 2:
+            //     if (pos_0.z > -20.0F)
+            //     {
+            //         control_on = 3;
+
+            //         Reach_target_height_time = esp_timer_get_time();
+            //     }
+            //     break;
 
         default:
             break;
@@ -1192,7 +1194,7 @@ void Motor_control_task(void *pvParameters)
 
         D_comp[0] = t_coef * (filt_pos_0.x - filt_pos_1.x);
         D_comp[1] = t_coef * (filt_pos_0.y - filt_pos_1.y);
-        D_comp[2] = t_coef * (pos_0.z - pos_1.z);
+        D_comp[2] = t_coef * (filt_pos_0.z - filt_pos_1.z);
 
         // we take the simplest approach to acceleration computation
         // if we want to use any more advanced methods, we might as well use
@@ -1211,9 +1213,7 @@ void Motor_control_task(void *pvParameters)
 
         FB_val[0] = -K_P_XY * P_comp[0] - K_D_XY * D_comp[0] - K_A_XY * A_comp[0];
         FB_val[1] = -K_P_XY * P_comp[1] - K_D_XY * D_comp[1] - K_A_XY * A_comp[1];
-        // FB_val[2] = -K_P_Z * P_comp[2] - K_D_Z * D_comp[2] + Robot_mass;
-        // FB_val[2] = Robot_mass;
-        FB_val[2] = -(1.0F) * D_comp[2] + Robot_mass;
+        FB_val[2] = -K_P_Z * P_comp[2] - K_D_Z * D_comp[2] + Robot_mass;
 
         // if (pos_0.z < -0.1F)
         // {
