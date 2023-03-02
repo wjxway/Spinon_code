@@ -63,15 +63,18 @@ namespace IR
              */
             std::array<int16_t, RMT_RX_CHANNEL_COUNT> ADC_read()
             {
+                delay500ns;
+
+                setbit(SENSE_SS);
+                delay50ns;
+                clrbit(SENSE_SS);
+
                 std::array<int16_t, RMT_RX_CHANNEL_COUNT> data;
                 uint8_t in[6] = {0, 0, 0, 0, 0, 0};
                 uint8_t out[6];
 
                 // read out
                 hspi->beginTransaction(SPISettings(ADC_SCK_frequency, MSBFIRST, SPI_MODE3));
-                setbit(SENSE_SS);
-                delay50ns;
-                clrbit(SENSE_SS);
                 // we only read first 3 channels, 2 bytes each.
                 hspi->transferBytes(in, out, 6);
                 hspi->endTransaction();
@@ -219,6 +222,9 @@ namespace IR
 
         std::array<int16_t, RMT_RX_CHANNEL_COUNT> Transmit_and_sense(int32_t ticks_delay)
         {
+            portMUX_TYPE myMutex = portMUX_INITIALIZER_UNLOCKED;
+            taskENTER_CRITICAL(&myMutex);
+
             // write register for RMT TX channel 1
             for (size_t i = 0; i < RMT_TX_length; i++)
             {
@@ -236,7 +242,11 @@ namespace IR
             RMT.conf_ch[RMT_TX_channel_1].conf1.tx_start = 1;
 
             // return read value
-            return ADC_read();
+            auto temp = ADC_read();
+            
+            taskEXIT_CRITICAL(&myMutex);
+
+            return temp;
         }
     } // namespace Sense
 } // namespace IR

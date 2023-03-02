@@ -21,22 +21,36 @@ void setup()
 // delete loop() immediately
 void loop()
 {
-    Serial.print("\n----DATA START----\n");
+    static int64_t tstart = esp_timer_get_time();
 
-    for (size_t i = 0; i < 300; i++)
-    {
-        auto res = IR::Sense::Transmit_and_sense(i);
+    while (esp_timer_get_time() - tstart < 2000)
+        ;
 
-        std::string s = "Delay_ticks: ";
-        s += std::to_string(i) + " , CH1: " + std::to_string(res[0]) + " , CH2: " + std::to_string(res[1]) + " , CH3: " + std::to_string(res[2]);
+    tstart += 2000;
 
-        Serial.println(s.c_str());
-        Serial.flush();
+    auto res = IR::Sense::Transmit_and_sense(7);
 
-        Feed_the_dog();
+    std::string s = "CH1: ";
+    s += std::to_string(res[0]) + " , CH2: " + std::to_string(res[1]) + " , CH3: " + std::to_string(res[2]);
 
-        delayMicroseconds(2000);
-    }
+    Serial.println(s.c_str());
+    Serial.flush();
 
-    Serial.print("\n----DATA END----\n");
+    Feed_the_dog();
+
+    // while (esp_timer_get_time() - t_prev <= t_delay)
+    // {
+    //     t_prev += t_delay;
+
+    //     auto res = IR::Sense::Transmit_and_sense(7);
+
+    //     std::string s = std::string("CH1: ") + std::to_string(res[0]) + " , CH2: " + std::to_string(res[1]) + " , CH3: " + std::to_string(res[2]);
+
+    //     Serial.println(s.c_str());
+    //     Serial.flush();
+
+    //     Feed_the_dog();
+    // }
+
+    // Serial.print("----DATA END----\n");
 }
