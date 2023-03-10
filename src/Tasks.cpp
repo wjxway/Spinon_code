@@ -773,6 +773,11 @@ void Motor_control_task(void *pvParameters)
     }
 }
 
+char ToHEX(uint8_t val)
+{
+    return (val >= 10) ? 'A' + val - 10 : '0' + val;
+}
+
 void Motor_TX_task(void *pvParameters)
 {
     while (true)
@@ -783,6 +788,7 @@ void Motor_TX_task(void *pvParameters)
             char c = Serial.read();
 
             uint16_t tval, reg, val;
+            String hexString;
 
             switch (c)
             {
@@ -799,9 +805,11 @@ void Motor_TX_task(void *pvParameters)
             // register value
             case 'r':
                 reg = Serial.parseInt();
-                val = Serial.parseInt();
 
-                if(reg==0)
+                hexString = Serial.readStringUntil('\n');  // Read the HEX number from the serial port and convert it to a string
+                val = strtol(hexString.c_str(), NULL, 16); // Convert the HEX string to an integer
+
+                if (reg == 0)
                 {
                     Serial.println("Reset!");
                     IR::TX::Add_to_schedule(2, {0}, 3, -1, 2);
@@ -817,7 +825,8 @@ void Motor_TX_task(void *pvParameters)
                     Serial.print("Register ");
                     Serial.print(reg);
                     Serial.print(" => ");
-                    Serial.println(val);
+                    Serial.print(ToHEX(val >> 4));
+                    Serial.println(ToHEX(val & 0xF));
 
                     val += reg << 8;
 
