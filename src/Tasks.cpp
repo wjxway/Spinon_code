@@ -787,19 +787,30 @@ void Motor_TX_task(void *pvParameters)
         {
             char c = Serial.read();
 
-            uint16_t tval, reg, val;
+            uint16_t tval1, tval2, reg, val;
             String hexString;
 
             switch (c)
             {
             // thrust value
             case 't':
-                tval = Serial.parseInt();
+                tval1 = Serial.parseInt();
+                tval2 = Serial.parseInt();
+
+                tval2 = (tval2 == 0) ? tval1 : tval2;
+
+                if (tval1 >= 256 || tval2 >= 256)
+                {
+                    Serial.println("Invalid thrust!");
+                    break;
+                }
 
                 Serial.print("Thrust => ");
-                Serial.println(tval);
+                Serial.print(tval1);
+                Serial.print(" , ");
+                Serial.println(tval2);
 
-                IR::TX::Add_to_schedule(1, {tval}, 2);
+                IR::TX::Add_to_schedule(1, {uint16_t((tval1 << 8) + tval2)}, 2);
                 break;
 
             // register value
