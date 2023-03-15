@@ -994,11 +994,49 @@ void LED_control_task(void *pvParameters)
     }
 }
 
+namespace
+{
+    // true for speed 1, false for speed 2
+    bool motor_state = false;
+    uint8_t motor_spd_1 = 0;
+    uint8_t motor_spd_2 = 0;
+
+    void IRAM_ATTR Motor_test_callback(void *pvParameters)
+    {
+        if (motor_state)
+        {
+            setbit(DEBUG_PIN_2);
+            Motor::Set_speed(motor_spd_1);
+        }
+        else
+        {
+            clrbit(DEBUG_PIN_2);
+            Motor::Set_speed(motor_spd_2);
+        }
+        motor_state = !motor_state;
+    }
+}
+
 void Motor_test_task(void *pvParameters)
 {
+    static bool just_start = 1;
+
     // get data
     auto buf_1 = IR::RX::Get_msg_buffer_by_type(1);
     auto buf_2 = IR::RX::Get_msg_buffer_by_type(2);
+
+    constexpr uint64_t motor_spd_switch_time = 20000;
+
+    const esp_timer_create_args_t oneshot_timer_callback_args_1 = {
+        .callback = &Motor_test_callback,
+        .arg = nullptr,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "test"};
+
+    esp_timer_handle_t tm_handle;
+    esp_timer_create(&oneshot_timer_callback_args_1, &tm_handle);
+
+    esp_timer_start_periodic(tm_handle, motor_spd_switch_time);
 
     while (true)
     {
@@ -1009,9 +1047,16 @@ void Motor_test_task(void *pvParameters)
         {
             auto msg = buf_1.pop();
 
-            LED_set(0, float(msg.content[0]) / float((1 << Motor::PWM_resolution) - 1));
-            Serial.println(msg.content[0]);
-            Motor::Set_speed(msg.content[0]);
+            LIT_G;
+            vTaskDelay(500);
+            QUENCH_G;
+
+            // LED_set(0, float(msg.content[0]) / float((1 << Motor::PWM_resolution) - 1));
+            // Serial.println(msg.content[0]);
+            // Motor::Set_speed(msg.content[0]);
+
+            motor_spd_1 = (msg.content[0] >> 8) & 0xFF;
+            motor_spd_2 = msg.content[0] & 0xFF;
         }
 
         if (!buf_2.Empty_Q())
@@ -1025,19 +1070,17 @@ void Motor_test_task(void *pvParameters)
             // reset command
             if (msg.content[0] == 0)
             {
-                Motor::Set_speed(0);
-                delayMicroseconds(1000000);
-
-                // initial config
-                for (uint8_t addr = 0U; addr < 23U; addr++)
+                if (!just_start)
                 {
-                    Motor::Config_register(addr + 2U, Motor::Default_config[addr]);
+                    esp_restart();
                 }
             }
             else
             {
                 Motor::Config_register((msg.content[0] >> 8) & 0xFF, msg.content[0] & 0xFF);
             }
+
+            just_start = 0;
         }
     }
 }
