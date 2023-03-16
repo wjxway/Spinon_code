@@ -45,7 +45,7 @@ namespace Motor
 		 */
 		constexpr uint32_t Compute_throttle(float thrust)
 		{
-			return uint32_t(4.25F * thrust + 17.1F);
+			return uint32_t(4.25F * thrust + 40.0F);
 		}
 	} // anonymous namespace
 
@@ -171,6 +171,7 @@ namespace Motor
 		return Brake_mode;
 	}
 
+#if MOTOR_OVERDRIVE_ENABLED
 	void Set_overdrive(bool state)
 	{
 		if (state != Overdrive_state)
@@ -188,9 +189,11 @@ namespace Motor
 			}
 		}
 	}
+#endif
 
 	void Set_thrust(const float thrust)
 	{
+#if MOTOR_OVERDRIVE_ENABLED
 		if (Overdrive_state)
 		{
 			// exit overdrive mode when thrust value is too small.
@@ -203,6 +206,7 @@ namespace Motor
 
 			Set_overdrive(false);
 		}
+#endif
 
 		Set_speed(Compute_throttle(math::fast::clip(thrust, Min_thrust, Max_thrust)));
 	}

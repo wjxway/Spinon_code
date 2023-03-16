@@ -10,7 +10,7 @@
 /**
  * @brief whether we allow overdriving motor to gain higher thrust
  */
-#define MOTOR_OVERDRIVE_ENABLED 1
+#define MOTOR_OVERDRIVE_ENABLED 0
 
 namespace Motor
 {
@@ -57,12 +57,12 @@ namespace Motor
     /**
      * @brief when below this thrust and not zero, round up to this thrust.
      */
-    constexpr float Min_thrust = 4.0F;
+    constexpr float Min_thrust = 6.0F;
 
     /**
      * @brief max thrust achievable in grams
      */
-    constexpr float Max_thrust = 22.5F;
+    constexpr float Max_thrust = 28.0F;
 
 #if MOTOR_OVERDRIVE_ENABLED
     /**

@@ -1177,8 +1177,8 @@ void Motor_control_task(void *pvParameters)
             {
                 control_on = 2;
                 // enable overdrive
-                Motor::Set_overdrive(true);
-                Motor::Set_thrust(21);
+                // Motor::Set_overdrive(true);
+                Motor::Set_thrust(20);
 
                 I_comp[0] = 0;
                 I_comp[1] = 0;
@@ -1300,17 +1300,16 @@ void Motor_control_task(void *pvParameters)
         Callback_dat_m.t_start = pos_0.rotation_time * 5 - Callback_dat_m.duration / 2 - int64_t((Motor_angle_offset + pos_0.angle_0 - atan2f(FB_val[1], FB_val[0]) - K_rot) / pos_0.angular_velocity);
         Callback_dat_m.period = pos_0.rotation_time;
 
-        float min_thrust, max_thrust;
+        float min_thrust = Motor::Min_thrust, max_thrust = Motor::Max_thrust;
+        
+#if MOTOR_OVERDRIVE_ENABLED
         if (Motor::Get_overdrive_mode())
         {
             min_thrust = Motor::Min_thrust_overdrive;
             max_thrust = Motor::Max_thrust_overdrive;
         }
-        else
-        {
-            min_thrust = Motor::Min_thrust;
-            max_thrust = Motor::Max_thrust;
-        }
+#endif
+
         // clip add_val to make sure that the average is still the average and the values will not exceed limits.
         // similar for motor settings.
         FB_val[2] = clip(FB_val[2], min_thrust, max_thrust);

@@ -61,7 +61,7 @@ void real_setup(void *pvParameters)
 
     Motor::Init();
     Motor::Set_speed(0);
-    // Motor::Active_brake();
+    Motor::Active_brake();
 
     // LED_set(0, float(0) / float((1 << Motor::PWM_resolution) - 1));
 
@@ -80,11 +80,11 @@ void real_setup(void *pvParameters)
 
     DEBUG_C(Serial.println("RX inited!"));
 
-    // IR::Localization::Init();
+    IR::Localization::Init();
 
-    // DEBUG_C(Serial.println("Localization inited!"));
+    DEBUG_C(Serial.println("Localization inited!"));
 
-    // DEBUG_C(Serial.println("Init finished, launching tasks!"));
+    DEBUG_C(Serial.println("Init finished, launching tasks!"));
 
     BaseType_t task_status = pdTRUE, task_status_temp;
 
@@ -109,21 +109,21 @@ void real_setup(void *pvParameters)
     //     0);
     // task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
 
-    // test motor thrust - speed curve
-    TaskHandle_t motor_test_handle;
+    // // test motor thrust - speed curve
+    // TaskHandle_t motor_test_handle;
 
-    task_status_temp = xTaskCreatePinnedToCore(
-        Motor_test_task,
-        "Motor_test_task",
-        8000,
-        NULL,
-        8,
-        &motor_test_handle,
-        0);
+    // task_status_temp = xTaskCreatePinnedToCore(
+    //     Motor_test_task,
+    //     "Motor_test_task",
+    //     8000,
+    //     NULL,
+    //     8,
+    //     &motor_test_handle,
+    //     0);
 
-    IR::RX::Add_RX_Notification(motor_test_handle);
+    // IR::RX::Add_RX_Notification(motor_test_handle);
 
-    task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
+    // task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
 
     // // lit LED based on position
     // TaskHandle_t LED_control_handle;
@@ -158,50 +158,50 @@ void real_setup(void *pvParameters)
     // // trigger buffer data when new timing is obtained.
     // IR::RX::Add_RX_Notification(Buffer_raw_data_handle);
 
-    // // buffer data when new localization is executed
-    // TaskHandle_t Buffer_data_handle;
+    // buffer data when new localization is executed
+    TaskHandle_t Buffer_data_handle;
 
-    // task_status_temp = xTaskCreatePinnedToCore(
-    //     Buffer_data_task,
-    //     "Buffer_data_task",
-    //     8000,
-    //     NULL,
-    //     8,
-    //     &Buffer_data_handle,
-    //     0);
-    // task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
+    task_status_temp = xTaskCreatePinnedToCore(
+        Buffer_data_task,
+        "Buffer_data_task",
+        8000,
+        NULL,
+        8,
+        &Buffer_data_handle,
+        0);
+    task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
 
-    // // trigger buffer data when localization is updated.
-    // IR::Localization::Add_Localization_Notification(Buffer_data_handle);
+    // trigger buffer data when localization is updated.
+    IR::Localization::Add_Localization_Notification(Buffer_data_handle);
 
-    // // lit LED and control motor based on position
-    // TaskHandle_t Motor_control_handle;
+    // lit LED and control motor based on position
+    TaskHandle_t Motor_control_handle;
 
-    // LED_PWM_init(3U);
+    LED_PWM_init(3U);
 
-    // task_status_temp = xTaskCreatePinnedToCore(
-    //     Motor_control_task,
-    //     "Motor_control_task",
-    //     12000,
-    //     NULL,
-    //     8,
-    //     &Motor_control_handle,
-    //     0);
-    // task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
+    task_status_temp = xTaskCreatePinnedToCore(
+        Motor_control_task,
+        "Motor_control_task",
+        12000,
+        NULL,
+        8,
+        &Motor_control_handle,
+        0);
+    task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
 
-    // // trigger Motor_control when localization is updated.
-    // IR::Localization::Add_Localization_Notification(Motor_control_handle);
+    // trigger Motor_control when localization is updated.
+    IR::Localization::Add_Localization_Notification(Motor_control_handle);
 
-    // // monitor motor's state
-    // task_status_temp = xTaskCreatePinnedToCore(
-    //     Motor_monitor_task,
-    //     "Motor_monitor_task",
-    //     8000,
-    //     NULL,
-    //     3,
-    //     NULL,
-    //     0);
-    // task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
+    // monitor motor's state
+    task_status_temp = xTaskCreatePinnedToCore(
+        Motor_monitor_task,
+        "Motor_monitor_task",
+        8000,
+        NULL,
+        3,
+        NULL,
+        0);
+    task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
 
     if (task_status == pdTRUE)
     {
