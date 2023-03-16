@@ -52,13 +52,6 @@ void LED_PWM_init(uint32_t channels);
 void LED_set(uint32_t color,float duty);
 
 /**
- * @brief convert localization information to LED states and manages LED_FB_ISR
- * 
- * @param pvParameters 
- */
-void LED_control_task(void *pvParameters);
-
-/**
  * @brief similar to LED_control task, but actually turns the motor.
  * 
  * @param pvParameters 

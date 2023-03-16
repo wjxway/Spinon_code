@@ -98,16 +98,16 @@ void real_setup(void *pvParameters)
     //     NULL,
     //     0);
 
-    // // quench LED!
-    // task_status_temp = xTaskCreatePinnedToCore(
-    //     LED_off_task,
-    //     "LED_off_task",
-    //     8000,
-    //     NULL,
-    //     2,
-    //     NULL,
-    //     0);
-    // task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
+    // quench LED!
+    task_status_temp = xTaskCreatePinnedToCore(
+        LED_off_task,
+        "LED_off_task",
+        8000,
+        NULL,
+        2,
+        NULL,
+        0);
+    task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
 
     // // test motor thrust - speed curve
     // TaskHandle_t motor_test_handle;
@@ -128,7 +128,7 @@ void real_setup(void *pvParameters)
     // // lit LED based on position
     // TaskHandle_t LED_control_handle;
 
-    // LED_PWM_init(7U);
+    LED_PWM_init(3U);
 
     // task_status = xTaskCreatePinnedToCore(
     //     LED_control_task,
