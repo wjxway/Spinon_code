@@ -782,17 +782,19 @@ void Motor_test_task(void *pvParameters)
 
 void Motor_control_task(void *pvParameters)
 {
-    constexpr float K_P_XY = 1.0e-2F;
+    constexpr float K_P_XY = 4.0e-2F;
     constexpr float K_P_Z = 1.5e-2F;
     // K_D has time unit of s
-    constexpr float K_D_XY = 0.0e-2F;
+    constexpr float K_D_XY = 2.0e-2F;
     constexpr float K_D_Z = 1.0e-2F;
     // // K_I has time unit of 1/s
     // constexpr float K_I = 0.0F;
     // K_A has time unit of s^2
     constexpr float K_A_XY = 0.0F;
     // rotation angle of execution in rad.
-    constexpr float K_rot = 0.0F;
+    constexpr float K_rot = -0.0F / 180.0F * M_PI;
+
+    float target_point[3] = {0.0F, 0.0F, 0.0F};
 
     // position data is valid for 1s
     constexpr int64_t Position_expire_time = 1000000LL;
@@ -898,9 +900,9 @@ void Motor_control_task(void *pvParameters)
 
         Last_position_update_time = esp_timer_get_time();
 
-        P_comp[0] = (filt_pos_0.x - 100000.0F);
-        P_comp[1] = (filt_pos_0.y - 100000.0F);
-        P_comp[2] = filt_pos_0.z;
+        P_comp[0] = filt_pos_0.x - target_point[0];
+        P_comp[1] = filt_pos_0.y - target_point[1];
+        P_comp[2] = filt_pos_0.z - target_point[2];
 
         float t_coef = float(pos_0.time - pos_1.time) / 2.0e6F;
 

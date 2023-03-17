@@ -21,7 +21,7 @@ const uint32_t This_robot_ID = 12U;
  * @brief robot's weight in grams
  */
 // constexpr float Robot_mass = 18.9F;
-constexpr float Robot_mass = 19.5F;
+constexpr float Robot_mass = 21.0F;
 
 /**
  * @brief whether to enable led output
