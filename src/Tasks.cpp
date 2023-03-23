@@ -785,14 +785,14 @@ void Motor_control_task(void *pvParameters)
     constexpr float K_P_XY = 4.0e-2F;
     constexpr float K_P_Z = 1.5e-2F;
     // K_D has time unit of s
-    constexpr float K_D_XY = 2.0e-2F;
+    constexpr float K_D_XY = 1.5e-2F;
     constexpr float K_D_Z = 1.0e-2F;
     // // K_I has time unit of 1/s
     // constexpr float K_I = 0.0F;
     // K_A has time unit of s^2
-    constexpr float K_A_XY = 0.0F;
+    constexpr float K_A_XY = 1.5e-2F;
     // rotation angle of execution in rad.
-    constexpr float K_rot = -0.0F / 180.0F * M_PI;
+    constexpr float K_rot = 0.0F / 180.0F * M_PI;
 
     float target_point[3] = {0.0F, 0.0F, 0.0F};
 
@@ -803,14 +803,16 @@ void Motor_control_task(void *pvParameters)
 
     // PID components
     float I_comp[3] = {0.0F, 0.0F, 0.0F};
+    float P_comp[3] = {0.0F, 0.0F, 0.0F};
     float D_comp[3] = {0.0F, 0.0F, 0.0F};
+    float Filtered_D_comp[3] = {0.0F, 0.0F, 0.0F};
+    float A_comp[3] = {0.0F, 0.0F, 0.0F};
+    float Filtered_A_comp[3] = {0.0F, 0.0F, 0.0F};
+    float FB_val[3] = {0.0F, 0.0F, 0.0F};
+
     // variance of D_comp
     float D_xy_var = 1.0e6F, D_z_var = 1.0e6F;
     int64_t D_last_update_time = 0;
-    float P_comp[3], FB_val[3];
-
-    // acceleration component
-    float A_comp[3] = {0.0F, 0.0F, 0.0F};
 
     while (true)
     {
@@ -912,47 +914,39 @@ void Motor_control_task(void *pvParameters)
 
         t_coef = 1.0e6F / float(pos_0.time - pos_1.time);
 
-        // // store old D_component for acceleration computation
-        // float old_D_comp[3] = {D_comp[0], D_comp[1], D_comp[2]};
-
-        // // use kalmann filter to get new D component
-        // constexpr float D_error_increase_rate = 500e-6F;
-        // float D_xy_var_this = t_coef * t_coef * (pos_0.var_xy + pos_1.var_xy);
-        // float D_z_var_this = t_coef * t_coef * (pos_0.var_z + pos_1.var_z);
-        // float var_drift = square(float(pos_0.time - D_last_update_time) * D_error_increase_rate);
-
-        // // determine z and var_z
-        // float tmpv = 1.0F / (D_z_var_this + D_z_var + var_drift);
-        // D_comp[2] = (D_comp[2] * D_z_var_this + (t_coef * (pos_0.z - pos_1.z)) * (D_z_var + var_drift)) * tmpv;
-        // D_z_var = D_z_var_this * (D_z_var + var_drift) * tmpv;
-
-        // // similar for xy and var_xy
-        // tmpv = 1.0F / (D_xy_var_this + D_xy_var + var_drift);
-        // D_comp[0] = (D_comp[0] * D_xy_var_this + (t_coef * (pos_0.x - pos_1.x)) * (D_xy_var + var_drift)) * tmpv;
-        // D_comp[1] = (D_comp[1] * D_xy_var_this + (t_coef * (pos_0.y - pos_1.y)) * (D_xy_var + var_drift)) * tmpv;
-        // D_xy_var = D_xy_var_this * (D_xy_var + var_drift) * tmpv;
+        // store old D_component for acceleration computation
+        float old_D_comp[3] = {D_comp[0], D_comp[1], D_comp[2]};
 
         D_comp[0] = t_coef * (filt_pos_0.x - filt_pos_1.x);
         D_comp[1] = t_coef * (filt_pos_0.y - filt_pos_1.y);
         D_comp[2] = t_coef * (filt_pos_0.z - filt_pos_1.z);
 
-        // we take the simplest approach to acceleration computation
-        // if we want to use any more advanced methods, we might as well use
-        // Kalman filter in the first place we executing localization.
-        // Now it's just a very trivial exponential filter
-
         // update coefficient, choose the time coefficient to be approximately
-        // averaging over 0.5s
-        float update_coef = clip(4e-6F * float(pos_0.time - D_last_update_time), 0.0F, 1.0F);
+        // averaging over 0.1s, so total is 0.1s + Kalmann Filter delay.
+        int64_t D_this_update_time = (pos_0.time >> 1) + (pos_1.time >> 1);
+        float update_coef = clip(1e-6F * float(D_this_update_time - D_last_update_time) / 0.1F, 0.0F, 1.0F);
 
-        // A_comp[0] = (1.0 - update_coef) * A_comp[0] + update_coef * 1.0e6F * (D_comp[0] - old_D_comp[0]) / float(pos_0.time - D_last_update_time);
-        // A_comp[1] = (1.0 - update_coef) * A_comp[1] + update_coef * 1.0e6F * (D_comp[1] - old_D_comp[1]) / float(pos_0.time - D_last_update_time);
-        // A_comp[2] = (1.0 - update_coef) * A_comp[2] + update_coef * 1.0e6F * (D_comp[2] - old_D_comp[2]) / float(pos_0.time - D_last_update_time);
+        float Filtered_D_comp_buffer[3];
+        for (size_t i = 0; i < 3; i++)
+        {
+            Filtered_D_comp_buffer[i] = D_comp[i] * update_coef + Filtered_D_comp[i] * (1.0F - update_coef);
+        }
 
-        D_last_update_time = pos_0.time;
+        // compute acceleration based on filtered D comp and also filter with average over 0.2s, so total is 0.3s + Kalmann Filter delay.
+        update_coef = clip(1e-6F * float(D_this_update_time - D_last_update_time) / 0.2F, 0.0F, 1.0F);
+        for (size_t i = 0; i < 3; i++)
+        {
+            A_comp[i] = (Filtered_D_comp_buffer[i] - Filtered_D_comp[i]) * 1.0e6F / (D_this_update_time - D_last_update_time);
+            Filtered_A_comp[i] = A_comp[i] * update_coef + Filtered_A_comp[i] * (1.0F - update_coef);
 
-        FB_val[0] = -K_P_XY * P_comp[0] - K_D_XY * D_comp[0] - K_A_XY * A_comp[0];
-        FB_val[1] = -K_P_XY * P_comp[1] - K_D_XY * D_comp[1] - K_A_XY * A_comp[1];
+            Filtered_D_comp[i] = Filtered_D_comp_buffer[i];
+        }
+
+        D_last_update_time = D_this_update_time;
+
+        // construct X,Y,Z control law
+        FB_val[0] = -K_P_XY * P_comp[0] - K_D_XY * Filtered_D_comp[0] - K_A_XY * Filtered_A_comp[0];
+        FB_val[1] = -K_P_XY * P_comp[1] - K_D_XY * Filtered_D_comp[1] - K_A_XY * Filtered_A_comp[1];
         FB_val[2] = -K_P_Z * P_comp[2] - K_D_Z * D_comp[2] + Robot_mass;
 
         // all computation has been finished till now
