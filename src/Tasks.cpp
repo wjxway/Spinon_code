@@ -21,6 +21,17 @@ using math::fast::clip;
 using math::fast::norm;
 using math::fast::square;
 
+constexpr float K_P_XY = 0.0e-2F;
+constexpr float K_P_Z = 1.5e-2F;
+// K_D has time unit of s
+constexpr float K_D_XY = 1.6e-2F;
+constexpr float K_D_Z = 1.5e-2F;
+// // K_I has time unit of 1/s
+// constexpr float K_I_XY = 0.0F;
+// constexpr float K_I_Z = 0.0F;
+// K_A has time unit of s^2
+constexpr float K_A_XY = 1.6e-2F;
+
 void IRAM_ATTR Idle_stats_task(void *pvParameters)
 {
     // stats resolution in CPU cycles
@@ -243,11 +254,11 @@ namespace
         int64_t time;
     };
 
-    constexpr size_t FB_buffer_max_size = 300U;
+    constexpr size_t FB_buffer_max_size = 600U;
     Circbuffer<FB_info, FB_buffer_max_size + 5> FB_buffer;
 
-    constexpr size_t Position_buffer_max_size = 300U;
-    Circbuffer<IR::Localization::Position_data, Position_buffer_max_size + 5> Position_buffer;
+    constexpr size_t Position_buffer_max_size = 600U;
+    // Circbuffer<IR::Localization::Position_data, Position_buffer_max_size + 5> Position_buffer;
 
     Circbuffer<IR::Localization::Position_data, Position_buffer_max_size + 5> Filtered_Position_buffer;
 
@@ -323,15 +334,26 @@ namespace
                 Serial.print("Now is ");
                 Serial.println(esp_timer_get_time());
 
-                Serial.println("---- Unfiltered position ----");
-                while (Position_buffer.n_elem > 0)
-                {
-                    auto pdat = Position_buffer.pop();
+                Serial.print("K_P_Z = ");
+                Serial.print(K_P_Z);
+                Serial.print(", K_D_Z = ");
+                Serial.println(K_D_Z);
+                Serial.print("K_P_XY = ");
+                Serial.print(K_P_XY);
+                Serial.print(", K_D_XY = ");
+                Serial.print(K_D_XY);
+                Serial.print(", K_A_XY = ");
+                Serial.println(K_A_XY);
 
-                    std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", x : ") + std::to_string(pdat.x) + std::string(", y : ") + std::to_string(pdat.y) + std::string(", z : ") + std::to_string(pdat.z) + std::string(", var_xy : ") + std::to_string(pdat.var_xy) + std::string(", var_z : ") + std::to_string(pdat.var_z) + std::string(", w : ") + std::to_string(pdat.angular_velocity) + std::string(", err_factor : ") + std::to_string(pdat.mean_error_factor) + "\n";
+                // Serial.println("---- Unfiltered position ----");
+                // while (Position_buffer.n_elem > 0)
+                // {
+                //     auto pdat = Position_buffer.pop();
 
-                    Serial.print(v.c_str());
-                }
+                //     std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", x : ") + std::to_string(pdat.x) + std::string(", y : ") + std::to_string(pdat.y) + std::string(", z : ") + std::to_string(pdat.z) + std::string(", var_xy : ") + std::to_string(pdat.var_xy) + std::string(", var_z : ") + std::to_string(pdat.var_z) + std::string(", w : ") + std::to_string(pdat.angular_velocity) + std::string(", err_factor : ") + std::to_string(pdat.mean_error_factor) + "\n";
+
+                //     Serial.print(v.c_str());
+                // }
 
                 Serial.println("---- Filtered position ----");
                 while (Filtered_Position_buffer.n_elem > 0)
@@ -415,7 +437,7 @@ void Buffer_data_task(void *pvParameters)
             continue;
         }
 
-        Position_buffer.push(pos_0);
+        // Position_buffer.push(pos_0);
         Filtered_Position_buffer.push(pos_1);
 
         // if (send_task_not_started && Position_buffer.n_elem >= Position_buffer_max_size)
@@ -782,24 +804,16 @@ void Motor_test_task(void *pvParameters)
 
 void Motor_control_task(void *pvParameters)
 {
-    constexpr float K_P_XY = 4.0e-2F;
-    constexpr float K_P_Z = 1.5e-2F;
-    // K_D has time unit of s
-    constexpr float K_D_XY = 1.5e-2F;
-    constexpr float K_D_Z = 1.0e-2F;
-    // // K_I has time unit of 1/s
-    // constexpr float K_I = 0.0F;
-    // K_A has time unit of s^2
-    constexpr float K_A_XY = 1.5e-2F;
     // rotation angle of execution in rad.
     constexpr float K_rot = 0.0F / 180.0F * M_PI;
-
-    float target_point[3] = {0.0F, 0.0F, 0.0F};
 
     // position data is valid for 1s
     constexpr int64_t Position_expire_time = 1000000LL;
 
     bool ISR_started = false;
+
+    // target point pos
+    float target_point[3] = {0.0F, 0.0F, 0.0F};
 
     // PID components
     float I_comp[3] = {0.0F, 0.0F, 0.0F};
@@ -810,8 +824,7 @@ void Motor_control_task(void *pvParameters)
     float Filtered_A_comp[3] = {0.0F, 0.0F, 0.0F};
     float FB_val[3] = {0.0F, 0.0F, 0.0F};
 
-    // variance of D_comp
-    float D_xy_var = 1.0e6F, D_z_var = 1.0e6F;
+    // buffer for D time
     int64_t D_last_update_time = 0;
 
     while (true)
@@ -923,8 +936,8 @@ void Motor_control_task(void *pvParameters)
 
         // update coefficient, choose the time coefficient to be approximately
         // averaging over 0.1s, so total is 0.1s + Kalmann Filter delay.
-        int64_t D_this_update_time = (pos_0.time >> 1) + (pos_1.time >> 1);
-        float update_coef = clip(1e-6F * float(D_this_update_time - D_last_update_time) / 0.1F, 0.0F, 1.0F);
+        int64_t D_this_update_time = (filt_pos_0.time >> 1) + (filt_pos_0.time >> 1);
+        float update_coef = clip(1e-6F * float(D_this_update_time - D_last_update_time) / 0.06F, 0.0F, 1.0F);
 
         float Filtered_D_comp_buffer[3];
         for (size_t i = 0; i < 3; i++)
@@ -933,7 +946,7 @@ void Motor_control_task(void *pvParameters)
         }
 
         // compute acceleration based on filtered D comp and also filter with average over 0.2s, so total is 0.3s + Kalmann Filter delay.
-        update_coef = clip(1e-6F * float(D_this_update_time - D_last_update_time) / 0.2F, 0.0F, 1.0F);
+        update_coef = clip(1e-6F * float(D_this_update_time - D_last_update_time) / 0.1F, 0.0F, 1.0F);
         for (size_t i = 0; i < 3; i++)
         {
             A_comp[i] = (Filtered_D_comp_buffer[i] - Filtered_D_comp[i]) * 1.0e6F / (D_this_update_time - D_last_update_time);
