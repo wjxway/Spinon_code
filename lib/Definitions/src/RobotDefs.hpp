@@ -15,7 +15,7 @@
  *
  * @note for valid range, please check RMTMessageDefs.hpp -> Robot_ID_bits
  */
-const uint32_t This_robot_ID = 12U;
+const uint32_t This_robot_ID = 4U;
 
 /**
  * @brief whether to enable led output

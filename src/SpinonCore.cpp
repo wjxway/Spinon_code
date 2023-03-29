@@ -48,38 +48,40 @@ void real_setup(void *pvParameters)
 
     DEBUG_C(Serial.println("TX inited"));
 
-    IR::TX::Add_to_schedule(1, {0U}, 2);
-    Serial.println("Thruster @ 0");
+    // IR::TX::Add_to_schedule(1, {0U}, 2);
+    // Serial.println("Thruster @ 0");
 
-    // // this is the data task that has type 4 and transmit the robot's position
-    // switch (This_robot_ID)
-    // {
-    // case 1:
-    //     IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)0), std::bit_cast<uint16_t>((int16_t)300), std::bit_cast<uint16_t>((int16_t)0)}, 2);
-    //     break;
-    // case 2:
-    //     IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)260), std::bit_cast<uint16_t>((int16_t)-150), std::bit_cast<uint16_t>((int16_t)0)}, 2);
-    //     break;
-    // case 3:
-    //     IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)-260), std::bit_cast<uint16_t>((int16_t)-150), std::bit_cast<uint16_t>((int16_t)0)}, 2);
-    //     break;
-    // default:
-    //     Serial.println("This_robot_ID Error!");
-    //     blink_led(20);
-    //     break;
-    // }
+    // this is the data task that has type 4 and transmit the robot's position
+    switch (This_robot_ID)
+    {
+    case 1:
+        IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)0), std::bit_cast<uint16_t>((int16_t)300), std::bit_cast<uint16_t>((int16_t)0)}, 2);
+        break;
+    case 2:
+        IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)260), std::bit_cast<uint16_t>((int16_t)-150), std::bit_cast<uint16_t>((int16_t)0)}, 2);
+        break;
+    case 3:
+        IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)-260), std::bit_cast<uint16_t>((int16_t)-150), std::bit_cast<uint16_t>((int16_t)0)}, 2);
+        break;
+    case 4:
+        IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)0), std::bit_cast<uint16_t>((int16_t)-600), std::bit_cast<uint16_t>((int16_t)0)}, 2);
+    default:
+        Serial.println("This_robot_ID Error!");
+        blink_led(20);
+        break;
+    }
 
     DEBUG_C(Serial.println("TX data set"));
 
-    // update thruster value through Serial
-    xTaskCreatePinnedToCore(
-        Motor_TX_task,
-        "Motor_TX_task",
-        10000,
-        NULL,
-        5,
-        NULL,
-        0);
+    // // update thruster value through Serial
+    // xTaskCreatePinnedToCore(
+    //     Motor_TX_task,
+    //     "Motor_TX_task",
+    //     10000,
+    //     NULL,
+    //     5,
+    //     NULL,
+    //     0);
 
     DEBUG_C(Serial.println("Init finished"));
 
