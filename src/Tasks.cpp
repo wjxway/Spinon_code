@@ -21,16 +21,33 @@ using math::fast::clip;
 using math::fast::norm;
 using math::fast::square;
 
-constexpr float K_P_XY = 0.0e-2F;
-constexpr float K_P_Z = 1.5e-2F;
+// target point pos
+float target_point[3] = {0.0F, 50.0F, 0.0F};
+
+constexpr float K_P_XY = 2.0e-2F;
 // K_D has time unit of s
-constexpr float K_D_XY = 1.6e-2F;
-constexpr float K_D_Z = 1.5e-2F;
+constexpr float K_D_XY = 4.0e-2F;
 // // K_I has time unit of 1/s
 // constexpr float K_I_XY = 0.0F;
-// constexpr float K_I_Z = 0.0F;
 // K_A has time unit of s^2
-constexpr float K_A_XY = 1.6e-2F;
+constexpr float K_A_XY = 2.0e-2F;
+
+constexpr float K_I_Z = 0.33e-2F;
+constexpr float K_P_Z = 1.3e-2F; // 2.0e-2F;
+constexpr float K_D_Z = 1.5e-2F; // 2.0e-2F;
+
+// best values till now
+// constexpr float K_P_XY = 2.2e-2F;
+// constexpr float K_D_XY = 4.0e-2F;
+// constexpr float K_A_XY = 2.2e-2F;
+
+// constexpr float K_I_Z = 0.25e-2F;
+// constexpr float K_P_Z = 1.7e-2F;
+// constexpr float K_D_Z = 2.0e-2F;
+
+// time coefficient for filters in s
+constexpr float V_filter_t_coef = 0.08F;
+constexpr float A_filter_t_coef = 0.30F;
 
 void IRAM_ATTR Idle_stats_task(void *pvParameters)
 {
@@ -247,74 +264,94 @@ std::string n2hexstr(I w, size_t hex_len = sizeof(I) << 1)
 
 namespace
 {
+    // implement my own fixed point, because I just need a container.
+    template <uint32_t decimal_digits>
+    struct fixed_point
+    {
+    public:
+        // divide by 10 ^ decimal_digit is the actual value.
+        int16_t val = 0;
+
+        fixed_point(float f)
+        {
+            val = static_cast<std::int16_t>(std::round(f * std::pow(10.0F, decimal_digits)));
+        }
+
+        operator float() const
+        {
+            return static_cast<float>(val) * std::pow(0.1F, decimal_digits);
+        }
+
+        // implicit conversion to string
+        operator std::string()
+        {
+            auto s = std::to_string(float(val) * std::pow(0.1F, decimal_digits));
+            size_t pos = s.find('.');
+            if (pos != std::string::npos && decimal_digits > 0)
+            {
+                size_t digits_after_decimal = s.size() - pos - 1;
+                if (digits_after_decimal < decimal_digits)
+                {
+                    s.append(decimal_digits - digits_after_decimal, '0');
+                }
+                else if (digits_after_decimal > decimal_digits)
+                {
+                    s.erase(pos + decimal_digits + 1);
+                }
+            }
+            return s;
+        }
+    };
+}
+
+namespace
+{
     struct FB_info
     {
-        float thrust_0;
-        float thrust_1;
-        int64_t time;
+    public:
+        FB_info() {}
+        FB_info(float t0, float t1, uint32_t tt) : thrust_0(t0), thrust_1(t1), time(tt) {}
+        fixed_point<2U> thrust_0 = 0.0F;
+        fixed_point<2U> thrust_1 = 0.0F;
+        uint32_t time = 0U;
     };
 
-    constexpr size_t FB_buffer_max_size = 600U;
+    constexpr size_t FB_buffer_max_size = 2400U;
     Circbuffer<FB_info, FB_buffer_max_size + 5> FB_buffer;
 
-    constexpr size_t Position_buffer_max_size = 600U;
+    // constexpr size_t Position_buffer_max_size = 500U;
     // Circbuffer<IR::Localization::Position_data, Position_buffer_max_size + 5> Position_buffer;
+    // Circbuffer<IR::Localization::Position_data, Position_buffer_max_size + 5> Filtered_Position_buffer;
 
-    Circbuffer<IR::Localization::Position_data, Position_buffer_max_size + 5> Filtered_Position_buffer;
+    // constexpr uint32_t Raw_timing_buffer_max_size = 5;
+    // Circbuffer<IR::RX::Msg_timing_t, Raw_timing_buffer_max_size + 5> Raw_timing_buffer;
 
-    // // this version sends position data and thrust values
-    // void Send_message_task(void *pvParameters)
+    // struct Control_info
     // {
-    //     while (true)
-    //     {
-    //         vTaskDelay(50);
-    //         if (Serial.available())
-    //         {
-    //             delay(10);
-    //             // deplete serial buffer
-    //             while (Serial.available())
-    //             {
-    //                 Serial.read();
-    //             }
+    //     int64_t time;
+    //     float px;
+    //     float py;
+    //     float dx;
+    //     float dy;
+    //     float ax;
+    //     float ay;
+    // };
+    // constexpr uint32_t Control_buffer_max_size = 300U;
+    // Circbuffer<Control_info, Control_buffer_max_size + 5> Control_buffer;
 
-    //             Serial.print("Now is ");
-    //             Serial.println(esp_timer_get_time());
-
-    //             Serial.println("---- Unfiltered position ----");
-    //             while (Position_buffer.n_elem > 0)
-    //             {
-    //                 auto pdat = Position_buffer.pop();
-
-    //                 std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", x : ") + std::to_string(pdat.x) + std::string(", y : ") + std::to_string(pdat.y) + std::string(", z : ") + std::to_string(pdat.z) + std::string(", var_xy : ") + std::to_string(pdat.var_xy) + std::string(", var_z : ") + std::to_string(pdat.var_z) + std::string(", w : ") + std::to_string(pdat.angular_velocity) + std::string(", err_factor : ") + std::to_string(pdat.mean_error_factor) + "\n";
-
-    //                 Serial.print(v.c_str());
-    //             }
-
-    //             Serial.println("---- Filtered position ----");
-    //             while (Filtered_Position_buffer.n_elem > 0)
-    //             {
-    //                 auto pdat = Filtered_Position_buffer.pop();
-
-    //                 std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", x : ") + std::to_string(pdat.x) + std::string(", y : ") + std::to_string(pdat.y) + std::string(", z : ") + std::to_string(pdat.z) + std::string(", var_xy : ") + std::to_string(pdat.var_xy) + std::string(", var_z : ") + std::to_string(pdat.var_z) + std::string(", w : ") + std::to_string(pdat.angular_velocity) + std::string(", err_factor : ") + std::to_string(pdat.mean_error_factor) + "\n";
-
-    //                 Serial.print(v.c_str());
-    //             }
-
-    //             Serial.println("---- Motor feedback data ----");
-    //             while (FB_buffer.n_elem > 0)
-    //             {
-    //                 auto fdat = FB_buffer.pop();
-
-    //                 std::string v = std::string("update_t : ") + std::to_string(fdat.time) + std::string(", thrust_0 : ") + std::to_string(fdat.thrust_0) + std::string(", thrust_1 : ") + std::to_string(fdat.thrust_1) + "\n";
-
-    //                 Serial.print(v.c_str());
-    //             }
-    //         }
-    //     }
-    // }
-
-    constexpr uint32_t Raw_timing_buf_size = 5;
-    Circbuffer<IR::RX::Msg_timing_t, Raw_timing_buf_size + 5> Raw_timing_buffer;
+    struct Position_data_short
+    {
+    public:
+        Position_data_short(float xx, float yy, float zz, float rr, uint32_t tt) : x(xx), y(yy), z(zz), rot_speed(rr), time(tt) {}
+        Position_data_short() {}
+        fixed_point<1U> x = 0.0F;         // estimated x position
+        fixed_point<1U> y = 0.0F;         // estimated y position
+        fixed_point<1U> z = 0.0F;         // estimated z position
+        fixed_point<3U> rot_speed = 0.0F; // rotation speed in Hz
+        uint32_t time = 0U;               // the time of data, which is the last measurement's time
+    };
+    constexpr uint32_t Position_data_short_buffer_max_size = 2400U;
+    Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 5> Filtered_position_buffer_short;
 
     // this version sends raw timing readings
     void Send_message_task(void *pvParameters)
@@ -334,16 +371,10 @@ namespace
                 Serial.print("Now is ");
                 Serial.println(esp_timer_get_time());
 
-                Serial.print("K_P_Z = ");
-                Serial.print(K_P_Z);
-                Serial.print(", K_D_Z = ");
-                Serial.println(K_D_Z);
-                Serial.print("K_P_XY = ");
-                Serial.print(K_P_XY);
-                Serial.print(", K_D_XY = ");
-                Serial.print(K_D_XY);
-                Serial.print(", K_A_XY = ");
-                Serial.println(K_A_XY);
+                std::string v = "K_P_Z = ";
+                v += std::to_string(K_P_Z) + ", K_D_Z = " + std::to_string(K_D_Z) + ", K_I_Z = " + std::to_string(K_I_Z) + "\nK_P_XY = " + std::to_string(K_P_XY) + ", K_D_XY = " + std::to_string(K_D_XY) + ", K_A_XY = " + std::to_string(K_A_XY) + "\nV_filter_t_coef = " + std::to_string(V_filter_t_coef) + ", A_filter_t_coef = " + std::to_string(A_filter_t_coef) + "\nTarget = { " + std::to_string(target_point[0]) + " , " + std::to_string(target_point[1]) + " , " + std::to_string(target_point[2]) + " }\n";
+
+                Serial.print(v.c_str());
 
                 // Serial.println("---- Unfiltered position ----");
                 // while (Position_buffer.n_elem > 0)
@@ -355,35 +386,55 @@ namespace
                 //     Serial.print(v.c_str());
                 // }
 
+                // Serial.println("---- Filtered position ----");
+                // while (Filtered_Position_buffer.n_elem > 0)
+                // {
+                //     auto pdat = Filtered_Position_buffer.pop();
+
+                //     std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", x : ") + std::to_string(pdat.x) + std::string(", y : ") + std::to_string(pdat.y) + std::string(", z : ") + std::to_string(pdat.z) + std::string(", var_xy : ") + std::to_string(pdat.var_xy) + std::string(", var_z : ") + std::to_string(pdat.var_z) + std::string(", w : ") + std::to_string(pdat.angular_velocity) + std::string(", err_factor : ") + std::to_string(pdat.mean_error_factor) + "\n";
+
+                //     Serial.print(v.c_str());
+                // }
+
                 Serial.println("---- Filtered position ----");
-                while (Filtered_Position_buffer.n_elem > 0)
+                while (Filtered_position_buffer_short.n_elem > 0)
                 {
-                    auto pdat = Filtered_Position_buffer.pop();
+                    auto pdat = Filtered_position_buffer_short.pop();
 
-                    std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", x : ") + std::to_string(pdat.x) + std::string(", y : ") + std::to_string(pdat.y) + std::string(", z : ") + std::to_string(pdat.z) + std::string(", var_xy : ") + std::to_string(pdat.var_xy) + std::string(", var_z : ") + std::to_string(pdat.var_z) + std::string(", w : ") + std::to_string(pdat.angular_velocity) + std::string(", err_factor : ") + std::to_string(pdat.mean_error_factor) + "\n";
+                    std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", x : ") + std::string(pdat.x) + std::string(", y : ") + std::string(pdat.y) + std::string(", z : ") + std::string(pdat.z) + std::string(", f : ") + std::string(pdat.rot_speed) + "\n";
 
                     Serial.print(v.c_str());
                 }
 
-                Serial.println("---- Raw timing ----");
-                while (Raw_timing_buffer.n_elem > 0)
-                {
-                    auto pdat = Raw_timing_buffer.pop();
+                // Serial.println("---- Raw timing ----");
+                // while (Raw_timing_buffer.n_elem > 0)
+                // {
+                //     auto pdat = Raw_timing_buffer.pop();
 
-                    std::string v = std::string("ID : ") + std::to_string(pdat.robot_ID) + std::string(", t0 : ") + std::to_string(pdat.time_arr[0]) + std::string(", t1 : ") + std::to_string(pdat.time_arr[1]) + std::string(", t2 : ") + std::to_string(pdat.time_arr[2]) + "\n";
+                //     std::string v = std::string("ID : ") + std::to_string(pdat.robot_ID) + std::string(", t0 : ") + std::to_string(pdat.time_arr[0]) + std::string(", t1 : ") + std::to_string(pdat.time_arr[1]) + std::string(", t2 : ") + std::to_string(pdat.time_arr[2]) + "\n";
 
-                    Serial.print(v.c_str());
-                }
+                //     Serial.print(v.c_str());
+                // }
 
                 Serial.println("---- Motor feedback data ----");
                 while (FB_buffer.n_elem > 0)
                 {
                     auto fdat = FB_buffer.pop();
 
-                    std::string v = std::string("update_t : ") + std::to_string(fdat.time) + std::string(", thrust_0 : ") + std::to_string(fdat.thrust_0) + std::string(", thrust_1 : ") + std::to_string(fdat.thrust_1) + "\n";
+                    std::string v = std::string("update_t : ") + std::to_string(fdat.time) + std::string(", thrust_0 : ") + std::string(fdat.thrust_0) + std::string(", thrust_1 : ") + std::string(fdat.thrust_1) + "\n";
 
                     Serial.print(v.c_str());
                 }
+
+                // Serial.println("---- Control data ----");
+                // while (Control_buffer.n_elem > 0)
+                // {
+                //     auto cdat = Control_buffer.pop();
+
+                //     std::string v = std::string("px : ") + std::to_string(cdat.px) + std::string(", py : ") + std::to_string(cdat.py) + std::string(", dx : ") + std::to_string(cdat.dx) + std::string(", dy : ") + std::to_string(cdat.dy) + std::string(", ax : ") + std::to_string(cdat.ax) + std::string(", ay : ") + std::to_string(cdat.ay) + ", time : " + std::to_string(cdat.time) + "\n";
+
+                //     Serial.print(v.c_str());
+                // }
             }
         }
     }
@@ -428,7 +479,7 @@ void Buffer_data_task(void *pvParameters)
                 break;
             }
 
-            pos_0 = IR::Localization::Get_position();
+            // pos_0 = IR::Localization::Get_position();
             pos_1 = IR::Localization::Get_filtered_position();
         } while (io_flag != IR::Localization::Get_io_flag());
 
@@ -438,7 +489,7 @@ void Buffer_data_task(void *pvParameters)
         }
 
         // Position_buffer.push(pos_0);
-        Filtered_Position_buffer.push(pos_1);
+        Filtered_position_buffer_short.push(Position_data_short{pos_1.x, pos_1.y, pos_1.z, pos_1.angular_velocity * 1.0e6F / 2.0F / float(M_PI), static_cast<uint32_t>(pos_1.time)});
 
         // if (send_task_not_started && Position_buffer.n_elem >= Position_buffer_max_size)
         // {
@@ -448,51 +499,51 @@ void Buffer_data_task(void *pvParameters)
     }
 }
 
-// this version buffer raw timing data
-void Buffer_raw_data_task(void *pvParameters)
-{
-    // if send message task has been started.
-    bool send_task_not_started = true;
+// // this version buffer raw timing data
+// void Buffer_raw_data_task(void *pvParameters)
+// {
+//     // if send message task has been started.
+//     bool send_task_not_started = true;
 
-    // // send me messages through serial!
-    // xTaskCreatePinnedToCore(
-    //     Send_message_task,
-    //     "Send_message_task",
-    //     8000,
-    //     NULL,
-    //     3,
-    //     NULL,
-    //     0);
+//     // // send me messages through serial!
+//     // xTaskCreatePinnedToCore(
+//     //     Send_message_task,
+//     //     "Send_message_task",
+//     //     8000,
+//     //     NULL,
+//     //     3,
+//     //     NULL,
+//     //     0);
 
-    int64_t t_prev = 0, t_now = 0;
+//     int64_t t_prev = 0, t_now = 0;
 
-    while (true)
-    {
-        // wait till next timing data is obtained
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+//     while (true)
+//     {
+//         // wait till next timing data is obtained
+//         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-        // get data
-        uint32_t io_flag;
-        uint32_t temp_size = 0;
-        IR::RX::Msg_timing_t temp[25];
-        do
-        {
-            t_now = esp_timer_get_time();
+//         // get data
+//         uint32_t io_flag;
+//         uint32_t temp_size = 0;
+//         IR::RX::Msg_timing_t temp[25];
+//         do
+//         {
+//             t_now = esp_timer_get_time();
 
-            io_flag = IR::Localization::Get_io_flag();
+//             io_flag = IR::Localization::Get_io_flag();
 
-            temp_size = IR::RX::Get_timing_data(temp, t_now - t_prev);
+//             temp_size = IR::RX::Get_timing_data(temp, t_now - t_prev);
 
-        } while (io_flag != IR::Localization::Get_io_flag());
+//         } while (io_flag != IR::Localization::Get_io_flag());
 
-        for (int i = 0; i < temp_size; i++)
-        {
-            Raw_timing_buffer.push(temp[temp_size - i - 1]);
-        }
+//         for (int i = 0; i < temp_size; i++)
+//         {
+//             Raw_timing_buffer.push(temp[temp_size - i - 1]);
+//         }
 
-        t_prev = t_now;
-    }
-}
+//         t_prev = t_now;
+//     }
+// }
 
 namespace
 {
@@ -678,7 +729,7 @@ namespace
             // if not ended, we record the FB info
             if (!Motor::Get_brake_status())
             {
-                FB_buffer.push(FB_info{arg->Last_motor_timing.thrust_0, arg->Last_motor_timing.thrust_1, t_now});
+                FB_buffer.push(FB_info{arg->Last_motor_timing.thrust_0, arg->Last_motor_timing.thrust_1, static_cast<uint32_t>(t_now)});
             }
 
             // get localization data
@@ -805,15 +856,16 @@ void Motor_test_task(void *pvParameters)
 void Motor_control_task(void *pvParameters)
 {
     // rotation angle of execution in rad.
-    constexpr float K_rot = 0.0F / 180.0F * M_PI;
+    constexpr float K_rot = -30.0F / 180.0F * M_PI;
+
+    constexpr float P_rot = -30.0F / 180.0F * M_PI;
+    const float cos_rot = cos(P_rot - K_rot);
+    const float sin_rot = sin(P_rot - K_rot);
 
     // position data is valid for 1s
     constexpr int64_t Position_expire_time = 1000000LL;
 
     bool ISR_started = false;
-
-    // target point pos
-    float target_point[3] = {0.0F, 0.0F, 0.0F};
 
     // PID components
     float I_comp[3] = {0.0F, 0.0F, 0.0F};
@@ -826,6 +878,9 @@ void Motor_control_task(void *pvParameters)
 
     // buffer for D time
     int64_t D_last_update_time = 0;
+
+    // if integration term is on
+    bool integration_on = false;
 
     while (true)
     {
@@ -873,7 +928,7 @@ void Motor_control_task(void *pvParameters)
         constexpr float Rotation_speed_start_1 = 0.000090F;
         constexpr float Rotation_speed_start_2 = 0.000115F;
         // pre-start thurst ratio
-        constexpr float Init_thrust_ratio = 0.5F;
+        constexpr float Init_thrust_ratio = 0.7F;
         switch (control_on)
         {
         case 0:
@@ -892,10 +947,6 @@ void Motor_control_task(void *pvParameters)
                 // Motor::Set_overdrive(true);
                 Motor::Set_thrust(20);
 
-                I_comp[0] = 0;
-                I_comp[1] = 0;
-                I_comp[2] = 0;
-
                 Reach_target_height_time = esp_timer_get_time();
             }
             break;
@@ -913,17 +964,30 @@ void Motor_control_task(void *pvParameters)
             break;
         }
 
+        if (!integration_on && filt_pos_0.z >= -125.0F)
+        {
+            I_comp[0] = 0;
+            I_comp[1] = 0;
+            I_comp[2] = 0;
+
+            integration_on = true;
+        }
+
         Last_position_update_time = esp_timer_get_time();
 
         P_comp[0] = filt_pos_0.x - target_point[0];
         P_comp[1] = filt_pos_0.y - target_point[1];
         P_comp[2] = filt_pos_0.z - target_point[2];
 
-        float t_coef = float(pos_0.time - pos_1.time) / 2.0e6F;
+        float t_coef;
 
-        I_comp[0] += t_coef * (pos_0.x + pos_1.x);
-        I_comp[1] += t_coef * (pos_0.y + pos_1.y);
-        I_comp[2] += t_coef * (pos_0.z + pos_1.z);
+        if (integration_on)
+        {
+            t_coef = float(pos_0.time - pos_1.time) / 2.0e6F;
+            I_comp[0] += t_coef * (pos_0.x + pos_1.x);
+            I_comp[1] += t_coef * (pos_0.y + pos_1.y);
+            I_comp[2] += t_coef * (pos_0.z + pos_1.z);
+        }
 
         t_coef = 1.0e6F / float(pos_0.time - pos_1.time);
 
@@ -937,7 +1001,7 @@ void Motor_control_task(void *pvParameters)
         // update coefficient, choose the time coefficient to be approximately
         // averaging over 0.1s, so total is 0.1s + Kalmann Filter delay.
         int64_t D_this_update_time = (filt_pos_0.time >> 1) + (filt_pos_0.time >> 1);
-        float update_coef = clip(1e-6F * float(D_this_update_time - D_last_update_time) / 0.06F, 0.0F, 1.0F);
+        float update_coef = clip(1e-6F * float(D_this_update_time - D_last_update_time) / V_filter_t_coef, 0.0F, 1.0F);
 
         float Filtered_D_comp_buffer[3];
         for (size_t i = 0; i < 3; i++)
@@ -946,7 +1010,7 @@ void Motor_control_task(void *pvParameters)
         }
 
         // compute acceleration based on filtered D comp and also filter with average over 0.2s, so total is 0.3s + Kalmann Filter delay.
-        update_coef = clip(1e-6F * float(D_this_update_time - D_last_update_time) / 0.1F, 0.0F, 1.0F);
+        update_coef = clip(1e-6F * float(D_this_update_time - D_last_update_time) / A_filter_t_coef, 0.0F, 1.0F);
         for (size_t i = 0; i < 3; i++)
         {
             A_comp[i] = (Filtered_D_comp_buffer[i] - Filtered_D_comp[i]) * 1.0e6F / (D_this_update_time - D_last_update_time);
@@ -957,10 +1021,20 @@ void Motor_control_task(void *pvParameters)
 
         D_last_update_time = D_this_update_time;
 
+        // Control_info temp;
+        // temp.time = D_last_update_time;
+        // temp.px = -K_P_XY * P_comp[0];
+        // temp.py = -K_P_XY * P_comp[1];
+        // temp.dx = -K_D_XY * Filtered_D_comp[0];
+        // temp.dy = -K_D_XY * Filtered_D_comp[1];
+        // temp.ax = -K_A_XY * Filtered_A_comp[0];
+        // temp.ay = -K_A_XY * Filtered_A_comp[1];
+        // Control_buffer.push(temp);
+
         // construct X,Y,Z control law
-        FB_val[0] = -K_P_XY * P_comp[0] - K_D_XY * Filtered_D_comp[0] - K_A_XY * Filtered_A_comp[0];
-        FB_val[1] = -K_P_XY * P_comp[1] - K_D_XY * Filtered_D_comp[1] - K_A_XY * Filtered_A_comp[1];
-        FB_val[2] = -K_P_Z * P_comp[2] - K_D_Z * D_comp[2] + Robot_mass;
+        FB_val[0] = -K_P_XY * (cos_rot * P_comp[0] - sin_rot * P_comp[1]) - K_D_XY * Filtered_D_comp[0] - K_A_XY * Filtered_A_comp[0];
+        FB_val[1] = -K_P_XY * (sin_rot * P_comp[0] + cos_rot * P_comp[1]) - K_D_XY * Filtered_D_comp[1] - K_A_XY * Filtered_A_comp[1];
+        FB_val[2] = -K_P_Z * P_comp[2] - K_D_Z * Filtered_D_comp[2] - K_I_Z * I_comp[2] + Robot_mass;
 
         // all computation has been finished till now
         // from now on it's the boring setup interrupt part
