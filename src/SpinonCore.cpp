@@ -130,18 +130,6 @@ void real_setup(void *pvParameters)
 
     LED_PWM_init(3U);
 
-    // task_status = xTaskCreatePinnedToCore(
-    //     LED_control_task,
-    //     "LED_control_task",
-    //     12000,
-    //     NULL,
-    //     8,
-    //     &LED_control_handle,
-    //     0);
-
-    // // trigger LED_control_task when localization is updated.
-    // IR::Localization::Add_Localization_Notification(LED_control_handle);
-
     // // buffer data when new timing is obtained
     // TaskHandle_t Buffer_raw_data_handle;
 
