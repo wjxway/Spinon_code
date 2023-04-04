@@ -32,7 +32,7 @@ namespace IR
         /**
          * @brief how frequently will preprocess task be triggered, in ms.
          */
-        constexpr uint32_t Preprocess_trigger_period = 30;
+        constexpr uint32_t Preprocess_trigger_period = 5;
 
         /**
          * @brief priority of Preprocess task, note that all other user tasks
@@ -187,6 +187,7 @@ namespace IR
          * @note this will return the rank'th **completed** message!
          * @note please check if data exists by checking the length of data, if
          * 0 then there's no returned message.
+         * @note the finish_reception_time of returned message is the LAST time this message finished reception.
          */
         Parsed_msg_completed Get_latest_msg_by_bot(const uint32_t robot_ID, const uint32_t msg_type, const uint32_t age = 0);
 
@@ -199,6 +200,7 @@ namespace IR
          * @return Parsed_msg_completed corresponding data
          * @note please check if data exists by checking the length of data, if
          * 0 then there's no returned message.
+         * @note the finish_reception_time of returned message is the FIRST time this message finished reception.
          */
         Parsed_msg_completed Get_latest_msg_by_type(const uint32_t msg_type, const uint32_t age = 0);
 

@@ -77,7 +77,7 @@ namespace IR
             /**
              * @brief how many messages are allowed to stay in the buffer
              */
-            constexpr uint32_t Raw_msg_buffer_size = 200;
+            constexpr uint32_t Raw_msg_buffer_size = 800;
 
             /**
              * @brief get raw uint32_t data from buffer(data comes from RX_ISR) and
@@ -104,6 +104,11 @@ namespace IR
              * to override the oldest data.
              */
             Circbuffer<Trans_info, Raw_msg_buffer_size> raw_msg_buffer;
+
+            /**
+             * @brief A copycat class to safely access buffer.
+             */
+            Circbuffer_copycat<Trans_info, Raw_msg_buffer_size> raw_msg_buffer_copycat(&raw_msg_buffer);
 
             // struct definitions
             /**
@@ -586,13 +591,6 @@ namespace IR
                 // bit i indicates whether signal from channel i is valid.
                 uint32_t valid = 0U;
 
-#if MSG_SIMPLE_LED_ON
-                if (intr_st_1)
-                {
-                    LIT_B;
-                }
-#endif
-
                 do
                 {
                     // parse RMT item into a uint32_t
@@ -666,6 +664,13 @@ namespace IR
                         last_RX_time = rec_time;
                         // add element to the pool if parsing is successful and consistent
                         raw_msg_buffer.push(Trans_info{raw | emitter_pos, valid, rec_time});
+
+#if MSG_SIMPLE_LED_ON
+                        if (intr_st_1)
+                        {
+                            LIT_B;
+                        }
+#endif
                     }
 
                 } while (false);
@@ -858,8 +863,6 @@ namespace IR
                 {
                     vTaskDelayUntil(&prev_wake_time, pdMS_TO_TICKS(Preprocess_trigger_period));
 
-                    // LIT_G;
-
                     // increment io_flag as a coarse lock
                     // all read task should have lower priority than preprocess task
                     // and they should check io_flag to determine whether the read
@@ -867,10 +870,11 @@ namespace IR
                     io_flag++;
 
                     // keep doing till the buffer is empty
-                    while (raw_msg_buffer.n_elem)
+                    // note that we are only accessing the copycat class her for thread safety!
+                    while (!raw_msg_buffer_copycat.Empty_Q())
                     {
                         // fetch message from buffer
-                        Trans_info info = raw_msg_buffer.pop();
+                        Trans_info info = raw_msg_buffer_copycat.pop();
 
                         // setup a temporary value and extract some basic properties
                         // of the message.

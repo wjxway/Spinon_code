@@ -275,7 +275,7 @@ namespace IR
 		 * @note RMT_TX_length = RMT_data_pulse_count + 2 because there will be
 		 * a '0' header and a {0} as ending block
 		 */
-		constexpr uint32_t RMT_TX_length = RMT_data_pulse_count + 2;
+		constexpr uint32_t RMT_TX_length = RMT_data_pulse_count + 3;
 
 		// TX period info
 

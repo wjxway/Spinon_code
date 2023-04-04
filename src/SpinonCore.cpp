@@ -2,8 +2,7 @@
  * @file TestRMT_1.ino
  * @brief main file
  */
-#include <string>
-
+#include <cstring>
 #include <DebugDefs.hpp>
 #include <FastIO.hpp>
 #include <MotorCtrl.hpp>
@@ -36,7 +35,7 @@ void real_setup(void *pvParameters)
 {
     // put your setup code here, to run once:
     Serial.begin(115200);
-    DEBUG_C(Serial.println("Setup start"));
+    DEBUG_C(Serial.println("Setup start!"));
     DEBUG_C(Serial.print("Robot #"));
     DEBUG_C(Serial.println(This_robot_ID));
 
@@ -58,12 +57,15 @@ void real_setup(void *pvParameters)
 
     blink_led(5);
 
-    DEBUG_C(Serial.println("Pin setup finished"));
+    DEBUG_C(Serial.println("Pin setup finished!"));
 
-    // Motor::Init();
-    // Motor::Set_speed(30);
+    Motor::Init();
+    Motor::Set_speed(0);
+    Motor::Active_brake();
 
-    // DEBUG_C(Serial.println("Motor started"));
+    // LED_set(0, float(0) / float((1 << Motor::PWM_resolution) - 1));
+
+    DEBUG_C(Serial.println("Motor started"));
 
     // IR::TX::Init();
 
@@ -76,48 +78,73 @@ void real_setup(void *pvParameters)
 
     IR::RX::Init();
 
-    DEBUG_C(Serial.println("RX inited"));
+    DEBUG_C(Serial.println("RX inited!"));
 
     IR::Localization::Init();
 
-    DEBUG_C(Serial.println("Localization inited"));
+    DEBUG_C(Serial.println("Localization inited!"));
 
     DEBUG_C(Serial.println("Init finished, launching tasks!"));
+
+    BaseType_t task_status = pdTRUE, task_status_temp;
 
     // // monitor the performance of cores
     // xTaskCreatePinnedToCore(
     //     Idle_stats_task,
     //     "idle0",
-    //     10000,
+    //     8000,
     //     NULL,
     //     1,
     //     NULL,
     //     0);
 
     // quench LED!
-    xTaskCreatePinnedToCore(
+    task_status_temp = xTaskCreatePinnedToCore(
         LED_off_task,
         "LED_off_task",
-        10000,
+        8000,
         NULL,
         2,
         NULL,
         0);
+    task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
 
-    // // Light LED based on position
-    // TaskHandle_t LED_control_handle;
+    // // test motor thrust - speed curve
+    // TaskHandle_t motor_test_handle;
 
-    // auto task_status = xTaskCreatePinnedToCore(
-    //     LED_control_task,
-    //     "ledcontroltask",
-    //     50000,
+    // task_status_temp = xTaskCreatePinnedToCore(
+    //     Motor_test_task,
+    //     "Motor_test_task",
+    //     8000,
     //     NULL,
     //     8,
-    //     &LED_control_handle,
+    //     &motor_test_handle,
     //     0);
 
-    // // trigger LED_control_task when localization is updated.
-    // IR::Localization::Add_Localization_Notification(LED_control_handle);
+    // IR::RX::Add_RX_Notification(motor_test_handle);
+
+    // task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
+
+    // // lit LED based on position
+    // TaskHandle_t LED_control_handle;
+
+    LED_PWM_init(3U);
+
+    // // buffer data when new timing is obtained
+    // TaskHandle_t Buffer_raw_data_handle;
+
+    // task_status_temp = xTaskCreatePinnedToCore(
+    //     Buffer_raw_data_task,
+    //     "Buffer_raw_data_task",
+    //     8000,
+    //     NULL,
+    //     8,
+    //     &Buffer_raw_data_handle,
+    //     0);
+    // task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
+
+    // // trigger buffer data when new timing is obtained.
+    // IR::RX::Add_RX_Notification(Buffer_raw_data_handle);
 
 #if LOCALIZATION_CALIBRATION_MODE
     Serial.println("Single measurement calibration!");
@@ -126,17 +153,47 @@ void real_setup(void *pvParameters)
     // buffer data when new localization is executed
     TaskHandle_t Buffer_data_handle;
 
-    auto task_status = xTaskCreatePinnedToCore(
+    task_status_temp = xTaskCreatePinnedToCore(
         Buffer_data_task,
         "Buffer_data_task",
-        50000,
+        8000,
         NULL,
         8,
         &Buffer_data_handle,
         0);
+    task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
 
     // trigger buffer data when localization is updated.
     IR::Localization::Add_Localization_Notification(Buffer_data_handle);
+
+    // lit LED and control motor based on position
+    TaskHandle_t Motor_control_handle;
+
+    LED_PWM_init(3U);
+
+    task_status_temp = xTaskCreatePinnedToCore(
+        Motor_control_task,
+        "Motor_control_task",
+        12000,
+        NULL,
+        8,
+        &Motor_control_handle,
+        0);
+    task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
+
+    // trigger Motor_control when localization is updated.
+    IR::Localization::Add_Localization_Notification(Motor_control_handle);
+
+    // monitor motor's state
+    task_status_temp = xTaskCreatePinnedToCore(
+        Motor_monitor_task,
+        "Motor_monitor_task",
+        8000,
+        NULL,
+        3,
+        NULL,
+        0);
+    task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
 
     if (task_status == pdTRUE)
     {
@@ -144,7 +201,7 @@ void real_setup(void *pvParameters)
     }
     else
     {
-        Serial.println("Task cannot be allocated!");
+        Serial.println("Task cannot be allocated...");
     }
 #endif
 

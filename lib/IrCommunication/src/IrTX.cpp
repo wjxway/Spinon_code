@@ -6,6 +6,7 @@
 #include <CRCCheck.hpp>
 #include "bootloader_random.h"
 #include "hal/rmt_ll.h"
+#include "driver/timer.h"
 
 namespace IR
 {
@@ -16,9 +17,14 @@ namespace IR
         namespace
         {
             /**
-             * @brief trigger timer for TX_ISR
+             * @brief trigger timer group for TX_ISR
              */
-            hw_timer_t *Trigger_timer;
+            timer_group_t TX_timer_group = timer_group_t((IR_TX_trigger_timer_channel & 2U) >> 1);
+
+            /**
+             * @brief trigger timer num for TX_ISR
+             */
+            timer_idx_t TX_timer_num = timer_idx_t(IR_TX_trigger_timer_channel & 1U);
 
             /**
              * @brief generate the next triggering time
@@ -61,7 +67,7 @@ namespace IR
                         // notify user if msg_type is not proper.
                         DEBUG_C(
                             if (n_msg > 1)
-                                Serial.println("Feeding multiple transmission data into single transmission messages! Only the first data will be sent!");)
+                                Serial.println("Feeding multiple transmission data into single transmission messages! Only the first data will be sent!"));
                         // resize, generate RMT_item, and setup pointer
                         data.resize(RMT_TX_length);
                         Generate_RMT_item(data.data(), Msg_single_t{{This_robot_ID, msg_type, msg_ID_init, crc4_itu(raw[0]), raw[0]}}.raw);
@@ -357,14 +363,12 @@ namespace IR
              * exclusively anyways. TX_ISR will reset itself and fire based on
              * timing.
              */
-            void IRAM_ATTR TX_ISR()
+            bool IRAM_ATTR TX_ISR(void *)
             {
-                DEBUG_C(setbit(DEBUG_PIN_1));
+                // reset alarm value fast using native api
+                timer_group_set_alarm_value_in_isr(TX_timer_group, TX_timer_num, Generate_trigger_time());
 
-                // reset timer
-                timerRestart(Trigger_timer);
-                timerAlarmWrite(Trigger_timer, Generate_trigger_time(), false);
-                timerAlarmEnable(Trigger_timer);
+                DEBUG_C(setbit(DEBUG_PIN_1));
 
                 // RMT TX only when data is not being modified.
                 if (TX_enable_flag)
@@ -377,7 +381,9 @@ namespace IR
 
                     // write both register
                     for (size_t i = 0; i < RMT_TX_length; i++)
+                    {
                         RMTMEM.chan[RMT_TX_channel_2].data32[i].val = RMTMEM.chan[RMT_TX_channel_1].data32[i].val = (v + i)->val;
+                    }
 
                     // edit channel 2 register
                     RMTMEM.chan[RMT_TX_channel_2].data32[0].duration0 -= detail::RMT_sync_ticks_num;
@@ -395,8 +401,10 @@ namespace IR
                 }
 
                 DEBUG_C(clrbit(DEBUG_PIN_1));
-            }
 
+                // don't do context switching!
+                return false;
+            }
         } // anonymous namespace
 
         void Init()
@@ -424,7 +432,7 @@ namespace IR
             // initialization of RMT
             DEBUG_C(
                 if (rmt_config(&rmt_tx) != ESP_OK)
-                    Serial.println("RMT TX_1 init failed!");)
+                    Serial.println("RMT TX_1 init failed!"));
 
             // set source clk to APB clock
             rmt_set_source_clk(RMT_TX_channel_1, RMT_BASECLK_APB);
@@ -456,7 +464,7 @@ namespace IR
             // initialization of RMT
             DEBUG_C(
                 if (rmt_config(&rmt_tx_2) != ESP_OK)
-                    Serial.println("RMT TX_2 init failed!");)
+                    Serial.println("RMT TX_2 init failed!"));
 
             // set source clk to APB clock
             rmt_set_source_clk(RMT_TX_channel_2, RMT_BASECLK_APB);
@@ -502,13 +510,20 @@ namespace IR
             // config timer to transmit TX once in a while
             // we are using timer 3 to prevent confiction
             // timer ticks 1MHz
-            Trigger_timer = timerBegin(IR_TX_trigger_timer_channel, 80, true);
-            // add timer interrupt
-            timerAttachInterrupt(Trigger_timer, &TX_ISR, true);
-            // trigger interrupt after some random time
-            timerAlarmWrite(Trigger_timer, Generate_trigger_time(), false);
-            // timerAlarmWrite(Trigger_timer, 60, true);
-            timerAlarmEnable(Trigger_timer);
+            timer_config_t config = {
+                .alarm_en = TIMER_ALARM_EN,
+                .counter_en = TIMER_PAUSE,
+                .intr_type = TIMER_INTR_LEVEL,
+                .counter_dir = TIMER_COUNT_UP,
+                .auto_reload = TIMER_AUTORELOAD_EN,
+                .divider = 80U};
+
+            timer_init(TX_timer_group, TX_timer_num, &config);
+            timer_set_counter_value(TX_timer_group, TX_timer_num, 0);
+            timer_set_alarm_value(TX_timer_group, TX_timer_num, Generate_trigger_time());
+            timer_enable_intr(TX_timer_group, TX_timer_num);
+            timer_isr_callback_add(TX_timer_group, TX_timer_num, &TX_ISR, nullptr, 0);
+            timer_start(TX_timer_group, TX_timer_num);
 
             DEBUG_C(Serial.println("Trigger_timer init successful!"));
         }
