@@ -22,19 +22,23 @@ using math::fast::norm;
 using math::fast::square;
 
 // target point pos
-float target_point[3] = {0.0F, 50.0F, 0.0F};
+float target_point[3] = {0.0F, 50.0F, 00.0F};
 
 constexpr float K_P_XY = 2.0e-2F;
 // K_D has time unit of s
-constexpr float K_D_XY = 4.0e-2F;
+constexpr float K_D_XY = 3.0e-2F;
 // // K_I has time unit of 1/s
 // constexpr float K_I_XY = 0.0F;
 // K_A has time unit of s^2
-constexpr float K_A_XY = 2.0e-2F;
+constexpr float K_A_XY = 3.0e-2F;
 
-constexpr float K_I_Z = 0.33e-2F;
+constexpr float K_I_Z = 0.7e-2F;
 constexpr float K_P_Z = 1.3e-2F; // 2.0e-2F;
-constexpr float K_D_Z = 1.5e-2F; // 2.0e-2F;
+constexpr float K_D_Z = 1.3e-2F; // 2.0e-2F;
+
+// rotation angle of execution in rad.
+constexpr float K_rot = -25.0F / 180.0F * M_PI;
+constexpr float P_rot = -25.0F / 180.0F * M_PI;
 
 // best values till now
 // constexpr float K_P_XY = 2.2e-2F;
@@ -44,6 +48,9 @@ constexpr float K_D_Z = 1.5e-2F; // 2.0e-2F;
 // constexpr float K_I_Z = 0.25e-2F;
 // constexpr float K_P_Z = 1.7e-2F;
 // constexpr float K_D_Z = 2.0e-2F;
+
+// constexpr float K_rot = -30.0F / 180.0F * M_PI;
+// constexpr float P_rot = -30.0F / 180.0F * M_PI;
 
 // time coefficient for filters in s
 constexpr float V_filter_t_coef = 0.08F;
@@ -855,10 +862,6 @@ void Motor_test_task(void *pvParameters)
 
 void Motor_control_task(void *pvParameters)
 {
-    // rotation angle of execution in rad.
-    constexpr float K_rot = -30.0F / 180.0F * M_PI;
-
-    constexpr float P_rot = -30.0F / 180.0F * M_PI;
     const float cos_rot = cos(P_rot - K_rot);
     const float sin_rot = sin(P_rot - K_rot);
 
@@ -1034,7 +1037,13 @@ void Motor_control_task(void *pvParameters)
         // construct X,Y,Z control law
         FB_val[0] = -K_P_XY * (cos_rot * P_comp[0] - sin_rot * P_comp[1]) - K_D_XY * Filtered_D_comp[0] - K_A_XY * Filtered_A_comp[0];
         FB_val[1] = -K_P_XY * (sin_rot * P_comp[0] + cos_rot * P_comp[1]) - K_D_XY * Filtered_D_comp[1] - K_A_XY * Filtered_A_comp[1];
-        FB_val[2] = -K_P_Z * P_comp[2] - K_D_Z * Filtered_D_comp[2] - K_I_Z * I_comp[2] + Robot_mass;
+        FB_val[2] = -K_P_Z * P_comp[2] - K_D_Z * D_comp[2] - K_I_Z * I_comp[2] + Robot_mass;
+
+        if (norm(pos_0.x, pos_0.y) > 200.0F)
+        {
+            FB_val[0] = -(cos_rot * P_comp[0] - sin_rot * P_comp[1]);
+            FB_val[1] = -(sin_rot * P_comp[0] + cos_rot * P_comp[1]);
+        }
 
         // all computation has been finished till now
         // from now on it's the boring setup interrupt part
