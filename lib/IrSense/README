@@ -1,3 +1,0 @@
-**Experimental**
-
-This is the library for control of infrared sensing using AD7381-4 ADC. When ADC is changed, you only need to change implementation in the anonymous namespace.

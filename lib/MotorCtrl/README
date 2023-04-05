@@ -1,2 +1,0 @@
-This is the library for control of brushless motor via Toshiba TC78B009FTG brushless motor controller.
-The parameters are specifically tuned for 0802SE motor from betafpv (https://betafpv.com/products/0802se-22000kv-brushless-motors). If anyone's gonna change that, retune the parameters given in MotorCtrl.hpp.

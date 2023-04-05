@@ -8,14 +8,6 @@
 #include "Arduino.h"
 #include "IrRX.hpp"
 
-/**
- * @brief should we be in calibration mode?
- * 
- * @note in calibration mode, we basically output all raw measurement data we
- * obtained through serial. (buffer might be required)
- */
-// #define LOCALIZATION_CALIBRATION_MODE 1
-
 namespace IR
 {
     namespace Localization

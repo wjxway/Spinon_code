@@ -12,8 +12,6 @@
                 "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/src",
                 "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/lib/Localization/src",
                 "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/lib/IrCommunication/src",
-                "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/lib/MotorCtrl/src",
-                "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
                 "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/lib/Definitions/src",
                 "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/lib/Utilities/src",
                 "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/newlib/platform_include",
@@ -207,7 +205,6 @@
                 "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/dio_qspi/include",
                 "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/cores/esp32",
                 "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/variants/pico32",
-                "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/lib/IrSense/src",
                 "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/libraries/ArduinoOTA/src",
                 "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/libraries/AsyncUDP/src",
                 "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/libraries/BLE/src",
@@ -240,6 +237,7 @@
                 "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src",
                 "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/libraries/WiFiClientSecure/src",
                 "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/libraries/WiFiProv/src",
+                "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
                 ""
             ],
             "browse": {
@@ -249,8 +247,6 @@
                     "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/src",
                     "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/lib/Localization/src",
                     "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/lib/IrCommunication/src",
-                    "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/lib/MotorCtrl/src",
-                    "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
                     "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/lib/Definitions/src",
                     "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/lib/Utilities/src",
                     "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/newlib/platform_include",
@@ -444,7 +440,6 @@
                     "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/dio_qspi/include",
                     "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/cores/esp32",
                     "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/variants/pico32",
-                    "C:/Users/wjxwa/OneDrive/Studies/GraduateResearch/Spinon/Code/SpinonCore/lib/IrSense/src",
                     "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/libraries/ArduinoOTA/src",
                     "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/libraries/AsyncUDP/src",
                     "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/libraries/BLE/src",
@@ -477,6 +472,7 @@
                     "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src",
                     "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/libraries/WiFiClientSecure/src",
                     "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/libraries/WiFiProv/src",
+                    "C:/Users/wjxwa/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
                     ""
                 ]
             },

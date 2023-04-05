@@ -190,35 +190,6 @@ namespace IR
                 return (Tilting_angle_multiplyer * sqrt(square(tan(Cent_angle) * Distance_error(LR_angle)) + square(Distance_expectation(LR_angle) * Angle_error / cos(Cent_angle))));
             }
 
-            // /**
-            //  * @brief Compute the error between estimated state and measurements
-            //  *
-            //  * @param pos estimated positon
-            //  * @param data measurements
-            //  * @param data_len length of measurements
-            //  * @return float error
-            //  *
-            //  * @note here we only compute the error induced by horizontal position and
-            //  * rotation, because the error introduced by elevation is trivially computable.
-            //  */
-            // float Localization_error(const Position_data pos, Relative_position_data *const data, const size_t data_len)
-            // {
-            //     float error = 0;
-            //
-            //     for (size_t i = 0; i < data_len; i++)
-            //     {
-            //         // add distance error
-            //         float dx = data[i].pos[0] - pos.x, dy = data[i].pos[1] - pos.y;
-            //         error += square(sqrtf(dx * dx + dy * dy) - data[i].dist) / square(data[i].dist_err);
-            //
-            //         // add angular error
-            //         float da = Angle_diff(atan2f(dy, dx) - data[i].angle - pos.angle_0) / data[i].angle_err;
-            //         error += da * da;
-            //     }
-            //
-            //     return error;
-            // }
-
             /**
              * @brief just a helper function to determine the average of angle.
              *
