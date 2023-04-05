@@ -84,21 +84,6 @@ namespace Motor
     constexpr float Max_thrust_overdrive = 25.0F;
 #endif
 
-    // /**
-    //  * @brief default register configuration
-    //  *
-    //  * @note optimized for beta fpv 0802SE 22000KV
-    //  */
-    // constexpr uint8_t Default_config[] = {
-    //     // 0x00, 0x00,
-    //     0x01, 0x03, 0x00, 0xFE,       // 2~5
-    //     0x00, 0x00, 0x10, 0x20, 0x00, // 6~10
-    //     0x01, 0x00, 0x00, 0x97, 0xD5, // 11~15
-    //     0x00, 0xE6, 0x03, 0x16, 0x0A, // 16~20
-    //     0x6F, 0x56, 0x3F, 0xC0,       // 21~24
-    // };
-    // NOLINTEND
-
     /**
      * @brief initialize motor
      *

@@ -426,76 +426,6 @@ namespace IR
                 return (error_factor <= 2.0F) ? (var * (1.0F + error_factor * error_factor)) : var * 1.0e6F;
             }
 
-#if LOCALIZATION_CALIBRATION_MODE
-            size_t record_count = 0U;
-            constexpr size_t Relative_measurement_buffer_max_size = 200U;
-            Circbuffer<std::vector<Relative_position_data>, Relative_measurement_buffer_max_size + 4> Relative_measurement_buffer;
-
-            void Print_data_task(void *pvParameters)
-            {
-                while (true)
-                {
-                    vTaskDelay(50);
-                    if (Serial.available())
-                    {
-                        delay(10);
-                        // deplete serial buffer
-                        while (Serial.available())
-                        {
-                            Serial.read();
-                        }
-
-                        // uint32_t curr_flag = RX::Get_io_flag();
-
-                        // // timing info
-                        // uint32_t time_count;
-                        // RX::Msg_timing_t time_list[RX::Timing_buffer_history_size];
-
-                        // // get data
-                        // do
-                        // {
-                        //     curr_flag = RX::Get_io_flag();
-
-                        //     time_count = RX::Get_timing_data(time_list);
-                        // } while (curr_flag != RX::Get_io_flag());
-
-                        // Serial.print("Time buffer count = ");
-                        // Serial.println(time_count);
-
-                        // // print global timing data
-                        // for (int i = 0; i < time_count; i++)
-                        // {
-                        //     std::string v = "";
-                        //     auto &tli = time_list[i];
-
-                        //     v += "rid: " + std::to_string(tli.robot_ID) + ", rec: " + std::to_string(tli.receiver) + ", t0: " + std::to_string(tli.time_arr[0]) + ", t1: " + std::to_string(tli.time_arr[1]) + ", t2: " + std::to_string(tli.time_arr[2]) + ", valid: " + std::to_string(tli.timing_valid_Q) + ", emit_pos: " + std::to_string(tli.emitter_pos) + "\n\n";
-
-                        //     Serial.print(v.c_str());
-                        // }
-
-                        while (Relative_measurement_buffer.n_elem > 0)
-                        {
-                            auto all_dat = Relative_measurement_buffer.pop();
-
-                            std::string v = "";
-                            v.reserve(1000);
-
-                            v += std::string("Angular velocity: ") + std::to_string(all_dat[0].dist_err) + "\n";
-
-                            for (auto &dat : all_dat)
-                            {
-                                v += std::string("  ID: ") + std::to_string(dat.Robot_ID) + ", x0: " + std::to_string(dat.pos[0]) + ", y0: " + std::to_string(dat.pos[1]) + ", z0: " + std::to_string(dat.pos[2]) + ", LR angle diff: " + std::to_string(dat.dist) + ", Center angle diff: " + std::to_string(dat.elev) + ", ang: " + std::to_string(dat.angle) + ", t_avg: " + std::to_string(dat.angle_err) + "\n";
-                            }
-
-                            v += "\n";
-
-                            Serial.println(v.c_str());
-                        }
-                    }
-                }
-            }
-#endif
-
             /**
              * @brief a vector of all tasks to be notified when new data is processed.
              */
@@ -786,22 +716,6 @@ namespace IR
                         {
                             Relative_position_data &this_Loc_data = Loc_data.back();
 
-#if LOCALIZATION_CALIBRATION_MODE
-                            int64_t avg_time = ((time_list[i].time_arr[1] + time_list[i].time_arr[2]) >> 1);
-
-                            // update last_message_time if the new one is later
-                            if (avg_time - last_message_time > 0)
-                            {
-                                last_message_time = avg_time;
-                            }
-
-                            this_Loc_data.angle = float(avg_time % rotation_time) * angular_velocity;
-                            this_Loc_data.angle_err = avg_time;
-                            this_Loc_data.dist = float(int64_t(time_list[i].time_arr[1] - time_list[i].time_arr[2])) * angular_velocity;
-                            this_Loc_data.dist_err = 1.0F; // set to 1.0F because I want to distinguish invalid data.
-                            this_Loc_data.elev = (time_list[i].time_arr[0] - avg_time) * angular_velocity;
-                            this_Loc_data.elev_err = 1.0F;
-#else
                             // note that here we directly use the compensated
                             // angle data, computed using LR-0.12 Cent
                             int64_t avg_time = ((time_list[i].time_arr[1] + time_list[i].time_arr[2]) >> 1);
@@ -857,7 +771,6 @@ namespace IR
                             {
                                 Loc_data.pop_back();
                             }
-#endif
                         }
                     }
 
@@ -868,35 +781,6 @@ namespace IR
                     }
                     prev_last_message_time = last_message_time;
 
-#if LOCALIZATION_CALIBRATION_MODE
-                    if (Loc_data.size() >= 2)
-                    {
-                        record_count++;
-                        // exploit this angle error to store angular velocity.
-                        Loc_data[0].dist_err = angular_velocity;
-
-                        Relative_measurement_buffer.push(Loc_data);
-
-                        static bool Print_data_not_started = true;
-
-                        if (Print_data_not_started && Relative_measurement_buffer.n_elem >= Relative_measurement_buffer_max_size)
-                        {
-                            Print_data_not_started = false;
-
-                            LIT_G;
-
-                            // send me messages through serial!
-                            xTaskCreatePinnedToCore(
-                                Print_data_task,
-                                "Print_data_task",
-                                20000,
-                                NULL,
-                                3,
-                                NULL,
-                                0);
-                        }
-                    }
-#else
                     // we localize when there are at least 2 beacons
                     if (Loc_data.size() < 2)
                     {
@@ -1039,7 +923,6 @@ namespace IR
                         xTaskNotifyGive(hand);
                     }
                     xTaskResumeAll();
-#endif
                 }
             }
         } // anonymous namespace

@@ -43,14 +43,6 @@ constexpr float Robot_mass = 20.0F;
  */
 #define RMT_TX_CHANNEL_COUNT 2
 
-/**
- * @brief should we be in calibration mode?
- *
- * @note in calibration mode, we basically output all raw measurement data we
- * obtained through serial. (buffer might be required)
- */
-// #define LOCALIZATION_CALIBRATION_MODE 1
-
 namespace IR
 {
     namespace RX
