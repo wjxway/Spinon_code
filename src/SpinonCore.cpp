@@ -1,12 +1,7 @@
-/**
- * @file TestRMT_1.ino
- * @brief main file
- */
 #include <cstring>
 #include <DebugDefs.hpp>
 #include <FastIO.hpp>
 #include <IrCommunication.hpp>
-#include <Localization.hpp>
 #include "Tasks.hpp"
 
 uint64_t rec_finish_time = 0;
@@ -77,23 +72,21 @@ void real_setup(void *pvParameters)
         0);
     task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
 
-    LED_PWM_init(3U);
+    // buffer data when new timing is obtained
+    TaskHandle_t Buffer_raw_data_handle;
 
-    // // buffer data when new timing is obtained
-    // TaskHandle_t Buffer_raw_data_handle;
+    task_status_temp = xTaskCreatePinnedToCore(
+        Buffer_raw_data_task,
+        "Buffer_raw_data_task",
+        8000,
+        NULL,
+        8,
+        &Buffer_raw_data_handle,
+        0);
+    task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
 
-    // task_status_temp = xTaskCreatePinnedToCore(
-    //     Buffer_raw_data_task,
-    //     "Buffer_raw_data_task",
-    //     8000,
-    //     NULL,
-    //     8,
-    //     &Buffer_raw_data_handle,
-    //     0);
-    // task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
-
-    // // trigger buffer data when new timing is obtained.
-    // IR::RX::Add_RX_Notification(Buffer_raw_data_handle);
+    // trigger buffer data when new timing is obtained.
+    IR::RX::Add_RX_Notification(Buffer_raw_data_handle);
 
 
     if (task_status == pdTRUE)
