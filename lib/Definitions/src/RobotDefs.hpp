@@ -21,7 +21,7 @@ const uint32_t This_robot_ID = 12U;
  * @brief robot's weight in grams
  */
 // constexpr float Robot_mass = 18.9F;
-constexpr float Robot_mass = 20.0F;
+constexpr float Robot_mass = 20.5F;
 
 /**
  * @brief whether to enable led output
@@ -55,7 +55,7 @@ namespace IR
          *
          * @note not useful in calibration mode
          */
-        constexpr float LR_angle_compensation = 0.0F;
+        constexpr float LR_angle_compensation = -0.03F;
 
         /**
          * @brief orientation angle offset.
@@ -64,6 +64,7 @@ namespace IR
          * Orientation_compensation * LR_diff
          *
          * @note not useful in calibration mode
+         * @note pretty consistently related to geometry.
          */
         constexpr float Orientation_compensation = 0.18F;
     } // namespace RX
