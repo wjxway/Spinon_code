@@ -22,39 +22,51 @@ using math::fast::norm;
 using math::fast::square;
 
 // target point pos
-float target_point[3] = {0.0F, 50.0F, 00.0F};
+float target_point[3] = {0.0F, 0.0F, 0.0F};
 
-constexpr float K_P_XY = 2.0e-2F;
+// K_I has time unit of 1/s
+constexpr float K_I_XY = 2.0e-2F;
+constexpr float I_XY_range = 150.0F;
+
+constexpr float K_P_XY = 8.0e-2F;
+constexpr float P_XY_range = 60.0F;
 // K_D has time unit of s
-constexpr float K_D_XY = 3.0e-2F;
-// // K_I has time unit of 1/s
-// constexpr float K_I_XY = 0.0F;
+constexpr float K_D_XY = 5.5e-2F;
 // K_A has time unit of s^2
-constexpr float K_A_XY = 3.0e-2F;
+constexpr float K_A_XY = 5.0e-2F;
 
-constexpr float K_I_Z = 0.7e-2F;
-constexpr float K_P_Z = 1.3e-2F; // 2.0e-2F;
-constexpr float K_D_Z = 1.3e-2F; // 2.0e-2F;
+constexpr float K_I_Z = 1.2e-2F;
+constexpr float K_P_Z = 1.5e-2F;
+constexpr float K_D_Z = 1.2e-2F;
 
 // rotation angle of execution in rad.
-constexpr float K_rot = -25.0F / 180.0F * M_PI;
-constexpr float P_rot = -25.0F / 180.0F * M_PI;
-
-// best values till now
-// constexpr float K_P_XY = 2.2e-2F;
-// constexpr float K_D_XY = 4.0e-2F;
-// constexpr float K_A_XY = 2.2e-2F;
-
-// constexpr float K_I_Z = 0.25e-2F;
-// constexpr float K_P_Z = 1.7e-2F;
-// constexpr float K_D_Z = 2.0e-2F;
-
-// constexpr float K_rot = -30.0F / 180.0F * M_PI;
-// constexpr float P_rot = -30.0F / 180.0F * M_PI;
+constexpr float K_rot = 5.0F / 180.0F * M_PI;
+constexpr float P_rot = 5.0F / 180.0F * M_PI;
 
 // time coefficient for filters in s
-constexpr float V_filter_t_coef = 0.08F;
+constexpr float V_filter_t_coef = 0.06F;
 constexpr float A_filter_t_coef = 0.30F;
+
+// best values till now
+// constexpr float K_P_XY = 6.0e-2F;
+// // K_D has time unit of s
+// constexpr float K_D_XY = 4.5e-2F;
+// // // K_I has time unit of 1/s
+// // constexpr float K_I_XY = 0.0F;
+// // K_A has time unit of s^2d
+// constexpr float K_A_XY = 4.0e-2F;
+
+// constexpr float K_I_Z = 1.2e-2F;
+// constexpr float K_P_Z = 1.5e-2F; // 2.0e-2F;
+// constexpr float K_D_Z = 1.2e-2F; // 2.0e-2F;
+
+// // rotation angle of execution in rad.
+// constexpr float K_rot = 5.0F / 180.0F * M_PI;
+// constexpr float P_rot = 5.0F / 180.0F * M_PI;
+
+// // time coefficient for filters in s
+// constexpr float V_filter_t_coef = 0.08F;
+// constexpr float A_filter_t_coef = 0.30F;
 
 void IRAM_ATTR Idle_stats_task(void *pvParameters)
 {
@@ -313,18 +325,22 @@ namespace
 
 namespace
 {
-    struct FB_info
+    constexpr uint16_t Compute_throttle(float thrust)
+    {
+        return uint16_t(4.25F * thrust + 40.0F);
+    }
+
+    struct Motor_info
     {
     public:
-        FB_info() {}
-        FB_info(float t0, float t1, uint32_t tt) : thrust_0(t0), thrust_1(t1), time(tt) {}
-        fixed_point<2U> thrust_0 = 0.0F;
-        fixed_point<2U> thrust_1 = 0.0F;
+        Motor_info() {}
+        Motor_info(float thrst, uint32_t timet) : speed(Compute_throttle(math::fast::clip(thrst, Motor::Min_thrust, Motor::Max_thrust))), time(timet) {}
+        uint16_t speed = 0.0F;
         uint32_t time = 0U;
     };
 
-    constexpr size_t FB_buffer_max_size = 2400U;
-    Circbuffer<FB_info, FB_buffer_max_size + 5> FB_buffer;
+    constexpr size_t Motor_buffer_max_size = 2000U;
+    Circbuffer<Motor_info, Motor_buffer_max_size + 5> Motor_buffer;
 
     // constexpr size_t Position_buffer_max_size = 500U;
     // Circbuffer<IR::Localization::Position_data, Position_buffer_max_size + 5> Position_buffer;
@@ -357,7 +373,7 @@ namespace
         fixed_point<3U> rot_speed = 0.0F; // rotation speed in Hz
         uint32_t time = 0U;               // the time of data, which is the last measurement's time
     };
-    constexpr uint32_t Position_data_short_buffer_max_size = 2400U;
+    constexpr uint32_t Position_data_short_buffer_max_size = 2700U;
     Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 5> Filtered_position_buffer_short;
 
     // this version sends raw timing readings
@@ -424,11 +440,11 @@ namespace
                 // }
 
                 Serial.println("---- Motor feedback data ----");
-                while (FB_buffer.n_elem > 0)
+                while (Motor_buffer.n_elem > 0)
                 {
-                    auto fdat = FB_buffer.pop();
+                    auto fdat = Motor_buffer.pop();
 
-                    std::string v = std::string("update_t : ") + std::to_string(fdat.time) + std::string(", thrust_0 : ") + std::string(fdat.thrust_0) + std::string(", thrust_1 : ") + std::string(fdat.thrust_1) + "\n";
+                    std::string v = std::string("update_t : ") + std::to_string(fdat.time) + std::string(", thrust : ") + std::to_string(fdat.speed) + "\n";
 
                     Serial.print(v.c_str());
                 }
@@ -684,11 +700,11 @@ namespace
 
     struct Motor_timing_t
     {
-        int64_t t_start;
-        int64_t duration;
-        int64_t period;
-        float thrust_0 = 0.0F;
-        float thrust_1 = 0.0F;
+        int64_t t_start;       // when we should switch the motor to thrust_0, absolute time.
+        int64_t duration;      // duration of entire cycle
+        int64_t period;        // period in thrust_0
+        float thrust_0 = 0.0F; // higher half thrust
+        float thrust_1 = 0.0F; // lower half thrust
     };
 
     struct Motor_callback_args
@@ -705,7 +721,7 @@ namespace
     Circbuffer<Motor_timing_t, 5> timing_buf_m;
 
     int64_t Last_position_update_time = 0;
-    int64_t Reach_target_height_time = 0;
+    int64_t Reach_target_speed_time = 0;
 
     /**
      * @brief a task that turn motor based on robot's position
@@ -726,37 +742,43 @@ namespace
         // time when it should be on again. Let's use green LED only here.
         if (arg->Motor_state)
         {
-            if (Reach_target_height_time)
+            if (Reach_target_speed_time)
             {
-                LED_set(1, (arg->Last_motor_timing.thrust_0 > arg->Last_motor_timing.thrust_1) ? 1.0F : 0.0F);
+                LED_set(1, 1.0F);
                 Motor::Set_thrust(arg->Last_motor_timing.thrust_0);
-            }
-            arg->Motor_state = false;
 
-            // if not ended, we record the FB info
-            if (!Motor::Get_brake_status())
+                // if not ended, we record the FB info
+                if (!Motor::Get_brake_status())
+                {
+                    Motor_buffer.push(Motor_info{arg->Last_motor_timing.thrust_0, static_cast<uint32_t>(t_now)});
+                }
+            }
+            arg->Motor_state = 0;
+            next_time = arg->Last_motor_timing.duration;
+        }
+        else
+        {
+            if (Reach_target_speed_time)
             {
-                FB_buffer.push(FB_info{arg->Last_motor_timing.thrust_0, arg->Last_motor_timing.thrust_1, static_cast<uint32_t>(t_now)});
-            }
+                LED_set(1, 0.0F);
+                Motor::Set_thrust(arg->Last_motor_timing.thrust_1);
 
-            // get localization data
+                // if not ended, we record the FB info
+                if (!Motor::Get_brake_status())
+                {
+                    Motor_buffer.push(Motor_info{arg->Last_motor_timing.thrust_1, static_cast<uint32_t>(t_now)});
+                }
+            }
+            arg->Motor_state = 1;
+
+            // get latest motor timing data
             auto temp = arg->buffer->peek_tail();
             // now this temp is used, update Last_LED_timing
             arg->Last_motor_timing = temp;
 
             // update time
             // make sure that we won't trigger again in 1/4 cycles
-            next_time = ((temp.t_start - (t_now % temp.period) - (temp.period >> 2)) % temp.period) + (temp.period >> 2);
-        }
-        else
-        {
-            if (Reach_target_height_time)
-            {
-                LED_set(1, (arg->Last_motor_timing.thrust_0 > arg->Last_motor_timing.thrust_1) ? 0.0F : 1.0F);
-                Motor::Set_thrust(arg->Last_motor_timing.thrust_1);
-            }
-            arg->Motor_state = true;
-            next_time = arg->Last_motor_timing.duration;
+            next_time = (temp.t_start - (t_now % temp.period)) % temp.period;
         }
 
         // not sure if this is necessary, but we will add it anyways, it's not gonna influence anything.
@@ -950,7 +972,7 @@ void Motor_control_task(void *pvParameters)
                 // Motor::Set_overdrive(true);
                 Motor::Set_thrust(20);
 
-                Reach_target_height_time = esp_timer_get_time();
+                Reach_target_speed_time = esp_timer_get_time();
             }
             break;
 
@@ -959,7 +981,7 @@ void Motor_control_task(void *pvParameters)
             //     {
             //         control_on = 3;
 
-            //         Reach_target_height_time = esp_timer_get_time();
+            //         Reach_target_speed_time = esp_timer_get_time();
             //     }
             //     break;
 
@@ -982,6 +1004,12 @@ void Motor_control_task(void *pvParameters)
         P_comp[1] = filt_pos_0.y - target_point[1];
         P_comp[2] = filt_pos_0.z - target_point[2];
 
+        // add a constraint to horizontal P comp magnitude
+        float pmag = norm(P_comp[0], P_comp[1]);
+        float pmag_mult = clip(pmag, 0.0F, P_XY_range) / (pmag + 1.0e-6F);
+        P_comp[0] *= pmag_mult;
+        P_comp[1] *= pmag_mult;
+
         float t_coef;
 
         if (integration_on)
@@ -991,6 +1019,12 @@ void Motor_control_task(void *pvParameters)
             I_comp[1] += t_coef * (pos_0.y + pos_1.y);
             I_comp[2] += t_coef * (pos_0.z + pos_1.z);
         }
+
+        // add a constraint to horizontal I comp magnitude
+        float imag = norm(I_comp[0], I_comp[1]);
+        float imag_mult = clip(imag, 0.0F, I_XY_range) / (imag + 1.0e-6F);
+        I_comp[0] *= imag_mult;
+        I_comp[1] *= imag_mult;
 
         t_coef = 1.0e6F / float(pos_0.time - pos_1.time);
 
@@ -1035,15 +1069,15 @@ void Motor_control_task(void *pvParameters)
         // Control_buffer.push(temp);
 
         // construct X,Y,Z control law
-        FB_val[0] = -K_P_XY * (cos_rot * P_comp[0] - sin_rot * P_comp[1]) - K_D_XY * Filtered_D_comp[0] - K_A_XY * Filtered_A_comp[0];
-        FB_val[1] = -K_P_XY * (sin_rot * P_comp[0] + cos_rot * P_comp[1]) - K_D_XY * Filtered_D_comp[1] - K_A_XY * Filtered_A_comp[1];
+        FB_val[0] = -K_P_XY * (cos_rot * P_comp[0] - sin_rot * P_comp[1]) - K_D_XY * Filtered_D_comp[0] - K_A_XY * Filtered_A_comp[0] - K_I_XY * I_comp[0];
+        FB_val[1] = -K_P_XY * (sin_rot * P_comp[0] + cos_rot * P_comp[1]) - K_D_XY * Filtered_D_comp[1] - K_A_XY * Filtered_A_comp[1] - K_I_XY * I_comp[1];
         FB_val[2] = -K_P_Z * P_comp[2] - K_D_Z * D_comp[2] - K_I_Z * I_comp[2] + Robot_mass;
 
-        if (norm(pos_0.x, pos_0.y) > 200.0F)
-        {
-            FB_val[0] = -(cos_rot * P_comp[0] - sin_rot * P_comp[1]);
-            FB_val[1] = -(sin_rot * P_comp[0] + cos_rot * P_comp[1]);
-        }
+        // if (norm(pos_0.x, pos_0.y) > 200.0F)
+        // {
+        //     FB_val[0] = -(cos_rot * P_comp[0] - sin_rot * P_comp[1]);
+        //     FB_val[1] = -(sin_rot * P_comp[0] + cos_rot * P_comp[1]);
+        // }
 
         // all computation has been finished till now
         // from now on it's the boring setup interrupt part
@@ -1074,9 +1108,10 @@ void Motor_control_task(void *pvParameters)
         // compute timing for callback_3 that use LED to indicate feedback value
         Motor_timing_t Callback_dat_m;
 
+        // each cycle start with 1->0
         Callback_dat_m.duration = pos_0.rotation_time / 2;
-        Callback_dat_m.t_start = pos_0.rotation_time * 5 - Callback_dat_m.duration / 2 - int64_t((Motor_angle_offset + pos_0.angle_0 - atan2f(FB_val[1], FB_val[0]) - K_rot) / pos_0.angular_velocity);
         Callback_dat_m.period = pos_0.rotation_time;
+        Callback_dat_m.t_start = int64_t((atan2f(FB_val[1], FB_val[0]) + K_rot - Motor_angle_offset - pos_0.angle_0 + 10.5F * M_PI) / pos_0.angular_velocity);
 
         float min_thrust = Motor::Min_thrust, max_thrust = Motor::Max_thrust;
 
@@ -1155,7 +1190,7 @@ void Motor_control_task(void *pvParameters)
             // Callback/ISR 3
             callback_args_m.buffer = &timing_buf_m;
             callback_args_m.Last_motor_timing = Callback_dat_m;
-            callback_args_m.Motor_state = false;
+            callback_args_m.Motor_state = 0;
             callback_args_m.Last_trig_time = 0;
             callback_args_m.Next_trig_time = 0;
 
@@ -1167,6 +1202,7 @@ void Motor_control_task(void *pvParameters)
                 .name = "motor"};
 
             esp_timer_create(&oneshot_timer_callback_args_m, &(callback_args_m.handle));
+            esp_timer_start_once(callback_args_m.handle, 50U);
         }
 
         // how long before/after the trigger time should we prevent triggering
@@ -1209,21 +1245,21 @@ void Motor_control_task(void *pvParameters)
         //     }
         // }
 
-        t_delay = clip((Callback_dat_m.t_start - (esp_timer_get_time() % Callback_dat_m.period)) % Callback_dat_m.period, Delay_min_time, 1000000LL);
+        // t_delay = clip((Callback_dat_m.t_start - (esp_timer_get_time() % Callback_dat_m.period)) % Callback_dat_m.period, Delay_min_time, 1000000LL);
 
-        if (callback_args_m.Motor_state == false)
-        {
-            int64_t t_now = esp_timer_get_time();
-            // make sure that we won't reset the timer just after motor turns +.
-            // also make sure that we won't reset the timer just before motor
-            // turns on.
-            if (t_now - callback_args_m.Last_trig_time > No_operation_time && (callback_args_m.Next_trig_time == 0 || callback_args_m.Next_trig_time - t_now > No_operation_time))
-            {
-                callback_args_m.Next_trig_time = t_now + t_delay;
-                esp_timer_stop(callback_args_m.handle);
-                esp_timer_start_once(callback_args_m.handle, t_delay);
-            }
-        }
+        // if (callback_args_m.Motor_state == false)
+        // {
+        //     int64_t t_now = esp_timer_get_time();
+        //     // make sure that we won't reset the timer just after motor turns +.
+        //     // also make sure that we won't reset the timer just before motor
+        //     // turns on.
+        //     if (t_now - callback_args_m.Last_trig_time > No_operation_time && (callback_args_m.Next_trig_time == 0 || callback_args_m.Next_trig_time - t_now > No_operation_time))
+        //     {
+        //         callback_args_m.Next_trig_time = t_now + t_delay;
+        //         esp_timer_stop(callback_args_m.handle);
+        //         esp_timer_start_once(callback_args_m.handle, t_delay);
+        //     }
+        // }
         // QUENCH_G;
     }
 }
@@ -1245,7 +1281,7 @@ void Motor_monitor_task(void *pvParameters)
 
         int64_t t_now = esp_timer_get_time();
 
-        if (Reach_target_height_time != 0)
+        if (Reach_target_speed_time != 0)
         {
             if (t_now - Last_position_update_time >= Power_off_threshold)
             {

@@ -57,7 +57,7 @@ namespace Motor
     /**
      * @brief when below this thrust and not zero, round up to this thrust.
      */
-    constexpr float Min_thrust = 10.0F;
+    constexpr float Min_thrust = 5.0F;
 
     /**
      * @brief max thrust achievable in grams
