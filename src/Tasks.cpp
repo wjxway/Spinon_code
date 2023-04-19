@@ -635,7 +635,7 @@ namespace
     /**
      * @brief minimum delay time, if lower than this, we trigger after this.
      */
-    constexpr int64_t Delay_min_time = 50LL;
+    constexpr int64_t Delay_min_time = 60LL;
 
     struct LED_callback_args
     {
@@ -663,7 +663,7 @@ namespace
         LED_callback_args *arg = (LED_callback_args *)v_arg;
 
         // how long should we delay before next switch
-        uint64_t next_time;
+        int64_t next_time;
 
         // this is for indication of XY position feedback.
         // if currently LED is on, then we should turn it off, and also setup the
@@ -689,28 +689,30 @@ namespace
             next_time = arg->Last_LED_timing.duration;
         }
 
-        // not sure if this is necessary, but we will add it anyways, it's not gonna influence anything.
-        next_time = (next_time < Delay_min_time) ? Delay_min_time : next_time;
         // reset timer
         arg->Last_trig_time = t_now;
-        arg->Next_trig_time = t_now + next_time;
+        arg->Next_trig_time += next_time;
+
+        // not sure if this is necessary, but we will add it anyways, it's not gonna influence anything.
+        next_time = arg->Next_trig_time - esp_timer_get_time();
+        next_time = (next_time < Delay_min_time) ? Delay_min_time : next_time;
+
         esp_timer_stop(arg->handle);
         esp_timer_start_once(arg->handle, next_time);
     }
 
     struct Motor_timing_t
     {
-        int64_t t_start;       // when we should switch the motor to thrust_0, absolute time.
-        int64_t duration;      // duration of entire cycle
-        int64_t period;        // period in thrust_0
-        float thrust_0 = 0.0F; // higher half thrust
-        float thrust_1 = 0.0F; // lower half thrust
+        int64_t t_start;          // when we should switch the motor to thrust_high, absolute time.
+        int64_t period;           // period of rotation
+        float thrust_high = 0.0F; // higher half thrust
+        float thrust_low = 0.0F;  // lower half thrust
     };
 
     struct Motor_callback_args
     {
-        bool Motor_state;                      // current state of motor
-        Motor_timing_t Last_motor_timing;      // last timing info used by the callback
+        uint32_t Motor_state;                  // current state of motor
+        Motor_timing_t Last_motor_target;      // last target used by the callback
         int64_t Last_trig_time;                // last time we updated the trigger info
         int64_t Next_trig_time;                // when will we trig next time
         Circbuffer<Motor_timing_t, 5> *buffer; // timing info buffer
@@ -730,62 +732,88 @@ namespace
      */
     void IRAM_ATTR Motor_callback(void *v_arg)
     {
-        int64_t t_now = esp_timer_get_time();
-
         Motor_callback_args *arg = (Motor_callback_args *)v_arg;
+
+        uint64_t t_now = esp_timer_get_time();
+
+        // for arg -> Motor_state
+        // state = 0 -> before pulse
+        // state = 1 -> in pulse
+        // state = 2 -> after pulse
+
+        // store timing for state 2
+        static int64_t timing_temp = 0;
+
+        // thrust to be set, 0 -> low, 1 -> high
+        static bool to_set_thrust = 0;
 
         // how long should we delay before next switch
         uint64_t next_time;
 
-        // this is for indication of XY position feedback.
-        // if currently LED is on, then we should turn it off, and also setup the
-        // time when it should be on again. Let's use green LED only here.
-        if (arg->Motor_state)
-        {
-            if (Reach_target_speed_time)
-            {
-                LED_set(1, 1.0F);
-                Motor::Set_thrust(arg->Last_motor_timing.thrust_0);
+        Motor_timing_t temp;
 
-                // if not ended, we record the FB info
-                if (!Motor::Get_brake_status())
-                {
-                    Motor_buffer.push(Motor_info{arg->Last_motor_timing.thrust_0, static_cast<uint32_t>(t_now)});
-                }
-            }
-            arg->Motor_state = 0;
-            next_time = arg->Last_motor_timing.duration;
-        }
-        else
+        // state = 0 -> before pulse
+        // state = 1 -> in pulse
+        // state = 2 -> after pulse
+        // always cycle through these three
+        switch (arg->Motor_state)
         {
-            if (Reach_target_speed_time)
-            {
-                LED_set(1, 0.0F);
-                Motor::Set_thrust(arg->Last_motor_timing.thrust_1);
-
-                // if not ended, we record the FB info
-                if (!Motor::Get_brake_status())
-                {
-                    Motor_buffer.push(Motor_info{arg->Last_motor_timing.thrust_1, static_cast<uint32_t>(t_now)});
-                }
-            }
+        case 0: // if was 0, the next time period should be in pulse
+            to_set_thrust = !to_set_thrust;
+            next_time = arg->Last_motor_target.period / 2;
             arg->Motor_state = 1;
+            break;
 
+        case 1: // if was 1, the next time period should be after pulse
+            to_set_thrust = !to_set_thrust;
+            next_time = timing_temp;
+            arg->Motor_state = 2;
+            break;
+
+        case 2: // if was 2, the next time period should be new before pulse
             // get latest motor timing data
-            auto temp = arg->buffer->peek_tail();
+            temp = arg->buffer->peek_tail();
             // now this temp is used, update Last_LED_timing
-            arg->Last_motor_timing = temp;
+            arg->Last_motor_target = temp;
 
             // update time
-            // make sure that we won't trigger again in 1/4 cycles
             next_time = (temp.t_start - (t_now % temp.period)) % temp.period;
+            if (next_time >= temp.period / 2)
+            {
+                to_set_thrust = 1;
+                next_time -= temp.period / 2;
+            }
+            else
+            {
+                to_set_thrust = 0;
+            }
+            timing_temp = temp.period / 2 - next_time;
+            arg->Motor_state = 0;
+            break;
+
+        default:
+            break;
         }
 
-        // not sure if this is necessary, but we will add it anyways, it's not gonna influence anything.
-        next_time = (next_time < Delay_min_time) ? Delay_min_time : next_time;
+        // if started and not ended, we record the FB info
+        if (Reach_target_speed_time && !Motor::Get_brake_status())
+        {
+            LED_set(1, to_set_thrust);
+
+            float actual_thrust_value = to_set_thrust ? arg->Last_motor_target.thrust_high : arg->Last_motor_target.thrust_low;
+
+            Motor_buffer.push(Motor_info{actual_thrust_value, static_cast<uint32_t>(t_now)});
+            Motor::Set_thrust(actual_thrust_value);
+        }
+
         // reset timer
         arg->Last_trig_time = t_now;
-        arg->Next_trig_time = t_now + next_time;
+        arg->Next_trig_time += next_time;
+
+        // not sure if this is necessary, but we will add it anyways, it's not gonna influence anything.
+        next_time = arg->Next_trig_time - esp_timer_get_time();
+        next_time = (next_time < Delay_min_time) ? Delay_min_time : next_time;
+
         esp_timer_stop(arg->handle);
         esp_timer_start_once(arg->handle, next_time);
     }
@@ -1108,8 +1136,7 @@ void Motor_control_task(void *pvParameters)
         // compute timing for callback_3 that use LED to indicate feedback value
         Motor_timing_t Callback_dat_m;
 
-        // each cycle start with 1->0
-        Callback_dat_m.duration = pos_0.rotation_time / 2;
+        // each cycle start with low->high
         Callback_dat_m.period = pos_0.rotation_time;
         Callback_dat_m.t_start = int64_t((atan2f(FB_val[1], FB_val[0]) + K_rot - Motor_angle_offset - pos_0.angle_0 + 10.5F * M_PI) / pos_0.angular_velocity);
 
@@ -1142,8 +1169,8 @@ void Motor_control_task(void *pvParameters)
                 add_val = FB_val[2] - min_thrust;
             }
         }
-        Callback_dat_m.thrust_0 = FB_val[2] + add_val;
-        Callback_dat_m.thrust_1 = FB_val[2] - add_val;
+        Callback_dat_m.thrust_high = FB_val[2] + add_val;
+        Callback_dat_m.thrust_low = FB_val[2] - add_val;
 
         // push inside buffer
         timing_buf_m.push(Callback_dat_m);
@@ -1189,7 +1216,7 @@ void Motor_control_task(void *pvParameters)
 
             // Callback/ISR 3
             callback_args_m.buffer = &timing_buf_m;
-            callback_args_m.Last_motor_timing = Callback_dat_m;
+            callback_args_m.Last_motor_target = Callback_dat_m;
             callback_args_m.Motor_state = 0;
             callback_args_m.Last_trig_time = 0;
             callback_args_m.Next_trig_time = 0;
@@ -1291,8 +1318,8 @@ void Motor_monitor_task(void *pvParameters)
 
             if (t_now - Last_position_update_time >= Power_low_threshold)
             {
-                callback_args_m.Last_motor_timing.thrust_0 = Power_low_value * Robot_mass;
-                callback_args_m.Last_motor_timing.thrust_1 = Power_low_value * Robot_mass;
+                callback_args_m.Last_motor_target.thrust_high = Power_low_value * Robot_mass;
+                callback_args_m.Last_motor_target.thrust_low = Power_low_value * Robot_mass;
 
                 Motor::Set_thrust(Power_low_value * Robot_mass);
             }
