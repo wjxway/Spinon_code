@@ -381,7 +381,9 @@ namespace IR
 
                     // write both register
                     for (size_t i = 0; i < RMT_TX_length; i++)
+                    {
                         RMTMEM.chan[RMT_TX_channel_2].data32[i].val = RMTMEM.chan[RMT_TX_channel_1].data32[i].val = (v + i)->val;
+                    }
 
                     // edit channel 2 register
                     RMTMEM.chan[RMT_TX_channel_2].data32[0].duration0 -= detail::RMT_sync_ticks_num;

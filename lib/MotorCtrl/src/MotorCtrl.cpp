@@ -18,6 +18,11 @@ namespace Motor
 		uint32_t Last_set_speed = 0U;
 
 		/**
+		 * @brief if in brake mode, if so, no thrust command is valid!
+		 */
+		bool Brake_mode = false;
+
+		/**
 		 * @brief whether we are in overdrive mode which grant higher thrust!
 		 */
 		bool Overdrive_state = false;
@@ -40,7 +45,7 @@ namespace Motor
 		 */
 		constexpr uint32_t Compute_throttle(float thrust)
 		{
-			return uint32_t(4.25F * thrust + 17.1F);
+			return uint32_t(4.25F * thrust + 40.0F);
 		}
 	} // anonymous namespace
 
@@ -102,8 +107,11 @@ namespace Motor
 
 	void Set_speed(const uint32_t duty)
 	{
-		Last_set_speed = duty;
-		ledcWrite(Motor_LEDC_PWM_channel, duty);
+		if (!Brake_mode)
+		{
+			Last_set_speed = duty;
+			ledcWrite(Motor_LEDC_PWM_channel, duty);
+		}
 	}
 
 	uint32_t Get_last_set_speed()
@@ -147,25 +155,45 @@ namespace Motor
 
 	void Active_brake()
 	{
+		Brake_mode = true;
 		Last_set_speed = 0U;
 		setbit(MOTOR_BRAKE_PIN);
 	}
 
 	void Active_brake_release()
 	{
+		Brake_mode = false;
 		clrbit(MOTOR_BRAKE_PIN);
 	}
 
+	bool Get_brake_status()
+	{
+		return Brake_mode;
+	}
+
+#if MOTOR_OVERDRIVE_ENABLED
 	void Set_overdrive(bool state)
 	{
 		if (state != Overdrive_state)
 		{
+			Overdrive_state = state;
 			Config_register(22, state ? Overdrive_config : Default_config[20]);
+
+			if (state)
+			{
+				Set_speed(math::fast::clip(Last_set_speed, Compute_throttle(Min_thrust_overdrive), Compute_throttle(Max_thrust_overdrive)));
+			}
+			else
+			{
+				Set_speed(math::fast::clip(Last_set_speed, Compute_throttle(Min_thrust), Compute_throttle(Max_thrust)));
+			}
 		}
 	}
+#endif
 
 	void Set_thrust(const float thrust)
 	{
+#if MOTOR_OVERDRIVE_ENABLED
 		if (Overdrive_state)
 		{
 			// exit overdrive mode when thrust value is too small.
@@ -178,8 +206,13 @@ namespace Motor
 
 			Set_overdrive(false);
 		}
+#endif
 
 		Set_speed(Compute_throttle(math::fast::clip(thrust, Min_thrust, Max_thrust)));
 	}
 
+	bool Get_overdrive_mode()
+	{
+		return Overdrive_state;
+	}
 } // namespace Motor

@@ -27,14 +27,21 @@ void IRAM_ATTR Occupy_time_task(void *pvParameters);
 void LED_off_task(void *pvParameters);
 
 /**
- * @brief send me some messages!
+ * @brief buffer localization data
  */
 void Buffer_data_task(void *pvParameters);
 
 /**
- * @brief initialize LED PWM using LEDC
+ * @brief buffer raw timing data
  */
-void LED_PWM_init();
+void Buffer_raw_data_task(void *pvParameters);
+
+/**
+ * @brief initialize LED PWM using LEDC
+ * 
+ * @param channels bit 0,1,2 for R,G,B
+ */
+void LED_PWM_init(uint32_t channels);
 
 /**
  * @brief convenience function to set LED intensity
@@ -45,17 +52,26 @@ void LED_PWM_init();
 void LED_set(uint32_t color,float duty);
 
 /**
- * @brief convert localization information to LED states and manages LED_FB_ISR
- * 
- * @param pvParameters 
- */
-void LED_control_task(void *pvParameters);
-
-/**
  * @brief similar to LED_control task, but actually turns the motor.
  * 
  * @param pvParameters 
  */
 void Motor_control_task(void *pvParameters);
+
+/**
+ * @brief a task that monitors update of motor control commands and slower /
+ * turn off the motor for safety.
+ * 
+ * @param pvParameters 
+ */
+void Motor_monitor_task(void *pvParameters);
+
+
+/**
+ * @brief test motor thrust - speed curve
+ * 
+ * @param pvParameters 
+ */
+void Motor_test_task(void *pvParameters);
 
 #endif

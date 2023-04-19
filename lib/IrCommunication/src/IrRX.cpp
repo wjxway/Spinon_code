@@ -77,7 +77,7 @@ namespace IR
             /**
              * @brief how many messages are allowed to stay in the buffer
              */
-            constexpr uint32_t Raw_msg_buffer_size = 200;
+            constexpr uint32_t Raw_msg_buffer_size = 800;
 
             /**
              * @brief get raw uint32_t data from buffer(data comes from RX_ISR) and
@@ -104,6 +104,11 @@ namespace IR
              * to override the oldest data.
              */
             Circbuffer<Trans_info, Raw_msg_buffer_size> raw_msg_buffer;
+
+            /**
+             * @brief A copycat class to safely access buffer.
+             */
+            Circbuffer_copycat<Trans_info, Raw_msg_buffer_size> raw_msg_buffer_copycat(&raw_msg_buffer);
 
             // struct definitions
             /**
@@ -865,10 +870,11 @@ namespace IR
                     io_flag++;
 
                     // keep doing till the buffer is empty
-                    while (raw_msg_buffer.n_elem)
+                    // note that we are only accessing the copycat class her for thread safety!
+                    while (!raw_msg_buffer_copycat.Empty_Q())
                     {
                         // fetch message from buffer
-                        Trans_info info = raw_msg_buffer.pop();
+                        Trans_info info = raw_msg_buffer_copycat.pop();
 
                         // setup a temporary value and extract some basic properties
                         // of the message.

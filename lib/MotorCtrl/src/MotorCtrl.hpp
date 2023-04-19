@@ -10,7 +10,7 @@
 /**
  * @brief whether we allow overdriving motor to gain higher thrust
  */
-#define MOTOR_OVERDRIVE_ENABLED 1
+#define MOTOR_OVERDRIVE_ENABLED 0
 
 namespace Motor
 {
@@ -43,26 +43,26 @@ namespace Motor
     /**
      * @brief default register configuration
      *
-     * @note optimized for happy model SE0802 19000KV
+     * @note optimized for gemfan 08028 12000KV
      */
     constexpr uint8_t Default_config[] = {
         // 0x00, 0x00,
-        0x01, 0x03, 0x00, 0xFE,       // 2~5
-        0x00, 0x00, 0x10, 0x20, 0x00, // 6~10
-        0x01, 0x00, 0x00, 0x97, 0xD5, // 11~15
-        0x00, 0xE6, 0x03, 0x16, 0x0A, // 16~20
-        0x8F, 0x56, 0x3F, 0xC0,       // 21~24
+        0x01, 0x03, 0x00, 0xFE,                // 2~5
+        0x00, 0x00, 0x10, 0x20, 0x00,          // 6~10
+        0x01, 0x00, 0x00, 0x97, 0x15 /*0xD5*/, // 11~15
+        0x00, 0xE6, 0x03, 0x16, 0x0A,          // 16~20
+        0x8F, 0x7F, 0x3F, 0xC0,                // 21~24
     };
 
     /**
      * @brief when below this thrust and not zero, round up to this thrust.
      */
-    constexpr float Min_thrust = 4.0F;
+    constexpr float Min_thrust = 5.0F;
 
     /**
      * @brief max thrust achievable in grams
      */
-    constexpr float Max_thrust = 23.0F;
+    constexpr float Max_thrust = 33.0F;
 
 #if MOTOR_OVERDRIVE_ENABLED
     /**
@@ -75,28 +75,14 @@ namespace Motor
      * @brief if lower than this thrust, automatically exit overdrive mode to
      * prevent failure of reboot and grant higher resolution.
      */
-    constexpr float Min_thrust_overdrive = 8.0F;
+    constexpr float Min_thrust_overdrive = 14.0F;
 
     /**
      * @brief max thrust in overdrive mode in grams
      */
-    constexpr float Max_thrust_overdrive = 28.0F;
+    // constexpr float Max_thrust_overdrive = 28.0F;
+    constexpr float Max_thrust_overdrive = 25.0F;
 #endif
-
-    // /**
-    //  * @brief default register configuration
-    //  *
-    //  * @note optimized for beta fpv 0802SE 22000KV
-    //  */
-    // constexpr uint8_t Default_config[] = {
-    //     // 0x00, 0x00,
-    //     0x01, 0x03, 0x00, 0xFE,       // 2~5
-    //     0x00, 0x00, 0x10, 0x20, 0x00, // 6~10
-    //     0x01, 0x00, 0x00, 0x97, 0xD5, // 11~15
-    //     0x00, 0xE6, 0x03, 0x16, 0x0A, // 16~20
-    //     0x6F, 0x56, 0x3F, 0xC0,       // 21~24
-    // };
-    // NOLINTEND
 
     /**
      * @brief initialize motor
@@ -168,6 +154,13 @@ namespace Motor
     void Active_brake_release();
 
     /**
+     * @brief Get brake status
+     *
+     * @return true brake enabled
+     */
+    bool Get_brake_status();
+
+    /**
      * @brief set thrust to approximately a certain value
      *
      * @param thrust desired thrust value in grams.
@@ -181,6 +174,13 @@ namespace Motor
      * @param state true for enter, false for exit.
      */
     void Set_overdrive(bool state);
+
+    /**
+     * @brief whether we are in overdrive mode or not
+     *
+     * @return true overdrive mode enabled
+     */
+    bool Get_overdrive_mode();
 #endif
 } // namespace Motor
 

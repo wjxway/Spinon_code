@@ -32,9 +32,9 @@ namespace IR
 
             /**
              * @brief the minimum tolerable timing for distance measurements is
-             * 7 degrees, corresponding to a distance of ~42cm
+             * 6 degrees, corresponding to a distance of ~50cm
              */
-            constexpr float Min_valid_angle = 0.13F;
+            constexpr float Min_valid_angle = 0.11F;
             /**
              * @brief the maximum tolerable timing is 60 degrees, corresponding
              * to two robots touching each other.
@@ -49,6 +49,18 @@ namespace IR
              * and the geometry.
              */
             constexpr float Angle_error = 1.0F / 180.0F * M_PI;
+
+            /**
+             * @brief the angular standard deviation (of elevation angle measurements)
+             *
+             * @note this is mostly determined by the randomness of when we
+             * received a message, which is related to the consecutive TX time
+             * and the geometry.
+             *
+             * @note this is the error of measured center angle difference, not
+             * the error of converted elevation angle.
+             */
+            constexpr float Cent_angle_error = 1.5F / 180.0F * M_PI;
 
             /**
              * @brief error of relative angle
@@ -82,7 +94,7 @@ namespace IR
              * @note For now, we assume that the error increase rate is the same for all
              * three directions
              */
-            constexpr float Error_increase_rate = 50e-6F;
+            constexpr float Error_increase_rate = 150e-6F;
 
             /**
              * @brief after how long will we stop to use the old localization
@@ -104,14 +116,14 @@ namespace IR
              */
             struct Relative_position_data
             {
-                uint32_t Robot_ID; // ID of robot, should be redundant
-                float pos[3];      // position of reference robot
-                float dist;        // horizontal distance between robots
-                float dist_err;    // error of dist
-                float elev;        // vertical distance (h of this - h of reference)
-                float elev_err;    // error of elev
-                float angle;       // angle computed by 2*Pi*(time%T_0)/T_0.
-                float angle_err;   // error of angle
+                uint32_t Robot_ID;    // ID of robot, should be redundant
+                float pos[3];         // position of reference robot
+                float dist;           // horizontal distance between robots
+                float dist_err;       // error of dist
+                float cent_angle;     // vertical distance (h of this - h of reference)
+                float cent_angle_err; // error of elev
+                float angle;          // angle computed by 2*Pi*(time%T_0)/T_0.
+                float angle_err;      // error of angle
             };
 
             /**
@@ -139,7 +151,6 @@ namespace IR
              */
             Circbuffer<Position_data, Position_stack_length> Filtered_position_stack;
 
-
             /**
              * @brief compute distance based on angle
              *
@@ -149,7 +160,7 @@ namespace IR
              */
             float Distance_expectation(const float LR_angle)
             {
-                return 28.942F / sin((LR_angle + 0.0267436F) / 2.0F) - 9.29335F;
+                return 39.0518F / sin((LR_angle + 0.0555407F) / 2.0F) - 43.9161F;
             }
 
             /**
@@ -173,9 +184,9 @@ namespace IR
              * and average of LR receiver.
              * @return constexpr float elevation estimation
              */
-            float Elevation_expectation(const float LR_angle, const float Cent_angle)
+            float Elevation_expectation(const float distance, const float Cent_angle)
             {
-                return Distance_expectation(LR_angle) * tan(Cent_angle + 0.0436332F) * Tilting_angle_multiplyer;
+                return -distance * tan(Cent_angle - 0.00174533F) * Tilting_angle_multiplyer;
             }
 
             /**
@@ -187,9 +198,9 @@ namespace IR
              * and average of LR receiver.
              * @return constexpr float error estimation
              */
-            float Elevation_error(const float LR_angle, const float Cent_angle)
+            float Elevation_error(const float distance, const float distance_error, const float Cent_angle, const float cent_angle_error)
             {
-                return (Tilting_angle_multiplyer * sqrt(square(tan(Cent_angle) * Distance_error(LR_angle)) + square(Distance_expectation(LR_angle) * Angle_error / cos(Cent_angle))));
+                return (Tilting_angle_multiplyer * sqrt(square(tan(Cent_angle) * distance_error) + square(distance * cent_angle_error / cos(Cent_angle))));
             }
 
             /**
@@ -250,37 +261,6 @@ namespace IR
                 // ((measurement-estimation)/measurement_error)^2
                 float error_factor = 0.0F;
 
-                // Z opt.
-                {
-                    // determine the height, because it's independent from
-                    // others, it's simple.
-                    // 1/sigma^2 term, initialized to 1e-10 to prevent 1/0.
-                    float deno = 1e-10F;
-                    // x0/sigma^2 term
-                    float nume = 0.0F;
-                    // x0^2/sigma^2 term
-                    float numesq = 0.0F;
-
-                    for (size_t i = 0; i < data_len; i++)
-                    {
-                        // only take into account of those with elevation measurements.
-                        if (data[i].dist_err != 0.0F)
-                        {
-                            valid_meas++;
-
-                            float c = 1.0F / square(data[i].elev_err);
-                            deno += c;
-                            nume += data[i].elev * c;
-                            numesq += square(data[i].elev) * c;
-                        }
-                    }
-                    temp.z = nume / deno;
-                    // variance of this measurement
-                    temp.var_z = 1.0F / deno;
-                    // error of all Z measurements
-                    error_factor += numesq - square(nume) / deno;
-                }
-
                 // initial {X,Y}
                 // starting from the last position or from the average of all beacon positions.
                 float x = x_start;
@@ -289,10 +269,11 @@ namespace IR
 
                 // maximum iterations we do
                 constexpr size_t Max_Position_Iterations = 10;
-                // when step size dropped below this, we quit!
-                constexpr float Error_tolerance = 0.5F;
+                // when step size dropped below this, stop!
+                constexpr float Error_tolerance = 0.1F;
 
                 // determine the rest iteratively, max Max_Position_Iterations times
+                // in this step, we only deal with horizontal position
                 for (size_t step = 0; step < Max_Position_Iterations; step++)
                 {
                     // compute data average based on current position
@@ -377,10 +358,43 @@ namespace IR
                 }
                 temp.var_xy = 1.0F / Hessian;
 
+                // Now we have horizontal position {x,y} and a bunch of
+                // elevation angle measurements, we can compute the elevation of
+                // drone.
+
+                // 1/sigma^2 term, initialized to 1e-10 to prevent 1/0.
+                float deno = 1e-10F;
+                // x0/sigma^2 term
+                float nume = 0.0F;
+                // x0^2/sigma^2 term
+                float numesq = 0.0F;
+
+                // error of estimated distance
+                float est_dist_err = sqrt(temp.var_xy);
+
+                for (size_t i = 0; i < data_len; i++)
+                {
+                    float est_dist = norm(data[i].pos[0] - temp.x, data[i].pos[1] - temp.y);
+                    float est_elev = Elevation_expectation(est_dist, data[i].cent_angle) + data[i].pos[2];
+
+                    float c = 1.0F / square(Elevation_error(est_dist, est_dist_err, data[i].cent_angle, data[i].cent_angle_err));
+                    deno += c;
+                    nume += est_elev * c;
+                    numesq += square(est_elev) * c;
+                }
+                temp.z = nume / deno;
+                // variance of this measurement
+                temp.var_z = 1.0F / deno;
+                // error of all Z measurements
+                error_factor += numesq - square(nume) / deno;
+                valid_meas += data_len;
+
+                temp.mean_error_factor = error_factor / float(valid_meas);
+
+                // some irrelavent values, just set them to 0
                 temp.rotation_time = 0L;
                 temp.angular_velocity = 0.0F;
                 temp.time = 0L;
-                temp.mean_error_factor = error_factor / float(valid_meas);
 
                 return temp;
             }
@@ -411,47 +425,6 @@ namespace IR
             {
                 return (error_factor <= 2.0F) ? (var * (1.0F + error_factor * error_factor)) : var * 1.0e6F;
             }
-
-#if LOCALIZATION_CALIBRATION_MODE
-            size_t record_count = 0U;
-            constexpr size_t start_record_count = 300U;
-            constexpr size_t Relative_measurement_buffer_max_size = 300U;
-            std::vector<std::vector<Relative_position_data>> Relative_measurement_buffer;
-
-            void Print_data_task(void *pvParameters)
-            {
-                while (true)
-                {
-                    vTaskDelay(50);
-                    if (Serial.available())
-                    {
-                        delay(10);
-                        // deplete serial buffer
-                        while (Serial.available())
-                        {
-                            Serial.read();
-                        }
-
-                        for (auto &all_dat : Relative_measurement_buffer)
-                        {
-                            std::string v = "";
-                            v.reserve(1000);
-
-                            v += std::string("Angular velocity: ") + std::to_string(all_dat[0].angle_err) + "\n";
-
-                            for (auto &dat : all_dat)
-                            {
-                                v += std::string("  ID: ") + std::to_string(dat.Robot_ID) + ", x0: " + std::to_string(dat.pos[0]) + ", y0: " + std::to_string(dat.pos[1]) + ", z0: " + std::to_string(dat.pos[2]) + ", LR angle diff: " + std::to_string(dat.dist) + ", Center angle diff: " + std::to_string(dat.elev) + ", ang: " + std::to_string(dat.angle) + "\n";
-                            }
-
-                            v += "\n";
-
-                            Serial.println(v.c_str());
-                        }
-                    }
-                }
-            }
-#endif
 
             /**
              * @brief a vector of all tasks to be notified when new data is processed.
@@ -625,6 +598,7 @@ namespace IR
             void Localization_task(void *pvParameters)
             {
                 uint32_t last_flag = 0;
+                int64_t prev_last_message_time = 0;
                 TickType_t prev_wake_time = xTaskGetTickCount();
                 while (true)
                 {
@@ -742,22 +716,6 @@ namespace IR
                         {
                             Relative_position_data &this_Loc_data = Loc_data.back();
 
-#if LOCALIZATION_CALIBRATION_MODE
-                            int64_t avg_time = ((time_list[i].time_arr[1] + time_list[i].time_arr[2]) >> 1);
-
-                            // update last_message_time if the new one is later
-                            if (avg_time - last_message_time > 0)
-                            {
-                                last_message_time = avg_time;
-                            }
-
-                            this_Loc_data.angle = float(avg_time % rotation_time) * angular_velocity;
-                            this_Loc_data.angle_err = 1.0F;
-                            this_Loc_data.dist = float(int64_t(time_list[i].time_arr[1] - time_list[i].time_arr[2])) * angular_velocity;
-                            this_Loc_data.dist_err = 1.0F; // set to 1.0F because I want to distinguish invalid data.
-                            this_Loc_data.elev = (time_list[i].time_arr[0] - avg_time) * angular_velocity;
-                            this_Loc_data.elev_err = 1.0F;
-#else
                             // note that here we directly use the compensated
                             // angle data, computed using LR-0.12 Cent
                             int64_t avg_time = ((time_list[i].time_arr[1] + time_list[i].time_arr[2]) >> 1);
@@ -788,6 +746,10 @@ namespace IR
 
                                 this_Loc_data.angle = float(avg_time % rotation_time) * angular_velocity + IR::RX::Orientation_compensation * LR_diff;
                                 this_Loc_data.angle_err = Relative_angle_error;
+
+                                this_Loc_data.cent_angle = Cent_diff;
+                                this_Loc_data.cent_angle_err = Cent_angle_error;
+
                                 // we only record the distance info if the
                                 // distance could be usefully accurate (~ <42cm)
                                 // you can adjust that threshold for using the
@@ -797,15 +759,11 @@ namespace IR
                                 {
                                     this_Loc_data.dist = Distance_expectation(Compensated_LR_diff);
                                     this_Loc_data.dist_err = Distance_error(Compensated_LR_diff);
-                                    this_Loc_data.elev = Elevation_expectation(Compensated_LR_diff, Cent_diff);
-                                    this_Loc_data.elev_err = Elevation_error(Compensated_LR_diff, Cent_diff);
                                 }
                                 else
                                 {
                                     this_Loc_data.dist = 0.0F;
                                     this_Loc_data.dist_err = 0.0F;
-                                    this_Loc_data.elev = 0.0F;
-                                    this_Loc_data.elev_err = 0.0F;
                                 }
                             }
                             // if cannot pass sanity check, just delete this.
@@ -813,43 +771,16 @@ namespace IR
                             {
                                 Loc_data.pop_back();
                             }
-#endif
                         }
                     }
 
                     // we quit if this time is the same as the last time, because that means there's nothing new in this data.
-                    if (last_message_time == Position_stack.peek_tail().time)
+                    if (last_message_time <= prev_last_message_time)
                     {
                         continue;
                     }
+                    prev_last_message_time = last_message_time;
 
-#if LOCALIZATION_CALIBRATION_MODE
-                    if (Loc_data.size() >= 2)
-                    {
-                        record_count++;
-                        if (record_count >= start_record_count && Relative_measurement_buffer.size() < Relative_measurement_buffer_max_size)
-                        {
-                            // exploit this angle error to store angular velocity.
-                            Loc_data[0].angle_err = angular_velocity;
-
-                            Relative_measurement_buffer.push_back(Loc_data);
-                            if (Relative_measurement_buffer.size() == Relative_measurement_buffer_max_size)
-                            {
-                                LIT_G;
-
-                                // send me messages through serial!
-                                xTaskCreatePinnedToCore(
-                                    Print_data_task,
-                                    "Print_data_task",
-                                    20000,
-                                    NULL,
-                                    3,
-                                    NULL,
-                                    0);
-                            }
-                        }
-                    }
-#else
                     // we localize when there are at least 2 beacons
                     if (Loc_data.size() < 2)
                     {
@@ -880,9 +811,12 @@ namespace IR
                     //
                     // determine if the old data is valid
                     bool old_valid = true;
+                    // why the old data is invalid
+                    uint32_t old_invalid_reason = 0;
                     if (Filtered_position_stack.n_elem == 0)
                     {
                         old_valid = false;
+                        old_invalid_reason = 1;
                     }
                     else
                     {
@@ -892,10 +826,12 @@ namespace IR
                         if ((last_message_time - last.time) > Position_expire_time)
                         {
                             old_valid = false;
+                            old_invalid_reason = 2;
                         }
                         else if (square(last.x - xmean) + square(last.y - ymean) >= square(Max_Communication_distance))
                         {
                             old_valid = false;
+                            old_invalid_reason = 3;
                         }
                     }
 
@@ -916,10 +852,10 @@ namespace IR
                         res = Execute_localization(Loc_data, xmean, ymean);
                     }
 
-                    // // additional sanity check here. so if localization
-                    // // result is too far from the beacon position, this
-                    // // result cannot be valid, we don't push!
-                    if (square(res.x - xmean) + square(res.y - ymean) >= square(Max_Communication_distance))
+                    // additional sanity check here. if localization result is
+                    // too far from the beacon position, or if the error factor
+                    // is too large, this result cannot be valid, we don't push!
+                    if (square(res.x - xmean) + square(res.y - ymean) >= square(Max_Communication_distance) || res.mean_error_factor > 2)
                     {
                         continue;
                     }
@@ -945,6 +881,7 @@ namespace IR
                         filt.rotation_time = rotation_time;
                         filt.angular_velocity = angular_velocity;
                         filt.time = last_message_time;
+                        // filt.mean_error_factor=0;
 
                         // determine how much variance should be added to the
                         // old measurement due to drifting of drone
@@ -975,6 +912,7 @@ namespace IR
                     // directly push into the filtered stack.
                     else
                     {
+                        // res.mean_error_factor=old_invalid_reason;
                         Filtered_position_stack.push(res);
                     }
 
@@ -985,7 +923,6 @@ namespace IR
                         xTaskNotifyGive(hand);
                     }
                     xTaskResumeAll();
-#endif
                 }
             }
         } // anonymous namespace
