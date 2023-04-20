@@ -22,7 +22,7 @@ using math::fast::norm;
 using math::fast::square;
 
 // target point pos
-float target_point[3] = {0.0F, 0.0F, 0.0F};
+float target_point[3] = {0.0F, 25.0F, 0.0F};
 
 // K_I has time unit of 1/s
 constexpr float K_I_XY = 2.0e-2F;
@@ -40,8 +40,8 @@ constexpr float K_P_Z = 2.0e-2F;
 constexpr float K_D_Z = 2.0e-2F;
 
 // rotation angle of execution in rad.
-constexpr float K_rot = 5.0F / 180.0F * M_PI;
-constexpr float P_rot = 5.0F / 180.0F * M_PI;
+constexpr float K_rot = 15.0F / 180.0F * M_PI;
+constexpr float P_rot = 15.0F / 180.0F * M_PI;
 
 // time coefficient for filters in s
 constexpr float V_filter_t_coef = 0.06F;
@@ -1032,15 +1032,15 @@ void Motor_control_task(void *pvParameters)
         {
             if (t_elapsed >= 50000000LL)
             {
-                target_point[2] = -60.0F;
+                target_point[0] = -80.0F;
             }
             else if (t_elapsed >= 35000000LL)
             {
-                target_point[2] = 60.0F;
+                target_point[0] = 80.0F;
             }
             else
             {
-                target_point[2] = -60.0F;
+                target_point[0] = -80.0F;
             }
         }
 
