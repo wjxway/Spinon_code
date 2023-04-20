@@ -35,9 +35,9 @@ constexpr float K_D_XY = 5.5e-2F;
 // K_A has time unit of s^2
 constexpr float K_A_XY = 5.0e-2F;
 
-constexpr float K_I_Z = 1.2e-2F;
-constexpr float K_P_Z = 1.5e-2F;
-constexpr float K_D_Z = 1.2e-2F;
+constexpr float K_I_Z = 1.0e-2F;
+constexpr float K_P_Z = 2.0e-2F;
+constexpr float K_D_Z = 2.0e-2F;
 
 // rotation angle of execution in rad.
 constexpr float K_rot = 5.0F / 180.0F * M_PI;
@@ -1026,6 +1026,24 @@ void Motor_control_task(void *pvParameters)
             integration_on = true;
         }
 
+        // change target point to make step response
+        int64_t t_elapsed = esp_timer_get_time() - Reach_target_speed_time;
+        if (Reach_target_speed_time != 0 && t_elapsed >= 20000000LL)
+        {
+            if (t_elapsed >= 50000000LL)
+            {
+                target_point[2] = -60.0F;
+            }
+            else if (t_elapsed >= 35000000LL)
+            {
+                target_point[2] = 60.0F;
+            }
+            else
+            {
+                target_point[2] = -60.0F;
+            }
+        }
+
         Last_position_update_time = esp_timer_get_time();
 
         P_comp[0] = filt_pos_0.x - target_point[0];
@@ -1043,9 +1061,9 @@ void Motor_control_task(void *pvParameters)
         if (integration_on)
         {
             t_coef = float(pos_0.time - pos_1.time) / 2.0e6F;
-            I_comp[0] += t_coef * (pos_0.x + pos_1.x);
-            I_comp[1] += t_coef * (pos_0.y + pos_1.y);
-            I_comp[2] += t_coef * (pos_0.z + pos_1.z);
+            I_comp[0] += t_coef * (pos_0.x + pos_1.x - 2.0F * target_point[0]);
+            I_comp[1] += t_coef * (pos_0.y + pos_1.y - 2.0F * target_point[1]);
+            I_comp[2] += t_coef * (pos_0.z + pos_1.z - 2.0F * target_point[2]);
         }
 
         // add a constraint to horizontal I comp magnitude
