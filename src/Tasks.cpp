@@ -22,7 +22,7 @@ using math::fast::norm;
 using math::fast::square;
 
 // target point pos
-float target_point[3] = {0.0F, 25.0F, 0.0F};
+float target_point[3] = {0.0F, 0.0F, 0.0F};
 
 // K_I has time unit of 1/s
 constexpr float K_I_XY = 2.0e-2F;
@@ -40,33 +40,13 @@ constexpr float K_P_Z = 2.0e-2F;
 constexpr float K_D_Z = 2.0e-2F;
 
 // rotation angle of execution in rad.
-constexpr float K_rot = 15.0F / 180.0F * M_PI;
-constexpr float P_rot = 15.0F / 180.0F * M_PI;
+constexpr float K_rot = 5.0F / 180.0F * M_PI;
+constexpr float P_rot = 5.0F / 180.0F * M_PI;
 
 // time coefficient for filters in s
 constexpr float V_filter_t_coef = 0.06F;
 constexpr float A_filter_t_coef = 0.30F;
 
-// best values till now
-// constexpr float K_P_XY = 6.0e-2F;
-// // K_D has time unit of s
-// constexpr float K_D_XY = 4.5e-2F;
-// // // K_I has time unit of 1/s
-// // constexpr float K_I_XY = 0.0F;
-// // K_A has time unit of s^2d
-// constexpr float K_A_XY = 4.0e-2F;
-
-// constexpr float K_I_Z = 1.2e-2F;
-// constexpr float K_P_Z = 1.5e-2F; // 2.0e-2F;
-// constexpr float K_D_Z = 1.2e-2F; // 2.0e-2F;
-
-// // rotation angle of execution in rad.
-// constexpr float K_rot = 5.0F / 180.0F * M_PI;
-// constexpr float P_rot = 5.0F / 180.0F * M_PI;
-
-// // time coefficient for filters in s
-// constexpr float V_filter_t_coef = 0.08F;
-// constexpr float A_filter_t_coef = 0.30F;
 
 void IRAM_ATTR Idle_stats_task(void *pvParameters)
 {
@@ -1026,23 +1006,23 @@ void Motor_control_task(void *pvParameters)
             integration_on = true;
         }
 
-        // change target point to make step response
-        int64_t t_elapsed = esp_timer_get_time() - Reach_target_speed_time;
-        if (Reach_target_speed_time != 0 && t_elapsed >= 20000000LL)
-        {
-            if (t_elapsed >= 50000000LL)
-            {
-                target_point[0] = -80.0F;
-            }
-            else if (t_elapsed >= 35000000LL)
-            {
-                target_point[0] = 80.0F;
-            }
-            else
-            {
-                target_point[0] = -80.0F;
-            }
-        }
+        // // change target point to make step response
+        // int64_t t_elapsed = esp_timer_get_time() - Reach_target_speed_time;
+        // if (Reach_target_speed_time != 0 && t_elapsed >= 20000000LL)
+        // {
+        //     if (t_elapsed >= 50000000LL)
+        //     {
+        //         target_point[0] = -80.0F;
+        //     }
+        //     else if (t_elapsed >= 35000000LL)
+        //     {
+        //         target_point[0] = 80.0F;
+        //     }
+        //     else
+        //     {
+        //         target_point[0] = -80.0F;
+        //     }
+        // }
 
         Last_position_update_time = esp_timer_get_time();
 
