@@ -47,7 +47,6 @@ constexpr float P_rot = 5.0F / 180.0F * M_PI;
 constexpr float V_filter_t_coef = 0.06F;
 constexpr float A_filter_t_coef = 0.30F;
 
-
 void IRAM_ATTR Idle_stats_task(void *pvParameters)
 {
     // stats resolution in CPU cycles
@@ -1306,7 +1305,7 @@ void Motor_monitor_task(void *pvParameters)
 
         int64_t t_now = esp_timer_get_time();
 
-        if (Reach_target_speed_time != 0)
+        if (! Motor::Get_brake_status())
         {
             if (t_now - Last_position_update_time >= Power_off_threshold)
             {
