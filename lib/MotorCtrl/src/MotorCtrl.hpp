@@ -62,7 +62,7 @@ namespace Motor
     /**
      * @brief max thrust achievable in grams
      */
-    constexpr float Max_thrust = 35.0F;
+    constexpr float Max_thrust = 34.0F;
 
 #if MOTOR_OVERDRIVE_ENABLED
     /**

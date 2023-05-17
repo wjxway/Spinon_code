@@ -957,8 +957,8 @@ void Motor_control_task(void *pvParameters)
         // 0 for [0,speed1), 1 for [speed1,speed2), 2 for [speed2,inf)
         static int control_on = 0;
         // release brake when speed reached a certain threshold
-        constexpr float Rotation_speed_start_1 = 0.000090F;
-        constexpr float Rotation_speed_start_2 = 0.000115F;
+        constexpr float Rotation_speed_start_1 = 0.000080F;
+        constexpr float Rotation_speed_start_2 = 0.000125F;
         // pre-start thurst ratio
         constexpr float Init_thrust_ratio = 0.7F;
         switch (control_on)
@@ -1098,11 +1098,11 @@ void Motor_control_task(void *pvParameters)
         FB_val[1] = -K_P_XY * (sin_rot * P_comp[0] + cos_rot * P_comp[1]) - K_D_XY * Filtered_D_comp[1] - K_A_XY * Filtered_A_comp[1] - K_I_XY * I_comp[1];
         FB_val[2] = -K_P_Z * P_comp[2] - K_D_Z * D_comp[2] - K_I_Z * I_comp[2] + Robot_mass;
 
-        // if (norm(pos_0.x, pos_0.y) > 200.0F)
-        // {
-        //     FB_val[0] = -(cos_rot * P_comp[0] - sin_rot * P_comp[1]);
-        //     FB_val[1] = -(sin_rot * P_comp[0] + cos_rot * P_comp[1]);
-        // }
+        if (norm(pos_0.x, pos_0.y) > 200.0F)
+        {
+            FB_val[0] = -(cos_rot * P_comp[0] - sin_rot * P_comp[1]);
+            FB_val[1] = -(sin_rot * P_comp[0] + cos_rot * P_comp[1]);
+        }
 
         // all computation has been finished till now
         // from now on it's the boring setup interrupt part
@@ -1291,7 +1291,7 @@ void Motor_control_task(void *pvParameters)
 void Motor_monitor_task(void *pvParameters)
 {
     // when will we lower the motor power after no position update
-    constexpr uint64_t Power_low_threshold = 60000;
+    constexpr uint64_t Power_low_threshold = 200000;
 
     // when power low, what's the thrust?
     constexpr float Power_low_value = 0.8F;

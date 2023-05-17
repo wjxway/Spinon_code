@@ -25,9 +25,9 @@ const uint32_t This_robot_ID = TRID;
  * @brief robot's weight in grams
  */
 #if TRID == 11
-constexpr float Robot_mass = 16.5F;
+constexpr float Robot_mass = 17.5F;
 #else
-constexpr float Robot_mass = 16.0F;
+constexpr float Robot_mass = 17.0F;
 #endif
 
 /**
