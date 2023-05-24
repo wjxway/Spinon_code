@@ -870,7 +870,7 @@ namespace IR
                     io_flag++;
 
                     // keep doing till the buffer is empty
-                    // note that we are only accessing the copycat class her for thread safety!
+                    // note that we are only accessing the copycat class here for thread safety!
                     while (!raw_msg_buffer_copycat.Empty_Q())
                     {
                         // fetch message from buffer
@@ -881,6 +881,12 @@ namespace IR
                         Msg_t temp_msg;
                         temp_msg.raw = info.data;
                         uint32_t robot_ID = temp_msg.robot_ID, msg_type = temp_msg.msg_type, msg_ID = temp_msg.msg_ID;
+
+                        // ignore message if it is coming from this robot
+                        if (robot_ID == This_robot_ID)
+                        {
+                            continue;
+                        }
 
                         // obtain pointer to buffer, create Robot_RX instance if needed.
                         Robot_RX *robot_ptr = Add_new_robot(robot_ID);
@@ -1256,6 +1262,7 @@ namespace IR
                 {
                     ptr = start;
                 }
+
                 for (size_t i = 0; i < Max_robots_simultaneous; i++)
                 {
                     // check for data and time validity
@@ -1287,17 +1294,6 @@ namespace IR
             msg_buffer_dict.fill(nullptr);
 
 #if RMT_RX_CHANNEL_COUNT >= 1
-            pinMode(RMT_RX_PIN_1, INPUT);
-#endif
-#if RMT_RX_CHANNEL_COUNT >= 2
-            pinMode(RMT_RX_PIN_1, INPUT);
-#endif
-#if RMT_RX_CHANNEL_COUNT == 3
-            pinMode(RMT_RX_PIN_1, INPUT);
-#endif
-
-#if RMT_RX_CHANNEL_COUNT >= 1
-
             // config RX_1
             rmt_config_t rmt_rx_1;
             rmt_rx_1.channel = RMT_RX_channel_1;
@@ -1317,12 +1313,14 @@ namespace IR
                 DEBUG_C(Serial.println("RMT RX_1 init failed!"));
                 return false;
             }
+
             // set up filter again...
             if (rmt_set_rx_filter(rmt_rx_1.channel, true, RMT_clock_div * RMT_ticks_num / 2) != ESP_OK)
             {
                 DEBUG_C(Serial.println("RMT RX_1 set filter failed!"));
                 return false;
             }
+
             // initialization of RMT RX interrupt
             if (rmt_set_rx_intr_en(rmt_rx_1.channel, true) != ESP_OK)
             {
@@ -1371,25 +1369,28 @@ namespace IR
             rmt_rx_3.rmt_mode = RMT_MODE_RX;
             rmt_rx_3.rx_config.filter_en = 1;
             rmt_rx_3.rx_config.filter_ticks_thresh = 2;
-            rmt_rx_3.rx_config.idle_threshold = (((1 << Bit_per_cycle) - 1) * 2 + 1) * RMT_ticks_num + Pad_per_cycle;
+            rmt_rx_3.rx_config.idle_threshold = (2 << Bit_per_cycle) * RMT_ticks_num + Pad_per_cycle;
 
             if (rmt_config(&rmt_rx_3) != ESP_OK)
             {
                 DEBUG_C(Serial.println("RMT RX_3 init failed!"));
                 return false;
             }
+
             // set up filter again...
             if (rmt_set_rx_filter(rmt_rx_3.channel, true, RMT_clock_div * RMT_ticks_num / 2) != ESP_OK)
             {
                 DEBUG_C(Serial.println("RMT RX_3 set filter failed!"));
                 return false;
             }
+
             // initialization of RMT RX interrupt
             if (rmt_set_rx_intr_en(rmt_rx_3.channel, true) != ESP_OK)
             {
                 DEBUG_C(Serial.println("RMT RX_3 interrupt not started!"));
                 return false;
             }
+
 #endif
 
             // //enable default isr
@@ -1413,6 +1414,7 @@ namespace IR
                 return false;
             }
 #if RMT_RX_CHANNEL_COUNT >= 2
+
             if (rmt_rx_start(rmt_rx_2.channel, 1) != ESP_OK)
             {
                 DEBUG_C(Serial.println("RMT RX_2 start failed!"));
@@ -1420,6 +1422,7 @@ namespace IR
             }
 #endif
 #if RMT_RX_CHANNEL_COUNT == 3
+
             if (rmt_rx_start(rmt_rx_3.channel, 1) != ESP_OK)
             {
                 DEBUG_C(Serial.println("RMT RX_3 start failed!"));
@@ -1446,7 +1449,6 @@ namespace IR
                 DEBUG_C(Serial.println("RMT RX task startup failed!"));
                 return false;
             }
-
 #endif
 
             return true;

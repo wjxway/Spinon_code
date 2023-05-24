@@ -75,7 +75,8 @@ namespace Motor
 			temp &= Config_register(addr + 2U, Default_config[addr]);
 		}
 
-		// ledc start
+		// LEDC start
+		// PWM LEDC will take up general purpose timer 0.
 		ledcSetup(Motor_LEDC_PWM_channel, PWM_frequency, PWM_resolution);
 		ledcAttachPin(MOTOR_SPD_CTRL_PIN, Motor_LEDC_PWM_channel);
 		ledcWrite(Motor_LEDC_PWM_channel, 0U);

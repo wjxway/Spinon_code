@@ -225,6 +225,63 @@ namespace IR
             }
 
             /**
+             * @brief remove a task of certain type from scheduler (no longer
+             * transmit)
+             *
+             * @param type msg_type of data
+             *
+             * @warning this function is NOT thread safe! use Remove_from_schedule_safe instead!
+             */
+            void Remove_from_schedule(const uint32_t type)
+            {
+                // temp pointer to the msg
+                Scheduler_node *const temp_ptr = node_list + type;
+                // msg's priority
+                Scheduler_node *&prio_end_ptr = prio_level_end_ptr[temp_ptr->priority];
+
+                // remove this element from list if it's in list
+                if (temp_ptr->prev)
+                {
+                    temp_ptr->prev->next = temp_ptr->next;
+                }
+                if (temp_ptr->next)
+                {
+                    temp_ptr->next->prev = temp_ptr->prev;
+                }
+
+                // if it's the starting pointer, move the starting pointer to the next
+                if (temp_ptr == start_ptr)
+                {
+                    start_ptr = temp_ptr->next;
+                    // if it's also the last message of this priority, it must be
+                    // the last, remote this priority level!
+                    if (temp_ptr == prio_end_ptr)
+                    {
+                        prio_end_ptr = nullptr;
+                    }
+                }
+                // update the ending pointer of this category if this is the last
+                // message of this priority
+                else if (temp_ptr == prio_end_ptr)
+                {
+                    // if this is not the only message left at this priority level
+                    // shift the level end pointer to the previous message
+                    if (temp_ptr->priority == (temp_ptr->prev->priority))
+                    {
+                        prio_end_ptr = temp_ptr->prev;
+                        // if this is, then remove this priority level
+                    }
+                    else
+                    {
+                        prio_end_ptr = nullptr;
+                    }
+                }
+
+                // remove its own prev and next
+                temp_ptr->prev = temp_ptr->next = nullptr;
+            }
+
+            /**
              * @brief add a task of certain type from scheduler. Note that this
              * task MUST have already been used and temporarily paused.
              *
@@ -307,8 +364,8 @@ namespace IR
                     if (temp_ptr->transmission_counter)
                     {
                         temp_ptr = temp_ptr->next;
-                        // if it should fire, and it's not default msg (type 0)
                     }
+                    // if it should fire, and it's not default msg (type 0)
                     else if (type)
                     {
                         // if the expiration counter is already 0, remove task by
@@ -365,6 +422,12 @@ namespace IR
              */
             bool IRAM_ATTR TX_ISR(void *)
             {
+                // t_add could be 0 or 1 and is added to the beginning of each
+                // transmission to make sure that two consecutive transmissions
+                // are not identical. It seems that RMT peripheral will break if
+                // two consecutive messages are identical...
+                static uint32_t t_add = 0;
+
                 // reset alarm value fast using native api
                 timer_group_set_alarm_value_in_isr(TX_timer_group, TX_timer_num, Generate_trigger_time());
 
@@ -388,6 +451,11 @@ namespace IR
                     // edit channel 2 register
                     RMTMEM.chan[RMT_TX_channel_2].data32[0].duration0 -= detail::RMT_sync_ticks_num;
                     RMTMEM.chan[RMT_TX_channel_2].data32[RMT_data_pulse_count].duration1 = CH2_final_pulse_duration;
+
+                    // modify first signal
+                    t_add = 1 - t_add;
+                    RMTMEM.chan[RMT_TX_channel_1].data32[0].duration0 += t_add;
+                    RMTMEM.chan[RMT_TX_channel_2].data32[0].duration0 += t_add;
 
                     // reset pointers
                     rmt_ll_tx_reset_pointer(&RMT, RMT_TX_channel_1);
@@ -528,58 +596,11 @@ namespace IR
             DEBUG_C(Serial.println("Trigger_timer init successful!"));
         }
 
-        /**
-         * @brief remove an element from the list, ntype is the type number
-         *
-         * @param type type of message
-         */
-        void Remove_from_schedule(const uint32_t type)
+        void Remove_from_schedule_safe(const uint32_t type)
         {
-            // temp pointer to the msg
-            Scheduler_node *const temp_ptr = node_list + type;
-            // msg's priority
-            Scheduler_node *&prio_end_ptr = prio_level_end_ptr[temp_ptr->priority];
-
-            // remove this element from list if it's in list
-            if (temp_ptr->prev)
-            {
-                temp_ptr->prev->next = temp_ptr->next;
-            }
-            if (temp_ptr->next)
-            {
-                temp_ptr->next->prev = temp_ptr->prev;
-            }
-
-            // if it's the starting pointer, move the starting pointer to the next
-            if (temp_ptr == start_ptr)
-            {
-                start_ptr = temp_ptr->next;
-                // if it's also the last message of this priority, it must be
-                // the last, remote this priority level!
-                if (temp_ptr == prio_end_ptr)
-                {
-                    prio_end_ptr = nullptr;
-                }
-            }
-            // update the ending pointer of this category if this is the last
-            // message of this priority
-            else if (temp_ptr == prio_end_ptr)
-            {
-                // if this is not the only message left at this priority level
-                // shift the level end pointer to the previous message
-                if (temp_ptr->priority == (temp_ptr->prev->priority))
-                {
-                    prio_end_ptr = temp_ptr->prev;
-                    // if this is, then remove this priority level
-                }
-                else
-                {
-                    prio_end_ptr = nullptr;
-                }
-            }
-
-            // remove its own prev and next
-            temp_ptr->prev = temp_ptr->next = nullptr;
+            TX_enable_flag = false;
+            Remove_from_schedule(type);
+            TX_enable_flag = true;
         }
 
         void Add_to_schedule(const uint32_t type, const std::vector<uint16_t> &raw, const uint32_t priority1, const int32_t expiration_count, const uint32_t period)
@@ -589,8 +610,6 @@ namespace IR
             TX_enable_flag = false;
             // if current task is in operation, remove it first.
             Remove_from_schedule(type);
-            // enable transmission again when preparing data
-            TX_enable_flag = true;
 
             auto &nlt = node_list[type];
             // setup new schedule
@@ -600,8 +619,6 @@ namespace IR
             nlt.transmission_counter = 0;
             nlt.val.TX_update(raw);
 
-            // disable flag again when adding this node back
-            TX_enable_flag = false;
             // add it back to the list
             Add_back_to_schedule(type);
             // reset flag to enable regular interrupt

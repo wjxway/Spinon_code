@@ -32,8 +32,10 @@ namespace IR
          * transmit)
          *
          * @param type msg_type of data
+         * 
+         * @warning this function is thread safe, but not multi-core safe!
          */
-        void Remove_from_schedule(const uint32_t type);
+        void Remove_from_schedule_safe(const uint32_t type);
 
         /**
          * @brief Create or reset data, then add to schedule.
@@ -51,6 +53,7 @@ namespace IR
          * which means fire every time.
          *
          * @warning calling this will ALWAYS override the existing data.
+         * @warning this function is thread safe, but not multi-core safe!
          */
         void Add_to_schedule(const uint32_t type, const std::vector<uint16_t> &raw, const uint32_t priority1, const int32_t expiration_count = -1, const uint32_t period = 1);
     } // namespace TX

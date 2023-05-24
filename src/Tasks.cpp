@@ -7,6 +7,7 @@
 #include <Circbuffer.hpp>
 #include <IrCommunication.hpp>
 #include <Localization.hpp>
+#include <BitCast.hpp>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -22,6 +23,7 @@ using math::fast::norm;
 using math::fast::square;
 
 // target point pos
+// float target_point[3] = {0.0F, (This_robot_ID == 12) ? -50.0F : -350.0F, 0.0F};
 float target_point[3] = {0.0F, 0.0F, 0.0F};
 
 // K_I has time unit of 1/s
@@ -142,6 +144,14 @@ void LED_off_task(void *pvParameters)
             // QUENCH_R;
             // QUENCH_G;
             QUENCH_B;
+        }
+
+        // turn off led if they haven't been refreshed for a while
+        if (esp_timer_get_time() - IR::RX::Get_last_RX_time() >= 20000)
+        {
+            // QUENCH_R;
+            // QUENCH_G;
+            QUENCH_R;
         }
 
         vTaskDelayUntil(&prev_wake_time, pdMS_TO_TICKS(1));
@@ -318,7 +328,7 @@ namespace
         uint32_t time = 0U;
     };
 
-    constexpr size_t Motor_buffer_max_size = 2000U;
+    constexpr size_t Motor_buffer_max_size = 500U;
     Circbuffer<Motor_info, Motor_buffer_max_size + 5> Motor_buffer;
 
     // constexpr size_t Position_buffer_max_size = 500U;
@@ -352,7 +362,7 @@ namespace
         fixed_point<3U> rot_speed = 0.0F; // rotation speed in Hz
         uint32_t time = 0U;               // the time of data, which is the last measurement's time
     };
-    constexpr uint32_t Position_data_short_buffer_max_size = 2700U;
+    constexpr uint32_t Position_data_short_buffer_max_size = 750U;
     Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 5> Filtered_position_buffer_short;
 
     // this version sends raw timing readings
@@ -953,6 +963,16 @@ void Motor_control_task(void *pvParameters)
             continue;
         }
 
+        // update localization information every 0.2s
+        static int64_t last_TX_update_time = 0;
+        constexpr int64_t TX_update_interval = 200000;
+        // if over time, update position based on current position, set priority to 2
+        if (esp_timer_get_time() - last_TX_update_time > TX_update_interval)
+        {
+            last_TX_update_time = esp_timer_get_time();
+            // IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)(filt_pos_0.x)), std::bit_cast<uint16_t>((int16_t)(filt_pos_0.y)), std::bit_cast<uint16_t>((int16_t)(filt_pos_0.z))}, 2);
+        }
+
         // pre-control actions
         // 0 for [0,speed1), 1 for [speed1,speed2), 2 for [speed2,inf)
         static int control_on = 0;
@@ -1305,7 +1325,7 @@ void Motor_monitor_task(void *pvParameters)
 
         int64_t t_now = esp_timer_get_time();
 
-        if (! Motor::Get_brake_status())
+        if (!Motor::Get_brake_status())
         {
             if (t_now - Last_position_update_time >= Power_off_threshold)
             {

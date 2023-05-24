@@ -31,16 +31,27 @@ void blink_led(int n)
     }
 }
 
-void real_setup(void *pvParameters)
+SemaphoreHandle_t init_sem;
+
+void real_setup_core_1(void *pvParameters)
+{
+    IR::RX::Init();
+
+    // give semaphore to indicate successful execution of RX setup
+    xSemaphoreGive(init_sem);
+    vTaskDelete(NULL);
+}
+
+void real_setup_core_0(void *pvParameters)
 {
     // put your setup code here, to run once:
     Serial.begin(115200);
-    DEBUG_C(Serial.println("Setup start!"));
+    DEBUG_C(Serial.println("\nSetup start on core 0!"));
     DEBUG_C(Serial.print("Robot #"));
     DEBUG_C(Serial.println(This_robot_ID));
 
     // please keep it here! or the RMT might be buggy!
-    delay(10);
+    delay(500);
 
     // test output
     pinMode(DEBUG_PIN_1, OUTPUT);
@@ -57,36 +68,54 @@ void real_setup(void *pvParameters)
 
     blink_led(5);
 
+    LED_PWM_init(2U);
+
     DEBUG_C(Serial.println("Pin setup finished!"));
 
-    Motor::Init();
-    Motor::Set_speed(0);
-    Motor::Active_brake();
+    // Motor::Init();
+    // Motor::Set_speed(0);
+    // Motor::Active_brake();
 
     // LED_set(0, float(0) / float((1 << Motor::PWM_resolution) - 1));
 
-    DEBUG_C(Serial.println("Motor started"));
+    DEBUG_C(Serial.println("Motor started!"));
 
-    // IR::TX::Init();
+    IR::TX::Init();
 
-    // DEBUG_C(Serial.println("TX inited"));
+    DEBUG_C(Serial.println("TX inited!"));
 
-    // // this is the data task that has type 4 and transmit {0x1234, 0xFEDC}
-    // IR::TX::Add_to_schedule(4, {0x0123, 0xFEDC}, 2, -1, 2);
+    // this is the data task that has type 2 and transmit {0x0123}
+    // the content is meaningless...
+    // IR::TX::Add_to_schedule(4, std::vector<uint16_t>{0x0123}, 1, -1, 1);
 
-    // DEBUG_C(Serial.println("TX data set"));
+    DEBUG_C(Serial.println("TX data set!"));
 
-    IR::RX::Init();
+    // // launch the RX init task on core 1, lock core 0 init task before
+    // // proceeding.
+    // init_sem = xSemaphoreCreateBinary();
 
-    DEBUG_C(Serial.println("RX inited!"));
+    // xTaskCreatePinnedToCore(
+    //     real_setup_core_1,
+    //     "set_core_1",
+    //     10000,
+    //     NULL,
+    //     15,
+    //     NULL,
+    //     1);
 
-    IR::Localization::Init();
+    // vTaskDelay(10);
 
-    DEBUG_C(Serial.println("Localization inited!"));
+    // // block till setup on core 1 is finished.
+    // xSemaphoreTake(init_sem, portMAX_DELAY);
+    // vSemaphoreDelete(init_sem);
 
-    DEBUG_C(Serial.println("Init finished, launching tasks!"));
+    // IR::Localization::Init();
 
-    BaseType_t task_status = pdTRUE, task_status_temp;
+    // DEBUG_C(Serial.println("Localization inited!"));
+
+    // DEBUG_C(Serial.println("Init finished, launching tasks!"));
+
+    // BaseType_t task_status = pdTRUE, task_status_temp;
 
     // // monitor the performance of cores
     // xTaskCreatePinnedToCore(
@@ -98,16 +127,26 @@ void real_setup(void *pvParameters)
     //     NULL,
     //     0);
 
-    // quench LED!
-    task_status_temp = xTaskCreatePinnedToCore(
-        LED_off_task,
-        "LED_off_task",
-        8000,
-        NULL,
-        2,
-        NULL,
-        0);
-    task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
+    // // monitor the performance of cores
+    // xTaskCreatePinnedToCore(
+    //     Idle_stats_task,
+    //     "idle1",
+    //     8000,
+    //     NULL,
+    //     1,
+    //     NULL,
+    //     1);
+
+    // // quench LED!
+    // task_status_temp = xTaskCreatePinnedToCore(
+    //     LED_off_task,
+    //     "LED_off_task",
+    //     8000,
+    //     NULL,
+    //     2,
+    //     NULL,
+    //     0);
+    // task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
 
     // // test motor thrust - speed curve
     // TaskHandle_t motor_test_handle;
@@ -128,8 +167,6 @@ void real_setup(void *pvParameters)
     // // lit LED based on position
     // TaskHandle_t LED_control_handle;
 
-    LED_PWM_init(3U);
-
     // // buffer data when new timing is obtained
     // TaskHandle_t Buffer_raw_data_handle;
 
@@ -146,59 +183,57 @@ void real_setup(void *pvParameters)
     // // trigger buffer data when new timing is obtained.
     // IR::RX::Add_RX_Notification(Buffer_raw_data_handle);
 
-    // buffer data when new localization is executed
-    TaskHandle_t Buffer_data_handle;
+    // // buffer data when new localization is executed
+    // TaskHandle_t Buffer_data_handle;
 
-    task_status_temp = xTaskCreatePinnedToCore(
-        Buffer_data_task,
-        "Buffer_data_task",
-        8000,
-        NULL,
-        8,
-        &Buffer_data_handle,
-        0);
-    task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
+    // task_status_temp = xTaskCreatePinnedToCore(
+    //     Buffer_data_task,
+    //     "Buffer_data_task",
+    //     8000,
+    //     NULL,
+    //     8,
+    //     &Buffer_data_handle,
+    //     0);
+    // task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
 
-    // trigger buffer data when localization is updated.
-    IR::Localization::Add_Localization_Notification(Buffer_data_handle);
+    // // trigger buffer data when localization is updated.
+    // IR::Localization::Add_Localization_Notification(Buffer_data_handle);
 
-    // lit LED and control motor based on position
-    TaskHandle_t Motor_control_handle;
+    // // lit LED and control motor based on position
+    // TaskHandle_t Motor_control_handle;
 
-    LED_PWM_init(3U);
+    // task_status_temp = xTaskCreatePinnedToCore(
+    //     Motor_control_task,
+    //     "Motor_control_task",
+    //     12000,
+    //     NULL,
+    //     8,
+    //     &Motor_control_handle,
+    //     0);
+    // task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
 
-    task_status_temp = xTaskCreatePinnedToCore(
-        Motor_control_task,
-        "Motor_control_task",
-        12000,
-        NULL,
-        8,
-        &Motor_control_handle,
-        0);
-    task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
+    // // trigger Motor_control when localization is updated.
+    // IR::Localization::Add_Localization_Notification(Motor_control_handle);
 
-    // trigger Motor_control when localization is updated.
-    IR::Localization::Add_Localization_Notification(Motor_control_handle);
+    // // monitor motor's state
+    // task_status_temp = xTaskCreatePinnedToCore(
+    //     Motor_monitor_task,
+    //     "Motor_monitor_task",
+    //     8000,
+    //     NULL,
+    //     3,
+    //     NULL,
+    //     0);
+    // task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
 
-    // monitor motor's state
-    task_status_temp = xTaskCreatePinnedToCore(
-        Motor_monitor_task,
-        "Motor_monitor_task",
-        8000,
-        NULL,
-        3,
-        NULL,
-        0);
-    task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
-
-    if (task_status == pdTRUE)
-    {
-        Serial.println("All tasks launched!");
-    }
-    else
-    {
-        Serial.println("Task cannot be allocated...");
-    }
+    // if (task_status == pdTRUE)
+    // {
+    //     Serial.println("All tasks launched!");
+    // }
+    // else
+    // {
+    //     Serial.println("Task cannot be allocated...");
+    // }
 
     // remove this task after use
     vTaskDelete(NULL);
@@ -206,14 +241,18 @@ void real_setup(void *pvParameters)
 
 void setup()
 {
+    vTaskDelay(10);
+
     xTaskCreatePinnedToCore(
-        real_setup,
-        "setup_task",
+        real_setup_core_0,
+        "set_core_0",
         10000,
         NULL,
         20,
         NULL,
-        0);
+        1);
+
+    vTaskDelete(NULL);
 }
 
 // delete loop() immediately
