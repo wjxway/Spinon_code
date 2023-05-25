@@ -72,9 +72,9 @@ void real_setup_core_0(void *pvParameters)
 
     DEBUG_C(Serial.println("Pin setup finished!"));
 
-    // Motor::Init();
-    // Motor::Set_speed(0);
-    // Motor::Active_brake();
+    Motor::Init();
+    Motor::Set_speed(0);
+    Motor::Active_brake();
 
     // LED_set(0, float(0) / float((1 << Motor::PWM_resolution) - 1));
 
