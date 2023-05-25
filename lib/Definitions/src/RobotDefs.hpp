@@ -39,7 +39,7 @@ constexpr float Robot_mass = 17.0F;
  *
  * @note this is linked to debug prints, debug pins, and debug leds
  */
-#define DEBUG_ENABLED 1
+#define DEBUG_ENABLED 0
 
 /**
  * @brief number of receivers, by default is 3

@@ -498,9 +498,11 @@ namespace IR
             rmt_tx.tx_config.idle_level = RMT_IDLE_LEVEL_LOW;
             rmt_tx.tx_config.idle_output_en = 1;
             // initialization of RMT
-            DEBUG_C(
-                if (rmt_config(&rmt_tx) != ESP_OK)
-                    Serial.println("RMT TX_1 init failed!"));
+
+            if (rmt_config(&rmt_tx) != ESP_OK)
+            {
+                DEBUG_C(Serial.println("RMT TX_1 init failed!"));
+            }
 
             // set source clk to APB clock
             rmt_set_source_clk(RMT_TX_channel_1, RMT_BASECLK_APB);
@@ -530,9 +532,10 @@ namespace IR
             rmt_tx_2.tx_config.idle_output_en = 1;
 
             // initialization of RMT
-            DEBUG_C(
-                if (rmt_config(&rmt_tx_2) != ESP_OK)
-                    Serial.println("RMT TX_2 init failed!"));
+            if (rmt_config(&rmt_tx_2) != ESP_OK)
+            {
+                DEBUG_C(Serial.println("RMT TX_2 init failed!"));
+            }
 
             // set source clk to APB clock
             rmt_set_source_clk(RMT_TX_channel_2, RMT_BASECLK_APB);
