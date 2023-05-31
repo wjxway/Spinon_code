@@ -76,8 +76,6 @@ void real_setup_core_0(void *pvParameters)
     Motor::Set_speed(0);
     Motor::Active_brake();
 
-    // LED_set(0, float(0) / float((1 << Motor::PWM_resolution) - 1));
-
     DEBUG_C(Serial.println("Motor started!"));
 
     IR::TX::Init();
@@ -86,7 +84,7 @@ void real_setup_core_0(void *pvParameters)
 
     // this is the data task that has type 2 and transmit {0x0123}
     // the content is meaningless...
-    IR::TX::Add_to_schedule(4, std::vector<uint16_t>{0x0123}, 1, -1, 1);
+    IR::TX::Add_to_schedule(2, std::vector<uint16_t>{0x0123}, 1, -1, 1);
 
     DEBUG_C(Serial.println("TX data set!"));
 

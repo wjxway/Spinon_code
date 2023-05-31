@@ -819,12 +819,12 @@ namespace
     {
         if (motor_state)
         {
-            setbit(DEBUG_PIN_2);
+            DEBUG_C(setbit(DEBUG_PIN_2));
             Motor::Set_speed(motor_spd_1);
         }
         else
         {
-            clrbit(DEBUG_PIN_2);
+            DEBUG_C(clrbit(DEBUG_PIN_2));
             Motor::Set_speed(motor_spd_2);
         }
         motor_state = !motor_state;
@@ -970,7 +970,7 @@ void Motor_control_task(void *pvParameters)
         if (esp_timer_get_time() - last_TX_update_time > TX_update_interval)
         {
             last_TX_update_time = esp_timer_get_time();
-            // IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)(filt_pos_0.x)), std::bit_cast<uint16_t>((int16_t)(filt_pos_0.y)), std::bit_cast<uint16_t>((int16_t)(filt_pos_0.z))}, 2);
+            IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)(filt_pos_0.x)), std::bit_cast<uint16_t>((int16_t)(filt_pos_0.y)), std::bit_cast<uint16_t>((int16_t)(filt_pos_0.z))}, 2);
         }
 
         // pre-control actions

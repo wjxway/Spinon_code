@@ -12,7 +12,7 @@
 
 // this is a macro to define robot ID in this file (related to robot parameters tuning)
 // should be removed and replaced by preferences.h for storing robot parameters
-#define TRID 11
+#define TRID 12
 
 /**
  * @brief Robot's ID

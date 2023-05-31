@@ -428,9 +428,6 @@ namespace IR
                 // two consecutive messages are identical...
                 static uint32_t t_add = 0;
 
-                // reset alarm value fast using native api
-                timer_group_set_alarm_value_in_isr(TX_timer_group, TX_timer_num, Generate_trigger_time());
-
                 DEBUG_C(setbit(DEBUG_PIN_1));
 
                 // RMT TX only when data is not being modified.
@@ -446,6 +443,10 @@ namespace IR
                     for (size_t i = 0; i < RMT_TX_length; i++)
                     {
                         RMTMEM.chan[RMT_TX_channel_2].data32[i].val = RMTMEM.chan[RMT_TX_channel_1].data32[i].val = (v + i)->val;
+                    }
+                    for (size_t i = RMT_TX_length; i < 64U; i++)
+                    {
+                        RMTMEM.chan[RMT_TX_channel_2].data32[i].val = RMTMEM.chan[RMT_TX_channel_1].data32[i].val = 0;
                     }
 
                     // edit channel 2 register
@@ -469,6 +470,9 @@ namespace IR
                 }
 
                 DEBUG_C(clrbit(DEBUG_PIN_1));
+
+                // reset alarm value fast using native api
+                timer_group_set_alarm_value_in_isr(TX_timer_group, TX_timer_num, Generate_trigger_time());
 
                 // don't do context switching!
                 return false;
