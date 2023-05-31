@@ -160,7 +160,7 @@ namespace IR
              */
             float Distance_expectation(const float LR_angle)
             {
-                return 39.0518F / sin((LR_angle + 0.0555407F) / 2.0F) - 43.9161F;
+                return IR::RX::Distance_param_a / sin((LR_angle + IR::RX::Distance_param_b) / 2.0F) + IR::RX::Distance_param_c;
             }
 
             /**
@@ -186,7 +186,7 @@ namespace IR
              */
             float Elevation_expectation(const float distance, const float Cent_angle)
             {
-                return -distance * tan(Cent_angle - 0.00174533F) * Tilting_angle_multiplyer;
+                return -distance * tan(Cent_angle + IR::RX::Elevation_angle_compensation) * Tilting_angle_multiplyer;
             }
 
             /**

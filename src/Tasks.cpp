@@ -7,6 +7,7 @@
 #include <Circbuffer.hpp>
 #include <IrCommunication.hpp>
 #include <Localization.hpp>
+#include <BitCast.hpp>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -22,6 +23,7 @@ using math::fast::norm;
 using math::fast::square;
 
 // target point pos
+// float target_point[3] = {0.0F, (This_robot_ID == 12) ? -50.0F : -350.0F, 0.0F};
 float target_point[3] = {0.0F, 0.0F, 0.0F};
 
 // K_I has time unit of 1/s
@@ -35,9 +37,9 @@ constexpr float K_D_XY = 5.5e-2F;
 // K_A has time unit of s^2
 constexpr float K_A_XY = 5.0e-2F;
 
-constexpr float K_I_Z = 1.2e-2F;
-constexpr float K_P_Z = 1.5e-2F;
-constexpr float K_D_Z = 1.2e-2F;
+constexpr float K_I_Z = 1.0e-2F;
+constexpr float K_P_Z = 2.0e-2F;
+constexpr float K_D_Z = 2.0e-2F;
 
 // rotation angle of execution in rad.
 constexpr float K_rot = 5.0F / 180.0F * M_PI;
@@ -46,27 +48,6 @@ constexpr float P_rot = 5.0F / 180.0F * M_PI;
 // time coefficient for filters in s
 constexpr float V_filter_t_coef = 0.06F;
 constexpr float A_filter_t_coef = 0.30F;
-
-// best values till now
-// constexpr float K_P_XY = 6.0e-2F;
-// // K_D has time unit of s
-// constexpr float K_D_XY = 4.5e-2F;
-// // // K_I has time unit of 1/s
-// // constexpr float K_I_XY = 0.0F;
-// // K_A has time unit of s^2d
-// constexpr float K_A_XY = 4.0e-2F;
-
-// constexpr float K_I_Z = 1.2e-2F;
-// constexpr float K_P_Z = 1.5e-2F; // 2.0e-2F;
-// constexpr float K_D_Z = 1.2e-2F; // 2.0e-2F;
-
-// // rotation angle of execution in rad.
-// constexpr float K_rot = 5.0F / 180.0F * M_PI;
-// constexpr float P_rot = 5.0F / 180.0F * M_PI;
-
-// // time coefficient for filters in s
-// constexpr float V_filter_t_coef = 0.08F;
-// constexpr float A_filter_t_coef = 0.30F;
 
 void IRAM_ATTR Idle_stats_task(void *pvParameters)
 {
@@ -163,6 +144,14 @@ void LED_off_task(void *pvParameters)
             // QUENCH_R;
             // QUENCH_G;
             QUENCH_B;
+        }
+
+        // turn off led if they haven't been refreshed for a while
+        if (esp_timer_get_time() - IR::RX::Get_last_RX_time() >= 20000)
+        {
+            // QUENCH_R;
+            // QUENCH_G;
+            QUENCH_R;
         }
 
         vTaskDelayUntil(&prev_wake_time, pdMS_TO_TICKS(1));
@@ -339,7 +328,7 @@ namespace
         uint32_t time = 0U;
     };
 
-    constexpr size_t Motor_buffer_max_size = 2000U;
+    constexpr size_t Motor_buffer_max_size = 500U;
     Circbuffer<Motor_info, Motor_buffer_max_size + 5> Motor_buffer;
 
     // constexpr size_t Position_buffer_max_size = 500U;
@@ -373,7 +362,7 @@ namespace
         fixed_point<3U> rot_speed = 0.0F; // rotation speed in Hz
         uint32_t time = 0U;               // the time of data, which is the last measurement's time
     };
-    constexpr uint32_t Position_data_short_buffer_max_size = 2700U;
+    constexpr uint32_t Position_data_short_buffer_max_size = 750U;
     Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 5> Filtered_position_buffer_short;
 
     // this version sends raw timing readings
@@ -830,12 +819,12 @@ namespace
     {
         if (motor_state)
         {
-            setbit(DEBUG_PIN_2);
+            DEBUG_C(setbit(DEBUG_PIN_2));
             Motor::Set_speed(motor_spd_1);
         }
         else
         {
-            clrbit(DEBUG_PIN_2);
+            DEBUG_C(clrbit(DEBUG_PIN_2));
             Motor::Set_speed(motor_spd_2);
         }
         motor_state = !motor_state;
@@ -974,12 +963,22 @@ void Motor_control_task(void *pvParameters)
             continue;
         }
 
+        // update localization information every 0.2s
+        static int64_t last_TX_update_time = 0;
+        constexpr int64_t TX_update_interval = 200000;
+        // if over time, update position based on current position, set priority to 2
+        if (esp_timer_get_time() - last_TX_update_time > TX_update_interval)
+        {
+            last_TX_update_time = esp_timer_get_time();
+            IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)(filt_pos_0.x)), std::bit_cast<uint16_t>((int16_t)(filt_pos_0.y)), std::bit_cast<uint16_t>((int16_t)(filt_pos_0.z))}, 2);
+        }
+
         // pre-control actions
         // 0 for [0,speed1), 1 for [speed1,speed2), 2 for [speed2,inf)
         static int control_on = 0;
         // release brake when speed reached a certain threshold
-        constexpr float Rotation_speed_start_1 = 0.000090F;
-        constexpr float Rotation_speed_start_2 = 0.000115F;
+        constexpr float Rotation_speed_start_1 = 0.000080F;
+        constexpr float Rotation_speed_start_2 = 0.000125F;
         // pre-start thurst ratio
         constexpr float Init_thrust_ratio = 0.7F;
         switch (control_on)
@@ -1026,6 +1025,24 @@ void Motor_control_task(void *pvParameters)
             integration_on = true;
         }
 
+        // // change target point to make step response
+        // int64_t t_elapsed = esp_timer_get_time() - Reach_target_speed_time;
+        // if (Reach_target_speed_time != 0 && t_elapsed >= 20000000LL)
+        // {
+        //     if (t_elapsed >= 50000000LL)
+        //     {
+        //         target_point[0] = -80.0F;
+        //     }
+        //     else if (t_elapsed >= 35000000LL)
+        //     {
+        //         target_point[0] = 80.0F;
+        //     }
+        //     else
+        //     {
+        //         target_point[0] = -80.0F;
+        //     }
+        // }
+
         Last_position_update_time = esp_timer_get_time();
 
         P_comp[0] = filt_pos_0.x - target_point[0];
@@ -1043,9 +1060,9 @@ void Motor_control_task(void *pvParameters)
         if (integration_on)
         {
             t_coef = float(pos_0.time - pos_1.time) / 2.0e6F;
-            I_comp[0] += t_coef * (pos_0.x + pos_1.x);
-            I_comp[1] += t_coef * (pos_0.y + pos_1.y);
-            I_comp[2] += t_coef * (pos_0.z + pos_1.z);
+            I_comp[0] += t_coef * (pos_0.x + pos_1.x - 2.0F * target_point[0]);
+            I_comp[1] += t_coef * (pos_0.y + pos_1.y - 2.0F * target_point[1]);
+            I_comp[2] += t_coef * (pos_0.z + pos_1.z - 2.0F * target_point[2]);
         }
 
         // add a constraint to horizontal I comp magnitude
@@ -1101,11 +1118,11 @@ void Motor_control_task(void *pvParameters)
         FB_val[1] = -K_P_XY * (sin_rot * P_comp[0] + cos_rot * P_comp[1]) - K_D_XY * Filtered_D_comp[1] - K_A_XY * Filtered_A_comp[1] - K_I_XY * I_comp[1];
         FB_val[2] = -K_P_Z * P_comp[2] - K_D_Z * D_comp[2] - K_I_Z * I_comp[2] + Robot_mass;
 
-        // if (norm(pos_0.x, pos_0.y) > 200.0F)
-        // {
-        //     FB_val[0] = -(cos_rot * P_comp[0] - sin_rot * P_comp[1]);
-        //     FB_val[1] = -(sin_rot * P_comp[0] + cos_rot * P_comp[1]);
-        // }
+        if (norm(pos_0.x, pos_0.y) > 200.0F)
+        {
+            FB_val[0] = -(cos_rot * P_comp[0] - sin_rot * P_comp[1]);
+            FB_val[1] = -(sin_rot * P_comp[0] + cos_rot * P_comp[1]);
+        }
 
         // all computation has been finished till now
         // from now on it's the boring setup interrupt part
@@ -1294,7 +1311,7 @@ void Motor_control_task(void *pvParameters)
 void Motor_monitor_task(void *pvParameters)
 {
     // when will we lower the motor power after no position update
-    constexpr uint64_t Power_low_threshold = 60000;
+    constexpr uint64_t Power_low_threshold = 200000;
 
     // when power low, what's the thrust?
     constexpr float Power_low_value = 0.8F;
@@ -1308,7 +1325,7 @@ void Motor_monitor_task(void *pvParameters)
 
         int64_t t_now = esp_timer_get_time();
 
-        if (Reach_target_speed_time != 0)
+        if (!Motor::Get_brake_status())
         {
             if (t_now - Last_position_update_time >= Power_off_threshold)
             {
