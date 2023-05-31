@@ -46,7 +46,29 @@ void real_setup_core_0(void *pvParameters)
 {
     // put your setup code here, to run once:
     Serial.begin(115200);
-    DEBUG_C(Serial.println("\nSetup start on core 0!"));
+
+    // set global parameters
+    // run it **ONCE** after calibration!
+    // Write_global_parameters(11U, 17.5F, -0.03F, 0.0436332F, 0.18F, 39.0518F, 0.0555407F, -43.9161F);
+    // Write_global_parameters(12U, 17.0F, 0.00F, -0.00174533F, 0.18F, 28.3525F, 0.00402181F, -18.7431F);
+
+    // init global parameters
+    if (!Init_global_parameters())
+    {
+        // if init failure, we lit red LED and then loop a random task
+        LIT_R;
+
+        xTaskCreatePinnedToCore(
+            Idle_stats_task,
+            "idle0",
+            8000,
+            NULL,
+            21,
+            NULL,
+            0);
+    }
+
+    DEBUG_C(Serial.println("\nSetup start!"));
     DEBUG_C(Serial.print("Robot #"));
     DEBUG_C(Serial.println(This_robot_ID));
 

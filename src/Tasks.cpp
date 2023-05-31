@@ -383,8 +383,8 @@ namespace
                 Serial.print("Now is ");
                 Serial.println(esp_timer_get_time());
 
-                std::string v = "K_P_Z = ";
-                v += std::to_string(K_P_Z) + ", K_D_Z = " + std::to_string(K_D_Z) + ", K_I_Z = " + std::to_string(K_I_Z) + "\nK_P_XY = " + std::to_string(K_P_XY) + ", K_D_XY = " + std::to_string(K_D_XY) + ", K_A_XY = " + std::to_string(K_A_XY) + "\nV_filter_t_coef = " + std::to_string(V_filter_t_coef) + ", A_filter_t_coef = " + std::to_string(A_filter_t_coef) + "\nTarget = { " + std::to_string(target_point[0]) + " , " + std::to_string(target_point[1]) + " , " + std::to_string(target_point[2]) + " }\n";
+                std::string v = "Robot_ID: ";
+                v += std::to_string(This_robot_ID) + "\nK_P_Z = " + std::to_string(K_P_Z) + ", K_D_Z = " + std::to_string(K_D_Z) + ", K_I_Z = " + std::to_string(K_I_Z) + "\nK_P_XY = " + std::to_string(K_P_XY) + ", K_D_XY = " + std::to_string(K_D_XY) + ", K_A_XY = " + std::to_string(K_A_XY) + "\nV_filter_t_coef = " + std::to_string(V_filter_t_coef) + ", A_filter_t_coef = " + std::to_string(A_filter_t_coef) + "\nTarget = { " + std::to_string(target_point[0]) + " , " + std::to_string(target_point[1]) + " , " + std::to_string(target_point[2]) + " }\n";
 
                 Serial.print(v.c_str());
 
