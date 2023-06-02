@@ -23,8 +23,7 @@ using math::fast::norm;
 using math::fast::square;
 
 // target point pos
-// float target_point[3] = {0.0F, (This_robot_ID == 12) ? -50.0F : -350.0F, 0.0F};
-float target_point[3] = {0.0F, 0.0F, 0.0F};
+float target_point[3] = {0.0F, -0.0F, 0.0F};
 
 // K_I has time unit of 1/s
 constexpr float K_I_XY = 2.0e-2F;
@@ -328,7 +327,7 @@ namespace
         uint32_t time = 0U;
     };
 
-    constexpr size_t Motor_buffer_max_size = 500U;
+    constexpr size_t Motor_buffer_max_size = 1500U;
     Circbuffer<Motor_info, Motor_buffer_max_size + 5> Motor_buffer;
 
     // constexpr size_t Position_buffer_max_size = 500U;
@@ -362,7 +361,7 @@ namespace
         fixed_point<3U> rot_speed = 0.0F; // rotation speed in Hz
         uint32_t time = 0U;               // the time of data, which is the last measurement's time
     };
-    constexpr uint32_t Position_data_short_buffer_max_size = 750U;
+    constexpr uint32_t Position_data_short_buffer_max_size = 2000U;
     Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 5> Filtered_position_buffer_short;
 
     // this version sends raw timing readings
@@ -963,9 +962,13 @@ void Motor_control_task(void *pvParameters)
             continue;
         }
 
-        // update localization information every 0.2s
+        // update localization information every 0.25s
+        // note that the update interval should not be smaller than the rotation
+        // period, or there might be cases where two different messages share
+        // the same msg_id_init (which is used for signaling message change),
+        // causing confusion.
         static int64_t last_TX_update_time = 0;
-        constexpr int64_t TX_update_interval = 200000;
+        constexpr int64_t TX_update_interval = 50000;
         // if over time, update position based on current position, set priority to 2
         if (esp_timer_get_time() - last_TX_update_time > TX_update_interval)
         {
@@ -1118,7 +1121,7 @@ void Motor_control_task(void *pvParameters)
         FB_val[1] = -K_P_XY * (sin_rot * P_comp[0] + cos_rot * P_comp[1]) - K_D_XY * Filtered_D_comp[1] - K_A_XY * Filtered_A_comp[1] - K_I_XY * I_comp[1];
         FB_val[2] = -K_P_Z * P_comp[2] - K_D_Z * D_comp[2] - K_I_Z * I_comp[2] + Robot_mass;
 
-        if (norm(pos_0.x, pos_0.y) > 200.0F)
+        if (norm(pos_0.x - target_point[0], pos_0.y - target_point[1]) > 200.0F)
         {
             FB_val[0] = -(cos_rot * P_comp[0] - sin_rot * P_comp[1]);
             FB_val[1] = -(sin_rot * P_comp[0] + cos_rot * P_comp[1]);
@@ -1340,6 +1343,27 @@ void Motor_monitor_task(void *pvParameters)
 
                 Motor::Set_thrust(Power_low_value * Robot_mass);
             }
+        }
+    }
+}
+
+void Message_relay_task(void *pvParameters)
+{
+    Circbuffer_copycat<IR::RX::Parsed_msg_completed, 20> msg_buf = IR::RX::Get_msg_buffer_by_type(4);
+
+    while (true)
+    {
+        // wait till next data is obtained
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        while (!msg_buf.Empty_Q())
+        {
+            auto msg = msg_buf.pop();
+
+            std::string str = "";
+            str += std::to_string(msg.robot_ID) + ":{" + std::to_string(std::bit_cast<int16_t>(msg.content[0])) + "," + std::to_string(std::bit_cast<int16_t>(msg.content[1])) + "," + std::to_string(std::bit_cast<int16_t>(msg.content[2])) + "}\n";
+
+            Serial.print(str.c_str());
         }
     }
 }

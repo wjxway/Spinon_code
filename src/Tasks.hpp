@@ -7,6 +7,8 @@
 
 #include "Arduino.h"
 
+extern float target_point[3];
+
 /**
  * @brief an idle task to monitor free time on CPU.
  *
@@ -73,5 +75,12 @@ void Motor_monitor_task(void *pvParameters);
  * @param pvParameters 
  */
 void Motor_test_task(void *pvParameters);
+
+/**
+ * @brief print out position messages received
+ * 
+ * @param pvParameters 
+ */
+void Message_relay_task(void *pvParameters);
 
 #endif
