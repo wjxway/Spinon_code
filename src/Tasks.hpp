@@ -19,4 +19,6 @@ void LED_off_task(void *pvParameters);
  */
 void Buffer_raw_data_task(void *pvParameters);
 
+void Relay_task(void *pvParameters);
+
 #endif

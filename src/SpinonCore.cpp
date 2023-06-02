@@ -4,7 +4,9 @@
 #include <IrCommunication.hpp>
 #include "Tasks.hpp"
 
-uint64_t rec_finish_time = 0;
+// DRONE_MODE = 0 -> RX+TX, spinning drone
+// DRONE_MODE = 1 -> RX only, static message relay drone
+#define DRONE_MODE 0
 
 // Blink the LED
 void blink_led(int n)
@@ -15,17 +17,28 @@ void blink_led(int n)
         LIT_G;
         LIT_B;
 
-        delay(100);
+        delay(60);
 
         QUENCH_R;
         QUENCH_G;
         QUENCH_B;
 
-        delay(100);
+        delay(60);
     }
 }
 
-void real_setup(void *pvParameters)
+SemaphoreHandle_t init_sem;
+
+void real_setup_core_1(void *pvParameters)
+{
+    IR::RX::Init();
+
+    // give semaphore to indicate successful execution of RX setup
+    xSemaphoreGive(init_sem);
+    vTaskDelete(NULL);
+}
+
+void real_setup_core_0(void *pvParameters)
 {
     // put your setup code here, to run once:
     Serial.begin(115200);
@@ -49,11 +62,32 @@ void real_setup(void *pvParameters)
     digitalWrite(LED_PIN_G, HIGH);
     digitalWrite(LED_PIN_B, HIGH);
 
-    blink_led(5);
+    blink_led(3);
 
     DEBUG_C(Serial.println("Pin setup finished!"));
 
-    IR::RX::Init();
+    IR::TX::Init();
+    DEBUG_C(Serial.println("TX inited!"));
+    // this is the data task that has type 2 and transmit {0x0123}
+    // the content is meaningless...
+    IR::TX::Add_to_schedule(2, std::vector<uint16_t>{0x0123}, 1, -1, 1);
+    DEBUG_C(Serial.println("TX data set!"));
+
+    // launch the RX init task on core 1, lock core 0 init task before
+    // proceeding.
+    init_sem = xSemaphoreCreateBinary();
+    xTaskCreatePinnedToCore(
+        real_setup_core_1,
+        "set_core_1",
+        10000,
+        NULL,
+        15,
+        NULL,
+        1);
+    vTaskDelay(10);
+    // block till setup on core 1 is finished.
+    xSemaphoreTake(init_sem, portMAX_DELAY);
+    vSemaphoreDelete(init_sem);
 
     DEBUG_C(Serial.println("RX inited!"));
 
@@ -88,7 +122,6 @@ void real_setup(void *pvParameters)
     // trigger buffer data when new timing is obtained.
     IR::RX::Add_RX_Notification(Buffer_raw_data_handle);
 
-
     if (task_status == pdTRUE)
     {
         Serial.println("All tasks launched!");
@@ -105,13 +138,13 @@ void real_setup(void *pvParameters)
 void setup()
 {
     xTaskCreatePinnedToCore(
-        real_setup,
-        "setup_task",
+        real_setup_core_0,
+        "set_core_0",
         10000,
         NULL,
         20,
         NULL,
-        0);
+        1);
 }
 
 // delete loop() immediately

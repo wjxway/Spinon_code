@@ -36,55 +36,23 @@ void LED_off_task(void *pvParameters)
     }
 }
 
-namespace
+union timing_short
 {
-    constexpr size_t Raw_time_buffer_max_size = 600U;
-    Circbuffer<IR::RX::Msg_timing_t, Raw_time_buffer_max_size + 3> Raw_time_buffer;
-
-    void Send_message_task(void *pvParameters)
+    struct
     {
-        while (true)
-        {
-            vTaskDelay(50);
-            if (Serial.available())
-            {
-                delay(10);
-                // deplete serial buffer
-                while (Serial.available())
-                {
-                    Serial.read();
-                }
-
-                while (Raw_time_buffer.n_elem != 0)
-                {
-                    auto rtdat = Raw_time_buffer.pop();
-
-                    std::string v = std::string("ID: ") + std::to_string(rtdat.robot_ID) + std::string(", t_mid: ") + std::to_string(rtdat.time_arr[0]) + std::string(", t_left: ") + std::to_string(rtdat.time_arr[1]) + std::string(", t_right: ") + std::to_string(rtdat.time_arr[2]) + "\n";
-
-                    Serial.print(v.c_str());
-                }
-            }
-        }
-    }
-}
+        uint32_t time[3];
+        uint16_t rid;
+    } val;
+    uint16_t raw[7];
+};
 
 void Buffer_raw_data_task(void *pvParameters)
 {
-    // send me messages through serial!
-    xTaskCreatePinnedToCore(
-        Send_message_task,
-        "Send_message_task",
-        20000,
-        NULL,
-        3,
-        NULL,
-        0);
-
     int64_t last_access_time = 0;
 
     while (true)
     {
-        // wait till next localization is done
+        // wait till next message is received
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
         // get data
@@ -102,26 +70,23 @@ void Buffer_raw_data_task(void *pvParameters)
 
         } while (io_flag != IR::RX::Get_io_flag());
 
-        for (size_t i = 0; i < temp_len; i++)
+        int64_t last_access_time_new = max(max(temp[0].time_arr[0], temp[0].time_arr[1]), temp[0].time_arr[2]);
+        if (last_access_time_new > last_access_time)
         {
-            if (max(max(temp[i].time_arr[0], temp[i].time_arr[1]), temp[i].time_arr[2]) <= last_access_time)
-            {
-                break;
-            }
-            else
-            {
-                Raw_time_buffer.push(temp[i]);
-            }
-        }
+            timing_short ts;
+            ts.val.rid = temp[0].robot_ID;
+            ts.val.time[0] = temp[0].time_arr[0];
+            ts.val.time[1] = temp[0].time_arr[1];
+            ts.val.time[2] = temp[0].time_arr[2];
 
-        if (temp_len > 0)
-        {
-            last_access_time = max(max(max(temp[0].time_arr[0], temp[0].time_arr[1]), temp[0].time_arr[2]), last_access_time);
-        }
+            std::vector<uint16_t> data(7, 0);
+            for (size_t i = 0; i < 7; i++)
+            {
+                data[i] = ts.raw[i];
+            }
 
-        if (Raw_time_buffer.n_elem >= Raw_time_buffer_max_size)
-        {
-            LIT_G;
+            IR::TX::Add_to_schedule(5, data, 3);
+            last_access_time = last_access_time_new;
         }
     }
 }
