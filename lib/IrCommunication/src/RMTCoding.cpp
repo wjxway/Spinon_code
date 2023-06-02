@@ -23,7 +23,7 @@ bool IR::detail::Generate_RMT_item(rmt_item32_t *const pointer, const uint32_t d
     }
 
     // termination
-    pointer[RMT_data_pulse_count + 1] = pointer[RMT_data_pulse_count + 2] = {0};
+    pointer[RMT_data_pulse_count + 1] = pointer[RMT_data_pulse_count + 2] = {{{0, 0, 0, 1}}};
 
     return true;
 }
