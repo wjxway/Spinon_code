@@ -19,6 +19,9 @@ void LED_off_task(void *pvParameters);
  */
 void Buffer_raw_data_task(void *pvParameters);
 
-void Relay_task(void *pvParameters);
+/**
+ * @brief relay messages through serial
+ */
+void Message_relay_task(void *pvParameters);
 
 #endif

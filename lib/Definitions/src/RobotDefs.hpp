@@ -10,12 +10,16 @@
 #define _USE_MATH_DEFINES
 #include <cmath>
 
+// DRONE_MODE = 0 -> RX+TX, spinning drone
+// DRONE_MODE = 1 -> RX only, static message relay drone
+#define DRONE_MODE 0
+
 /**
  * @brief Robot's ID
  *
  * @note for valid range, please check RMTMessageDefs.hpp -> Robot_ID_bits
  */
-const uint32_t This_robot_ID = 12U;
+const uint32_t This_robot_ID = 12U - DRONE_MODE;
 
 /**
  * @brief whether to enable led output
@@ -26,7 +30,7 @@ const uint32_t This_robot_ID = 12U;
  *
  * @note this is linked to debug prints, debug pins, and debug leds
  */
-#define DEBUG_ENABLED 0
+#define DEBUG_ENABLED 1
 
 /**
  * @brief number of receivers, by default is 3

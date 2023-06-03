@@ -4,9 +4,6 @@
 #include <IrCommunication.hpp>
 #include "Tasks.hpp"
 
-// DRONE_MODE = 0 -> RX+TX, spinning drone
-// DRONE_MODE = 1 -> RX only, static message relay drone
-#define DRONE_MODE 0
 
 // Blink the LED
 void blink_led(int n)
@@ -66,12 +63,20 @@ void real_setup_core_0(void *pvParameters)
 
     DEBUG_C(Serial.println("Pin setup finished!"));
 
+#if DRONE_MODE == 0
+    Serial.println("Calibration mode!");
+#else
+    Serial.println("Relay mode!");
+#endif
+
+#if DRONE_MODE == 0
     IR::TX::Init();
     DEBUG_C(Serial.println("TX inited!"));
     // this is the data task that has type 2 and transmit {0x0123}
     // the content is meaningless...
-    IR::TX::Add_to_schedule(2, std::vector<uint16_t>{0x0123}, 1, -1, 1);
+    IR::TX::Add_to_schedule(4, std::vector<uint16_t>{0x0123}, 1);
     DEBUG_C(Serial.println("TX data set!"));
+#endif
 
     // launch the RX init task on core 1, lock core 0 init task before
     // proceeding.
@@ -81,7 +86,7 @@ void real_setup_core_0(void *pvParameters)
         "set_core_1",
         10000,
         NULL,
-        15,
+        20,
         NULL,
         1);
     vTaskDelay(10);
@@ -106,6 +111,7 @@ void real_setup_core_0(void *pvParameters)
         0);
     task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
 
+#if DRONE_MODE == 0
     // buffer data when new timing is obtained
     TaskHandle_t Buffer_raw_data_handle;
 
@@ -121,14 +127,33 @@ void real_setup_core_0(void *pvParameters)
 
     // trigger buffer data when new timing is obtained.
     IR::RX::Add_RX_Notification(Buffer_raw_data_handle);
+#endif
+
+#if DRONE_MODE == 1
+    // buffer data when new timing is obtained
+    TaskHandle_t Message_relay_handle;
+
+    task_status_temp = xTaskCreatePinnedToCore(
+        Message_relay_task,
+        "Message_relay_task",
+        8000,
+        NULL,
+        8,
+        &Message_relay_handle,
+        0);
+    task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
+
+    // trigger buffer data when new timing is obtained.
+    IR::RX::Add_RX_Notification(Message_relay_handle);
+#endif
 
     if (task_status == pdTRUE)
     {
-        Serial.println("All tasks launched!");
+        DEBUG_C(Serial.println("All tasks launched!"));
     }
     else
     {
-        Serial.println("Task cannot be allocated...");
+        DEBUG_C(Serial.println("Task cannot be allocated..."));
     }
 
     // remove this task after use
@@ -137,14 +162,18 @@ void real_setup_core_0(void *pvParameters)
 
 void setup()
 {
+    vTaskDelay(10);
+
     xTaskCreatePinnedToCore(
         real_setup_core_0,
         "set_core_0",
         10000,
         NULL,
-        20,
+        15,
         NULL,
-        1);
+        0);
+
+    vTaskDelete(NULL);
 }
 
 // delete loop() immediately
