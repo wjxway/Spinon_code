@@ -691,8 +691,10 @@ namespace IR
                     {
                         // position found?
                         bool position_found = false;
+                        // time_list[i]
+                        IR::RX::Msg_timing_t &time_list_i = time_list[i];
                         // robot ID
-                        uint32_t rid = time_list[i].robot_ID;
+                        uint32_t rid = time_list_i.robot_ID;
                         // search for robot ID in pos_list
                         for (auto &msg : pos_list)
                         {
@@ -718,13 +720,19 @@ namespace IR
 
                             // note that here we directly use the compensated
                             // angle data, computed using LR-0.12 Cent
-                            int64_t avg_time = ((time_list[i].time_arr[1] + time_list[i].time_arr[2]) >> 1);
+                            int64_t avg_time = ((time_list_i.time_arr[1] + time_list_i.time_arr[2]) >> 1);
                             // timing difference between left and right receiver.
-                            float LR_diff = float(int64_t(time_list[i].time_arr[1] - time_list[i].time_arr[2])) * angular_velocity;
+                            float LR_diff = float(int64_t(time_list_i.time_arr[1] - time_list_i.time_arr[2])) * angular_velocity;
                             // timing difference between center and average of LR.
-                            float Cent_diff = float(time_list[i].time_arr[0] - avg_time) * angular_velocity;
+                            float Cent_diff = float(time_list_i.time_arr[0] - avg_time) * angular_velocity;
 
                             float Compensated_LR_diff = LR_diff + IR::RX::LR_angle_compensation * Cent_diff;
+
+                            // compensate for up/low emitter
+                            if (time_list_i.emitter_pos == 0)
+                            {
+                                this_Loc_data.pos[2] += IR::detail::LED_elevation_diff;
+                            }
 
                             // check if timing data is reasonable
 

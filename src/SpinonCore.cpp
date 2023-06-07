@@ -21,13 +21,13 @@ void blink_led(int n)
         LIT_G;
         LIT_B;
 
-        delay(100);
+        delay(60);
 
         QUENCH_R;
         QUENCH_G;
         QUENCH_B;
 
-        delay(100);
+        delay(60);
     }
 }
 
@@ -46,11 +46,12 @@ void real_setup_core_0(void *pvParameters)
 {
     // put your setup code here, to run once:
     Serial.begin(115200);
+    DEBUG_C(Serial.println("\nSetup start!"));
 
     // set global parameters
     // run it **ONCE** after calibration!
-    // Write_global_parameters(11U, 17.5F, -0.03F, 0.0436332F, 0.18F, 39.0518F, 0.0555407F, -43.9161F);
-    // Write_global_parameters(12U, 17.0F, 0.00F, -0.00174533F, 0.18F, 28.3525F, 0.00402181F, -18.7431F);
+    // Write_global_parameters(11U, 17.9F, -0.03F, 0.0436332F, 0.18F, 39.0518F, 0.0555407F, -43.9161F);
+    // Write_global_parameters(12U, 17.5F, 0.05F, 0.0261799F, 0.18F, 26.6286F, 0.00152896F, -5.96417F);
 
     // init global parameters
     if (!Init_global_parameters())
@@ -68,7 +69,10 @@ void real_setup_core_0(void *pvParameters)
             0);
     }
 
-    DEBUG_C(Serial.println("\nSetup start!"));
+    target_point[1]=(This_robot_ID == 12) ? -50.0F : -350.0F;
+    // target_point[1]=-350.0F;
+
+    DEBUG_C(Serial.println("Global parameters initialized!"));
     DEBUG_C(Serial.print("Robot #"));
     DEBUG_C(Serial.println(This_robot_ID));
 
@@ -88,8 +92,7 @@ void real_setup_core_0(void *pvParameters)
     digitalWrite(LED_PIN_G, HIGH);
     digitalWrite(LED_PIN_B, HIGH);
 
-    blink_led(5);
-
+    blink_led(3);
     LED_PWM_init(2U);
 
     DEBUG_C(Serial.println("Pin setup finished!"));
@@ -97,23 +100,21 @@ void real_setup_core_0(void *pvParameters)
     Motor::Init();
     Motor::Set_speed(0);
     Motor::Active_brake();
-
     DEBUG_C(Serial.println("Motor started!"));
 
-    IR::TX::Init();
-
-    DEBUG_C(Serial.println("TX inited!"));
-
-    // this is the data task that has type 2 and transmit {0x0123}
-    // the content is meaningless...
-    IR::TX::Add_to_schedule(2, std::vector<uint16_t>{0x0123}, 1, -1, 1);
-
-    DEBUG_C(Serial.println("TX data set!"));
+    if (This_robot_ID == 12)
+    {
+        IR::TX::Init();
+        DEBUG_C(Serial.println("TX inited!"));
+        // this is the data task that has type 2 and transmit {0x0123}
+        // the content is meaningless...
+        IR::TX::Add_to_schedule(2, std::vector<uint16_t>{0x0123}, 1, -1, 1);
+        DEBUG_C(Serial.println("TX data set!"));
+    }
 
     // launch the RX init task on core 1, lock core 0 init task before
     // proceeding.
     init_sem = xSemaphoreCreateBinary();
-
     xTaskCreatePinnedToCore(
         real_setup_core_1,
         "set_core_1",
@@ -122,20 +123,31 @@ void real_setup_core_0(void *pvParameters)
         15,
         NULL,
         1);
-
     vTaskDelay(10);
-
     // block till setup on core 1 is finished.
     xSemaphoreTake(init_sem, portMAX_DELAY);
     vSemaphoreDelete(init_sem);
 
     IR::Localization::Init();
-
     DEBUG_C(Serial.println("Localization inited!"));
 
     DEBUG_C(Serial.println("Init finished, launching tasks!"));
 
     BaseType_t task_status = pdTRUE, task_status_temp;
+
+    // // relay received messages to computer
+    // TaskHandle_t Message_relay_task_handle;
+    // task_status_temp = xTaskCreatePinnedToCore(
+    //     Message_relay_task,
+    //     "Message_relay_task",
+    //     8000,
+    //     NULL,
+    //     5,
+    //     &Message_relay_task_handle,
+    //     0);
+    // task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
+    // // trigger buffer data when localization is updated.
+    // IR::RX::Add_RX_Notification(Message_relay_task_handle);
 
     // // monitor the performance of cores
     // xTaskCreatePinnedToCore(
@@ -180,22 +192,6 @@ void real_setup_core_0(void *pvParameters)
         NULL,
         0);
     task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
-
-    // // lit LED based on position
-    // TaskHandle_t LED_control_handle;
-    // // buffer data when new timing is obtained
-    // TaskHandle_t Buffer_raw_data_handle;
-    // task_status_temp = xTaskCreatePinnedToCore(
-    //     Buffer_raw_data_task,
-    //     "Buffer_raw_data_task",
-    //     8000,
-    //     NULL,
-    //     8,
-    //     &Buffer_raw_data_handle,
-    //     0);
-    // task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
-    // // trigger buffer data when new timing is obtained.
-    // IR::RX::Add_RX_Notification(Buffer_raw_data_handle);
 
     // buffer data when new localization is executed
     TaskHandle_t Buffer_data_handle;
@@ -260,7 +256,7 @@ void setup()
         NULL,
         20,
         NULL,
-        1);
+        0);
 
     vTaskDelete(NULL);
 }

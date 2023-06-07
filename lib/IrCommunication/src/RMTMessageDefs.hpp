@@ -290,6 +290,11 @@ namespace IR
 		 */
 		constexpr uint32_t RMT_TX_trigger_period_max = 100;
 		// constexpr uint32_t RMT_TX_trigger_period_max = 2000;
+
+		/**
+		 * @brief elevation distance between up and down emitters
+		 */
+		constexpr float LED_elevation_diff = 35.74F;
 	} // namespace detail
 } // namespace IR
 
