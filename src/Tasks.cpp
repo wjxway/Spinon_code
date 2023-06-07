@@ -23,7 +23,7 @@ using math::fast::norm;
 using math::fast::square;
 
 // target point pos
-float target_point[3] = {0.0F, -0.0F, 0.0F};
+float target_point[3] = {0.0F, 0.0F, 0.0F};
 
 // K_I has time unit of 1/s
 constexpr float K_I_XY = 2.0e-2F;
@@ -973,7 +973,10 @@ void Motor_control_task(void *pvParameters)
         if (esp_timer_get_time() - last_TX_update_time > TX_update_interval)
         {
             last_TX_update_time = esp_timer_get_time();
-            IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)(filt_pos_0.x)), std::bit_cast<uint16_t>((int16_t)(filt_pos_0.y)), std::bit_cast<uint16_t>((int16_t)(filt_pos_0.z))}, 2);
+            if (This_robot_ID == 12)
+            {
+                IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)(filt_pos_0.x)), std::bit_cast<uint16_t>((int16_t)(filt_pos_0.y)), std::bit_cast<uint16_t>((int16_t)(filt_pos_0.z))}, 2);
+            }
         }
 
         // pre-control actions
