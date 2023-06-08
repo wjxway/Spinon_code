@@ -20,7 +20,7 @@ namespace IR
          * @brief initialization of TX routine, including
          *        1. initialize TX RMT channels
          *        2. initialize TX ISR, timer and random number generator
-         *        2. initialize scheduler and default TX task
+         *        3. initialize scheduler and default TX task
          * 
          * @note should execute this first before doing anything else! I don't
          * check for this, but you have to.

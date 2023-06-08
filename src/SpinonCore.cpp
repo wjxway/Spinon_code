@@ -10,8 +10,6 @@
 #include <Localization.hpp>
 #include "Tasks.hpp"
 
-uint64_t rec_finish_time = 0;
-
 // Blink the LED
 void blink_led(int n)
 {
@@ -50,7 +48,7 @@ void real_setup_core_0(void *pvParameters)
 
     // set global parameters
     // run it **ONCE** after calibration!
-    // Write_global_parameters(11U, 17.9F, -0.03F, 0.0436332F, 0.18F, 39.0518F, 0.0555407F, -43.9161F);
+    // Write_global_parameters(11U, 18.0F, -0.03F, 0.0436332F, 0.18F, 39.0518F, 0.0555407F, -43.9161F);
     // Write_global_parameters(12U, 17.5F, 0.05F, 0.0261799F, 0.18F, 26.6286F, 0.00152896F, -5.96417F);
 
     // init global parameters
