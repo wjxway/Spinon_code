@@ -37,8 +37,8 @@ constexpr float K_D_XY = 5.5e-2F;
 constexpr float K_A_XY = 5.0e-2F;
 
 constexpr float K_I_Z = 1.0e-2F;
-constexpr float K_P_Z = 2.0e-2F;
-constexpr float K_D_Z = 2.0e-2F;
+constexpr float K_P_Z = 2.5e-2F;
+constexpr float K_D_Z = 1.5e-2F;
 
 // rotation angle of execution in rad.
 constexpr float K_rot = 5.0F / 180.0F * M_PI;
