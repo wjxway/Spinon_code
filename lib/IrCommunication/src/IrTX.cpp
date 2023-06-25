@@ -17,6 +17,11 @@ namespace IR
         namespace
         {
             /**
+             * @brief if TX is enabled
+             */
+            bool TX_inited=false;
+
+            /**
              * @brief trigger timer group for TX_ISR
              */
             timer_group_t TX_timer_group = timer_group_t((IR_TX_trigger_timer_channel & 2U) >> 1);
@@ -479,6 +484,11 @@ namespace IR
             }
         } // anonymous namespace
 
+        bool TX_enabled()
+        {
+            return TX_inited;
+        }
+
         void Init()
         {
             // enable random number generation
@@ -601,6 +611,8 @@ namespace IR
             timer_start(TX_timer_group, TX_timer_num);
 
             DEBUG_C(Serial.println("Trigger_timer init successful!"));
+
+            TX_inited=true;
         }
 
         void Remove_from_schedule_safe(const uint32_t type)

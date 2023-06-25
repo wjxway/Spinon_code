@@ -168,107 +168,6 @@ std::string n2hexstr(I w, size_t hex_len = sizeof(I) << 1)
     return rc;
 }
 
-// void Send_message_task(void *pvParameters)
-// {
-//     TickType_t prev_wake_time = xTaskGetTickCount();
-//
-//     while (1)
-//     {
-//         uint32_t curr_flag;
-//
-//         uint32_t robot_count;
-//         uint32_t idarr[IR::RX::Max_robots_simultaneous];
-//         uint32_t time_count;
-//         IR::RX::Msg_timing_t tarr[IR::RX::Raw_msg_buffer_size];
-//         IR::RX::Parsed_msg_completed msg_1, msg_4;
-//
-//         bool repeat = 0;
-//
-//         do
-//         {
-//             if (repeat)
-//                 Serial.println("Oops, interrupted!");
-//             else
-//                 repeat = 1;
-//
-//             std::fill_n(idarr, IR::RX::Max_robots_simultaneous, 0);
-//
-//             curr_flag = IR::RX::Get_io_flag();
-//
-//             robot_count = IR::RX::Get_neighboring_robots_ID(idarr, 0);
-//             msg_1 = IR::RX::Get_latest_msg_by_type(1);
-//             msg_4 = IR::RX::Get_latest_msg_by_type(4);
-//             time_count = IR::RX::Get_timing_data(tarr);
-//         } while (IR::RX::Get_io_flag() != curr_flag);
-//
-//         std::string temp = "";
-//
-//         if (robot_count)
-//         {
-//             // print robot number
-//             temp = "\n# Robots: " + std::to_string(robot_count) + "\n There IDs are: ";
-//
-//             // print robot IDs
-//             for (size_t i = 0; i < robot_count; i++)
-//             {
-//                 temp += std::to_string(idarr[i]) + ",";
-//             }
-//         }
-//         else
-//         {
-//             temp = "\nNo Robot here! :(";
-//         }
-//
-//         if (msg_1.content_length)
-//         {
-//             // print latest msg of type 1
-//             temp += "\nLatest type 1 message is sent by robot " + std::to_string(msg_1.robot_ID) + " : " + n2hexstr(msg_1.content[0]);
-//             temp += "\n    last received at: " + std::to_string(msg_1.finish_reception_time);
-//         }
-//         else
-//         {
-//             temp += "\nNo message of type 1 received.";
-//         }
-//
-//         if (msg_4.content_length)
-//         {
-//             // print first robot's latest msg of type 4
-//             temp += "\nLatest type 4 message is sent by robot " + std::to_string(msg_4.robot_ID) + " and has length of: " + std::to_string(msg_4.content_length) + "\n The contents are: ";
-//
-//             for (size_t i = 0; i < msg_4.content_length; i++)
-//             {
-//                 temp += n2hexstr(msg_4.content[i]) + ",";
-//             }
-//
-//             temp += "\n    last received at: " + std::to_string(msg_4.finish_reception_time);
-//         }
-//         else
-//         {
-//             temp += "\nNo message of type 4 received.";
-//         }
-//
-//         if (time_count)
-//         {
-//             temp += "\nTiming info: ";
-//
-//             for (size_t i = 0; i < min(time_count, 10u); i++)
-//             {
-//                 temp += "\n" + std::to_string(tarr[i].robot_ID) + "@" + std::to_string(tarr[i].emitter_pos) + " : " + std::to_string(tarr[i].time_arr[0]) + "," + std::to_string(tarr[i].time_arr[1]) + "," + std::to_string(tarr[i].time_arr[2]);
-//             }
-//         }
-//         else
-//         {
-//             temp += "\nNo timing info. :(";
-//         }
-//
-//         temp += "\n\n";
-//
-//         Serial.print(temp.c_str());
-//
-//         vTaskDelayUntil(&prev_wake_time, pdMS_TO_TICKS(2000));
-//     }
-// }
-
 namespace
 {
     // implement my own fixed point, because I just need a container.
@@ -313,22 +212,10 @@ namespace
 
 namespace
 {
-    constexpr uint16_t Compute_throttle(float thrust)
+    constexpr uint16_t Compute_throttle(const float thrust)
     {
         return uint16_t(4.25F * thrust + 40.0F);
     }
-
-    struct Motor_info
-    {
-    public:
-        Motor_info() {}
-        Motor_info(float thrst, uint32_t timet) : speed(Compute_throttle(math::fast::clip(thrst, Motor::Min_thrust, Motor::Max_thrust))), time(timet) {}
-        uint16_t speed = 0.0F;
-        uint32_t time = 0U;
-    };
-
-    constexpr size_t Motor_buffer_max_size = 1500U;
-    Circbuffer<Motor_info, Motor_buffer_max_size + 5> Motor_buffer;
 
     // constexpr size_t Position_buffer_max_size = 500U;
     // Circbuffer<IR::Localization::Position_data, Position_buffer_max_size + 5> Position_buffer;
@@ -350,10 +237,22 @@ namespace
     // constexpr uint32_t Control_buffer_max_size = 300U;
     // Circbuffer<Control_info, Control_buffer_max_size + 5> Control_buffer;
 
+    struct Motor_info
+    {
+    public:
+        Motor_info() {}
+        Motor_info(const float thrst, const uint32_t timet) : speed(Compute_throttle(math::fast::clip(thrst, Motor::Min_thrust, Motor::Max_thrust))), time(timet) {}
+        uint16_t speed = 0.0F;
+        uint32_t time = 0U;
+    };
+
+    constexpr size_t Motor_buffer_max_size = 1000U;
+    Circbuffer<Motor_info, Motor_buffer_max_size + 5> Motor_buffer;
+
     struct Position_data_short
     {
     public:
-        Position_data_short(float xx, float yy, float zz, float rr, uint32_t tt) : x(xx), y(yy), z(zz), rot_speed(rr), time(tt) {}
+        Position_data_short(const float xx, const float yy, const float zz, const float rr, const uint32_t tt) : x(xx), y(yy), z(zz), rot_speed(rr), time(tt) {}
         Position_data_short() {}
         fixed_point<1U> x = 0.0F;         // estimated x position
         fixed_point<1U> y = 0.0F;         // estimated y position
@@ -361,8 +260,20 @@ namespace
         fixed_point<3U> rot_speed = 0.0F; // rotation speed in Hz
         uint32_t time = 0U;               // the time of data, which is the last measurement's time
     };
-    constexpr uint32_t Position_data_short_buffer_max_size = 2000U;
+    constexpr uint32_t Position_data_short_buffer_max_size = 1000U;
     Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 5> Filtered_position_buffer_short;
+
+    struct Timing_data_short
+    {
+        uint32_t time[3];
+        uint16_t rid;
+    };
+
+    constexpr uint32_t Timing_buffer_max_size = 1000U;
+    Circbuffer<Timing_data_short, Timing_buffer_max_size + 5> Timing_buffer;
+
+    // starting from when we apply constant thrust
+    int64_t T_const_thrust = 0;
 
     // this version sends raw timing readings
     void Send_message_task(void *pvParameters)
@@ -381,6 +292,9 @@ namespace
 
                 Serial.print("Now is ");
                 Serial.println(esp_timer_get_time());
+
+                Serial.print("Const thrust from ");
+                Serial.println(T_const_thrust);
 
                 std::string v = "Robot_ID: ";
                 v += std::to_string(This_robot_ID) + "\nK_P_Z = " + std::to_string(K_P_Z) + ", K_D_Z = " + std::to_string(K_D_Z) + ", K_I_Z = " + std::to_string(K_I_Z) + "\nK_P_XY = " + std::to_string(K_P_XY) + ", K_D_XY = " + std::to_string(K_D_XY) + ", K_A_XY = " + std::to_string(K_A_XY) + "\nV_filter_t_coef = " + std::to_string(V_filter_t_coef) + ", A_filter_t_coef = " + std::to_string(A_filter_t_coef) + "\nTarget = { " + std::to_string(target_point[0]) + " , " + std::to_string(target_point[1]) + " , " + std::to_string(target_point[2]) + " }\n";
@@ -417,15 +331,15 @@ namespace
                     Serial.print(v.c_str());
                 }
 
-                // Serial.println("---- Raw timing ----");
-                // while (Raw_timing_buffer.n_elem > 0)
-                // {
-                //     auto pdat = Raw_timing_buffer.pop();
+                Serial.println("---- Raw timing ----");
+                while (Timing_buffer.n_elem > 0)
+                {
+                    auto pdat = Timing_buffer.pop();
 
-                //     std::string v = std::string("ID : ") + std::to_string(pdat.robot_ID) + std::string(", t0 : ") + std::to_string(pdat.time_arr[0]) + std::string(", t1 : ") + std::to_string(pdat.time_arr[1]) + std::string(", t2 : ") + std::to_string(pdat.time_arr[2]) + "\n";
+                    std::string v = std::string("ID : ") + std::to_string(pdat.rid) + std::string(", t_mid : ") + std::to_string(pdat.time[0]) + std::string(", t_left : ") + std::to_string(pdat.time[1]) + std::string(", t_right : ") + std::to_string(pdat.time[2]) + "\n";
 
-                //     Serial.print(v.c_str());
-                // }
+                    Serial.print(v.c_str());
+                }
 
                 Serial.println("---- Motor feedback data ----");
                 while (Motor_buffer.n_elem > 0)
@@ -555,6 +469,53 @@ void Buffer_data_task(void *pvParameters)
 //         t_prev = t_now;
 //     }
 // }
+
+void Buffer_raw_data_task(void *pvParameters)
+{
+    int64_t last_access_time = 0;
+
+    while (true)
+    {
+        // wait till next message is received
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        // get data
+        uint32_t io_flag;
+
+        IR::RX::Msg_timing_t temp[100];
+        size_t temp_len;
+
+        do
+        {
+            io_flag = IR::RX::Get_io_flag();
+
+            // check if there's enough data to use
+            temp_len = IR::RX::Get_timing_data(temp, min(esp_timer_get_time() - last_access_time + 1000, 50000LL));
+
+        } while (io_flag != IR::RX::Get_io_flag());
+
+        if (temp_len != 0)
+        {
+            int64_t last_access_time_new = max(max(temp[0].time_arr[0], temp[0].time_arr[1]), temp[0].time_arr[2]);
+            if (last_access_time_new > last_access_time)
+            {
+                LIT_G;
+                delay(1);
+                QUENCH_G;
+
+                Timing_data_short ts;
+                ts.rid = temp[0].robot_ID;
+                ts.time[0] = temp[0].time_arr[0];
+                ts.time[1] = temp[0].time_arr[1];
+                ts.time[2] = temp[0].time_arr[2];
+
+                Timing_buffer.push(ts);
+
+                last_access_time = last_access_time_new;
+            }
+        }
+    }
+}
 
 namespace
 {
@@ -712,6 +673,7 @@ namespace
 
     int64_t Last_position_update_time = 0;
     int64_t Reach_target_speed_time = 0;
+    bool Feedback_enabled = true;
 
     /**
      * @brief a task that turn motor based on robot's position
@@ -760,9 +722,17 @@ namespace
 
         case 2: // if was 2, the next time period should be new before pulse
             // get latest motor timing data
-            temp = arg->buffer->peek_tail();
-            // now this temp is used, update Last_LED_timing
-            arg->Last_motor_target = temp;
+
+            if (Feedback_enabled)
+            {
+                temp = arg->buffer->peek_tail();
+                // now this temp is used, update Last_LED_timing
+                arg->Last_motor_target = temp;
+            }
+            else
+            {
+                temp = arg->Last_motor_target;
+            }
 
             // update time
             next_time = (temp.t_start - (t_now % temp.period)) % temp.period;
@@ -973,7 +943,7 @@ void Motor_control_task(void *pvParameters)
         if (esp_timer_get_time() - last_TX_update_time > TX_update_interval)
         {
             last_TX_update_time = esp_timer_get_time();
-            if (This_robot_ID == 12)
+            if (IR::TX::TX_enabled())
             {
                 IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)(filt_pos_0.x)), std::bit_cast<uint16_t>((int16_t)(filt_pos_0.y)), std::bit_cast<uint16_t>((int16_t)(filt_pos_0.z))}, 2);
             }
@@ -1009,14 +979,15 @@ void Motor_control_task(void *pvParameters)
             }
             break;
 
-            // case 2:
-            //     if (pos_0.z > -20.0F)
-            //     {
-            //         control_on = 3;
+        case 2:
+            if (esp_timer_get_time() - Reach_target_speed_time > 15000000LL)
+            {
+                LIT_R;
+                T_const_thrust = esp_timer_get_time();
 
-            //         Reach_target_speed_time = esp_timer_get_time();
-            //     }
-            //     break;
+                control_on = 3;
+            }
+            break;
 
         default:
             break;
@@ -1128,6 +1099,30 @@ void Motor_control_task(void *pvParameters)
         {
             FB_val[0] = -(cos_rot * P_comp[0] - sin_rot * P_comp[1]);
             FB_val[1] = -(sin_rot * P_comp[0] + cos_rot * P_comp[1]);
+        }
+
+        static float FB_filtered = 0.0F;
+        static uint32_t FB_count = 0U;
+        if (control_on == 2 && esp_timer_get_time() - Reach_target_speed_time >= 8000000LL)
+        {
+            FB_filtered += FB_val[2];
+            FB_count++;
+        }
+
+        if (control_on == 3)
+        {
+            if (esp_timer_get_time() - T_const_thrust <= 500000LL)
+            {
+                FB_val[0] = 0.0F;
+                FB_val[1] = -8.0F;
+                FB_val[2] = FB_filtered / FB_count + 0.3F;
+            }
+            else
+            {
+                FB_val[0] = 0.0F;
+                FB_val[1] = 8.0F;
+                FB_val[2] = FB_filtered / FB_count + 0.3F;
+            }
         }
 
         // all computation has been finished till now
@@ -1338,13 +1333,18 @@ void Motor_monitor_task(void *pvParameters)
                 Motor::Set_speed(0);
                 Motor::Active_brake();
             }
-
-            if (t_now - Last_position_update_time >= Power_low_threshold)
+            else if (t_now - Last_position_update_time >= Power_low_threshold)
             {
+                Feedback_enabled = false;
+
                 callback_args_m.Last_motor_target.thrust_high = Power_low_value * Robot_mass;
                 callback_args_m.Last_motor_target.thrust_low = Power_low_value * Robot_mass;
 
                 Motor::Set_thrust(Power_low_value * Robot_mass);
+            }
+            else
+            {
+                Feedback_enabled = true;
             }
         }
     }

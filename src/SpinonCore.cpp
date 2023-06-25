@@ -67,8 +67,8 @@ void real_setup_core_0(void *pvParameters)
             0);
     }
 
-    target_point[1]=(This_robot_ID == 12) ? -0.0F : -300.0F;
-    // target_point[1]=-350.0F;
+    // target_point[1]=(This_robot_ID == 12) ? 0.0F : -300.0F;
+    target_point[1] = 100.0F;
 
     DEBUG_C(Serial.println("Global parameters initialized!"));
     DEBUG_C(Serial.print("Robot #"));
@@ -100,15 +100,15 @@ void real_setup_core_0(void *pvParameters)
     Motor::Active_brake();
     DEBUG_C(Serial.println("Motor started!"));
 
-    if (This_robot_ID == 12)
-    {
-        IR::TX::Init();
-        DEBUG_C(Serial.println("TX inited!"));
-        // this is the data task that has type 2 and transmit {0x0123}
-        // the content is meaningless...
-        IR::TX::Add_to_schedule(2, std::vector<uint16_t>{0x0123}, 1, -1, 1);
-        DEBUG_C(Serial.println("TX data set!"));
-    }
+    // if (This_robot_ID == 12)
+    // {
+    //     IR::TX::Init();
+    //     DEBUG_C(Serial.println("TX inited!"));
+    //     // this is the data task that has type 2 and transmit {0x0123}
+    //     // the content is meaningless...
+    //     IR::TX::Add_to_schedule(2, std::vector<uint16_t>{0x0123}, 1, -1, 1);
+    //     DEBUG_C(Serial.println("TX data set!"));
+    // }
 
     // launch the RX init task on core 1, lock core 0 init task before
     // proceeding.
@@ -204,6 +204,20 @@ void real_setup_core_0(void *pvParameters)
     task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
     // trigger buffer data when localization is updated.
     IR::Localization::Add_Localization_Notification(Buffer_data_handle);
+
+    // buffer raw timing data
+    TaskHandle_t Buffer_raw_data_handle;
+    task_status_temp = xTaskCreatePinnedToCore(
+        Buffer_raw_data_task,
+        "Buffer_raw_data_task",
+        8000,
+        NULL,
+        8,
+        &Buffer_raw_data_handle,
+        0);
+    task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
+    // trigger buffer data when localization is updated.
+    IR::RX::Add_RX_Notification(Buffer_raw_data_handle);
 
     // lit LED and control motor based on position
     TaskHandle_t Motor_control_handle;

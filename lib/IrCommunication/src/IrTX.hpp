@@ -28,6 +28,13 @@ namespace IR
         void Init();
 
         /**
+         * @brief Check if TX is enabled.
+         * 
+         * @return bool enabled?
+         */
+        bool TX_enabled();
+
+        /**
          * @brief remove a task of certain type from scheduler (no longer
          * transmit)
          *
