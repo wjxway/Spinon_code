@@ -237,17 +237,31 @@ namespace
     // constexpr uint32_t Control_buffer_max_size = 300U;
     // Circbuffer<Control_info, Control_buffer_max_size + 5> Control_buffer;
 
-    struct Motor_info
+    // struct Motor_info
+    // {
+    // public:
+    //     Motor_info() {}
+    //     Motor_info(const float thrst, const uint32_t timet) : speed(Compute_throttle(math::fast::clip(thrst, Motor::Min_thrust, Motor::Max_thrust))), time(timet) {}
+    //     uint16_t speed = 0.0F;
+    //     uint32_t time = 0U;
+    // };
+
+    // constexpr size_t Motor_buffer_max_size = 1000U;
+    // Circbuffer<Motor_info, Motor_buffer_max_size + 5> Motor_buffer;
+
+    struct Motor_info_1
     {
     public:
-        Motor_info() {}
-        Motor_info(const float thrst, const uint32_t timet) : speed(Compute_throttle(math::fast::clip(thrst, Motor::Min_thrust, Motor::Max_thrust))), time(timet) {}
-        uint16_t speed = 0.0F;
+        Motor_info_1() {}
+        Motor_info_1(const float fba, const float fbx, const float fby, const uint32_t timet) : FB_a(fba * 10.0F), FB_x(fbx * 10.0F), FB_y(fby * 10.0F), time(timet) {}
+        int16_t FB_a = 0;
+        int16_t FB_x = 0;
+        int16_t FB_y = 0;
         uint32_t time = 0U;
     };
 
-    constexpr size_t Motor_buffer_max_size = 1000U;
-    Circbuffer<Motor_info, Motor_buffer_max_size + 5> Motor_buffer;
+    constexpr size_t Motor_buffer_max_size = 500U;
+    Circbuffer<Motor_info_1, Motor_buffer_max_size + 5> Motor_buffer;
 
     struct Position_data_short
     {
@@ -260,7 +274,7 @@ namespace
         fixed_point<3U> rot_speed = 0.0F; // rotation speed in Hz
         uint32_t time = 0U;               // the time of data, which is the last measurement's time
     };
-    constexpr uint32_t Position_data_short_buffer_max_size = 1000U;
+    constexpr uint32_t Position_data_short_buffer_max_size = 1500U;
     Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 5> Filtered_position_buffer_short;
 
     struct Timing_data_short
@@ -269,7 +283,7 @@ namespace
         uint16_t rid;
     };
 
-    constexpr uint32_t Timing_buffer_max_size = 1000U;
+    constexpr uint32_t Timing_buffer_max_size = 1500U;
     Circbuffer<Timing_data_short, Timing_buffer_max_size + 5> Timing_buffer;
 
     // starting from when we apply constant thrust
@@ -341,12 +355,22 @@ namespace
                     Serial.print(v.c_str());
                 }
 
+                // Serial.println("---- Motor feedback data ----");
+                // while (Motor_buffer.n_elem > 0)
+                // {
+                //     auto fdat = Motor_buffer.pop();
+
+                //     std::string v = std::string("update_t : ") + std::to_string(fdat.time) + std::string(", thrust : ") + std::to_string(fdat.speed) + "\n";
+
+                //     Serial.print(v.c_str());
+                // }
+
                 Serial.println("---- Motor feedback data ----");
                 while (Motor_buffer.n_elem > 0)
                 {
                     auto fdat = Motor_buffer.pop();
 
-                    std::string v = std::string("update_t : ") + std::to_string(fdat.time) + std::string(", thrust : ") + std::to_string(fdat.speed) + "\n";
+                    std::string v = std::string("update_t : ") + std::to_string(fdat.time) + std::string(", FB_a : ") + std::to_string(fdat.FB_a) + std::string(", FB_x : ") + std::to_string(fdat.FB_x) + std::string(", FB_y : ") + std::to_string(fdat.FB_y) + "\n";
 
                     Serial.print(v.c_str());
                 }
@@ -656,6 +680,8 @@ namespace
         int64_t period;           // period of rotation
         float thrust_high = 0.0F; // higher half thrust
         float thrust_low = 0.0F;  // lower half thrust
+
+        float FB[3]; // let's also include this information
     };
 
     struct Motor_callback_args
@@ -758,10 +784,12 @@ namespace
         {
             LED_set(1, to_set_thrust);
 
-            float actual_thrust_value = to_set_thrust ? arg->Last_motor_target.thrust_high : arg->Last_motor_target.thrust_low;
+            if (arg->Motor_state == 0)
+            {
+                Motor_buffer.push(Motor_info_1{temp.FB[2], temp.FB[0], temp.FB[1], static_cast<uint32_t>(t_now)});
+            }
 
-            Motor_buffer.push(Motor_info{actual_thrust_value, static_cast<uint32_t>(t_now)});
-            Motor::Set_thrust(actual_thrust_value);
+            Motor::Set_thrust(to_set_thrust ? arg->Last_motor_target.thrust_high : arg->Last_motor_target.thrust_low);
         }
 
         // reset timer
@@ -1109,21 +1137,21 @@ void Motor_control_task(void *pvParameters)
             FB_count++;
         }
 
-        if (control_on == 3)
-        {
-            if (esp_timer_get_time() - T_const_thrust <= 500000LL)
-            {
-                FB_val[0] = 0.0F;
-                FB_val[1] = -8.0F;
-                FB_val[2] = FB_filtered / FB_count + 0.3F;
-            }
-            else
-            {
-                FB_val[0] = 0.0F;
-                FB_val[1] = 8.0F;
-                FB_val[2] = FB_filtered / FB_count + 0.3F;
-            }
-        }
+        // if (control_on == 3)
+        // {
+        //     if (esp_timer_get_time() - T_const_thrust <= 500000LL)
+        //     {
+        //         FB_val[0] = 0.0F;
+        //         FB_val[1] = -8.0F;
+        //         FB_val[2] = FB_filtered / FB_count + 0.3F;
+        //     }
+        //     else
+        //     {
+        //         FB_val[0] = 0.0F;
+        //         FB_val[1] = 8.0F;
+        //         FB_val[2] = FB_filtered / FB_count + 0.3F;
+        //     }
+        // }
 
         // all computation has been finished till now
         // from now on it's the boring setup interrupt part
@@ -1157,6 +1185,10 @@ void Motor_control_task(void *pvParameters)
         // each cycle start with low->high
         Callback_dat_m.period = pos_0.rotation_time;
         Callback_dat_m.t_start = int64_t((atan2f(FB_val[1], FB_val[0]) + K_rot - Motor_angle_offset - pos_0.angle_0 + 10.5F * M_PI) / pos_0.angular_velocity);
+
+        Callback_dat_m.FB[0] = -FB_val[1];
+        Callback_dat_m.FB[1] = FB_val[0];
+        Callback_dat_m.FB[2] = FB_val[2];
 
         float min_thrust = Motor::Min_thrust, max_thrust = Motor::Max_thrust;
 
@@ -1339,6 +1371,9 @@ void Motor_monitor_task(void *pvParameters)
 
                 callback_args_m.Last_motor_target.thrust_high = Power_low_value * Robot_mass;
                 callback_args_m.Last_motor_target.thrust_low = Power_low_value * Robot_mass;
+                callback_args_m.Last_motor_target.FB[0] = 0;
+                callback_args_m.Last_motor_target.FB[1] = 0;
+                callback_args_m.Last_motor_target.FB[2] = Power_low_value * Robot_mass;
 
                 Motor::Set_thrust(Power_low_value * Robot_mass);
             }
