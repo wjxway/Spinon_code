@@ -4,6 +4,8 @@
 #include <PinDefs.hpp>
 #include <Wire.h>
 
+#include <hal/cpu_hal.h>
+
 namespace Motor
 {
 	namespace
@@ -111,7 +113,7 @@ namespace Motor
 		if (!Brake_mode)
 		{
 			Last_set_speed = duty;
-			ledcWrite(Motor_LEDC_PWM_channel, duty);
+			ledcWrite(Motor_LEDC_PWM_channel, duty ? (8U * duty - 4U) : 0U);
 		}
 	}
 
@@ -122,36 +124,28 @@ namespace Motor
 
 	uint32_t Measure_speed()
 	{
-		// set a time out (in us) or else it will freeze the core when at 0 speed.
-		constexpr int64_t time_out = 5000U;
+		// set a time out (in CPU ticks) or else it will freeze the core when at 0 speed.
+		constexpr uint32_t time_out_ticks = 100000U;
 
 		// starting time
-		int64_t t_start = esp_timer_get_time();
-		// wait for the pin to go low
-		while (fastread(MOTOR_SPD_FB_PIN) && (esp_timer_get_time() - t_start < time_out))
-		{
-		}
-		// wait for the pin to go high
-		while ((!fastread(MOTOR_SPD_FB_PIN)) && (esp_timer_get_time() - t_start < time_out))
-		{
-		}
-		// directly return if timed out
-		if (esp_timer_get_time() - t_start > time_out)
-		{
-			return 0U;
-		}
+		uint32_t t_enter = cpu_hal_get_cycle_count();
 
+		// what's the initial state of the SPD_FB pin
+		bool init = fastread(MOTOR_SPD_FB_PIN);
+
+		// wait for the pin to go the other direction
+		while ((fastread(MOTOR_SPD_FB_PIN) == init) && (cpu_hal_get_cycle_count() - t_enter < time_out_ticks))
+		{
+		}
 		// start recording time
-		t_start = esp_timer_get_time();
+		int64_t t_start = cpu_hal_get_cycle_count();
 		// wait for the pin to go high
-		while (fastread(MOTOR_SPD_FB_PIN) && (esp_timer_get_time() - t_start < time_out))
+		while ((fastread(MOTOR_SPD_FB_PIN) == !init) && (cpu_hal_get_cycle_count() - t_enter < time_out_ticks))
 		{
 		}
-
-		// save time frame
-		t_start = esp_timer_get_time() - t_start;
-
-		return (t_start > time_out) ? 0U : (4000000U / t_start); // NOLINT
+		int64_t t_end = cpu_hal_get_cycle_count();
+		// directly return if timed out
+		return (t_end - t_enter >= time_out_ticks) ? 0U : t_end - t_start;
 	}
 
 	void Active_brake()

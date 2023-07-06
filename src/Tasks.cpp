@@ -260,7 +260,7 @@ namespace
         uint32_t time = 0U;
     };
 
-    constexpr size_t Motor_buffer_max_size = 500U;
+    constexpr size_t Motor_buffer_max_size = 5U; // 500U;
     Circbuffer<Motor_info_1, Motor_buffer_max_size + 5> Motor_buffer;
 
     struct Position_data_short
@@ -274,7 +274,7 @@ namespace
         fixed_point<3U> rot_speed = 0.0F; // rotation speed in Hz
         uint32_t time = 0U;               // the time of data, which is the last measurement's time
     };
-    constexpr uint32_t Position_data_short_buffer_max_size = 1500U;
+    constexpr uint32_t Position_data_short_buffer_max_size = 5U; // 1500U;
     Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 5> Filtered_position_buffer_short;
 
     struct Timing_data_short
@@ -283,7 +283,7 @@ namespace
         uint16_t rid;
     };
 
-    constexpr uint32_t Timing_buffer_max_size = 1500U;
+    constexpr uint32_t Timing_buffer_max_size = 5U; // 1500U;
     Circbuffer<Timing_data_short, Timing_buffer_max_size + 5> Timing_buffer;
 
     // starting from when we apply constant thrust
@@ -812,32 +812,50 @@ namespace
     uint8_t motor_spd_1 = 0;
     uint8_t motor_spd_2 = 0;
 
+    char ToHEX(uint8_t val)
+    {
+        return (val >= 10) ? 'A' + val - 10 : '0' + val;
+    }
+
+    struct motor_spd
+    {
+        uint32_t spd_1;
+        uint32_t spd_2;
+    };
+
+    constexpr size_t motor_spd_buffer_max_size = 5;
+    Circbuffer<motor_spd, motor_spd_buffer_max_size + 5> motor_spd_buffer;
+
     void IRAM_ATTR Motor_test_callback(void *pvParameters)
     {
         if (motor_state)
         {
             DEBUG_C(setbit(DEBUG_PIN_2));
             Motor::Set_speed(motor_spd_1);
+            motor_spd_buffer.push(motor_spd{Motor::Measure_speed(), 0U});
         }
         else
         {
             DEBUG_C(clrbit(DEBUG_PIN_2));
             Motor::Set_speed(motor_spd_2);
+            if (motor_spd_buffer.n_elem)
+            {
+                motor_spd_buffer.peek_tail().spd_2 = Motor::Measure_speed();
+            }
         }
         motor_state = !motor_state;
     }
 }
 
+// test input mode can switch between serial I/O and RX I/O
+// 0 -> Serial
+// 1 -> RX
+// 2 -> Auto scan
+#define TEST_INPUT_MODE 2
+
 void Motor_test_task(void *pvParameters)
 {
-    static bool just_start = 1;
-
-    // get data
-    auto buf_1 = IR::RX::Get_msg_buffer_by_type(1);
-    auto buf_2 = IR::RX::Get_msg_buffer_by_type(2);
-
-    constexpr uint64_t motor_spd_switch_time = 20000;
-
+    // launch task to change motor speed
     const esp_timer_create_args_t oneshot_timer_callback_args_1 = {
         .callback = &Motor_test_callback,
         .arg = nullptr,
@@ -847,7 +865,102 @@ void Motor_test_task(void *pvParameters)
     esp_timer_handle_t tm_handle;
     esp_timer_create(&oneshot_timer_callback_args_1, &tm_handle);
 
+    constexpr uint64_t motor_spd_switch_time = 20000;
     esp_timer_start_periodic(tm_handle, motor_spd_switch_time);
+
+// change speed based on inputs
+// Serial input
+#if TEST_INPUT_MODE == 0
+    while (true)
+    {
+        if (Serial.available())
+        {
+            vTaskDelay(10);
+            char c = Serial.read();
+
+            uint16_t tval1, tval2, reg, val;
+            String hexString;
+
+            switch (c)
+            {
+            // thrust value
+            case 't':
+                tval1 = Serial.parseInt();
+                tval2 = Serial.parseInt();
+
+                tval2 = (tval2 == 0) ? tval1 : tval2;
+
+                if (tval1 >= 256 || tval2 >= 256)
+                {
+                    Serial.println("Invalid thrust!");
+                    break;
+                }
+
+                Serial.print("Thrust => ");
+                Serial.print(tval1);
+                Serial.print(" , ");
+                Serial.println(tval2);
+
+                motor_spd_1 = tval1;
+                motor_spd_2 = tval2;
+                break;
+
+            // register value
+            case 'r':
+                reg = Serial.parseInt();
+
+                hexString = Serial.readStringUntil('\n');  // Read the HEX number from the serial port and convert it to a string
+                val = strtol(hexString.c_str(), NULL, 16); // Convert the HEX string to an integer
+
+                if (reg == 0)
+                {
+                    Serial.println("Reset!");
+                    esp_restart();
+                }
+                else if (reg < 2 && reg > 24 || val > UINT8_MAX)
+                {
+                    Serial.println("Invalid register/value!");
+                }
+                else
+                {
+                    Serial.print("Register ");
+                    Serial.print(reg);
+                    Serial.print(" => ");
+                    Serial.print(ToHEX(val >> 4));
+                    Serial.println(ToHEX(val & 0xF));
+
+                    Motor::Config_register(reg, val);
+                }
+                break;
+
+            // invalids
+            default:
+                Serial.println("Invalid input!");
+            }
+
+            while (Serial.available())
+            {
+                Serial.read();
+            }
+        }
+
+        if (motor_spd_buffer.n_elem > 1)
+        {
+            auto temp = motor_spd_buffer.pop();
+            Serial.print(temp.spd_1);
+            Serial.print(",");
+            Serial.println(temp.spd_2);
+        }
+
+        vTaskDelay(10);
+    }
+// RX input
+#elif TEST_INPUT_MODE == 1
+    static bool just_start = 1;
+
+    // get data
+    auto buf_1 = IR::RX::Get_msg_buffer_by_type(1);
+    auto buf_2 = IR::RX::Get_msg_buffer_by_type(2);
 
     while (true)
     {
@@ -861,10 +974,6 @@ void Motor_test_task(void *pvParameters)
             LIT_G;
             vTaskDelay(500);
             QUENCH_G;
-
-            // LED_set(0, float(msg.content[0]) / float((1 << Motor::PWM_resolution) - 1));
-            // Serial.println(msg.content[0]);
-            // Motor::Set_speed(msg.content[0]);
 
             motor_spd_1 = (msg.content[0] >> 8) & 0xFF;
             motor_spd_2 = msg.content[0] & 0xFF;
@@ -894,6 +1003,100 @@ void Motor_test_task(void *pvParameters)
             just_start = 0;
         }
     }
+
+#elif TEST_INPUT_MODE == 2
+    int64_t last_update_time = esp_timer_get_time();
+    constexpr int64_t update_interval = 4000000LL;
+
+    constexpr uint16_t tstart = 3;
+    constexpr uint16_t tend = 24; // 25;
+    constexpr uint16_t tstep = 3;
+    uint16_t tval1 = tstart, tval2 = tstart - tstep;
+
+    bool print_enabled = false;
+
+    while (true)
+    {
+        if (esp_timer_get_time() - last_update_time >= update_interval)
+        {
+            last_update_time += update_interval;
+
+            if (tval1 != 0)
+            {
+                // if (tval1 >= tend)
+                // {
+                //     tval1 = tval2 = 0;
+                //     Motor::Active_brake();
+                //     esp_timer_stop(tm_handle);
+                //     print_enabled = true;
+                //     while (Serial.available())
+                //     {
+                //         Serial.read();
+                //     }
+                // }
+                // else
+                // {
+                //     tval1 = tval2 = tval1 + 1;
+                // }
+
+                if (tval2 >= tend)
+                {
+                    // stop if ended
+                    if (tval1 >= tend)
+                    {
+                        tval1 = tval2 = 0;
+                        Motor::Active_brake();
+                        esp_timer_stop(tm_handle);
+                    }
+                    else
+                    {
+                        tval1 += tstep;
+                        tval2 = tval1;
+                    }
+                }
+                else
+                {
+                    tval2 += tstep;
+                }
+
+                motor_spd_1 = tval1;
+                motor_spd_2 = tval2;
+
+                Serial.print("---- Thrust => ");
+                Serial.print(tval1);
+                Serial.print(" , ");
+                Serial.print(tval2);
+                Serial.print(" ----\n");
+            }
+        }
+
+        // if (print_enabled && Serial.available())
+        // {
+        //     while (Serial.available())
+        //     {
+        //         Serial.read();
+        //     }
+
+        //     while (motor_spd_buffer.n_elem > 1)
+        //     {
+        //         auto temp = motor_spd_buffer.pop();
+        //         Serial.print(temp.spd_1);
+        //         Serial.print(",");
+        //         Serial.println(temp.spd_2);
+        //     }
+        // }
+
+        while (motor_spd_buffer.n_elem > 1)
+        {
+            auto temp = motor_spd_buffer.pop();
+            Serial.print(temp.spd_1);
+            Serial.print(",");
+            Serial.println(temp.spd_2);
+        }
+
+        vTaskDelay(10);
+    }
+#endif
 }
 
 void Motor_control_task(void *pvParameters)

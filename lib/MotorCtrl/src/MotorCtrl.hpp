@@ -32,12 +32,12 @@ namespace Motor
      * @brief set so that it fits the PWM resolution.
      *
      * @note according to the datasheet:
-     *         <20kHz --- 9 bits
-     *          40kHz --- 8 bits
-     *         100kHz --- 7 bits
+     *         < 20kHz --- 9 bits
+     *         < 40kHz --- 8 bits
+     *         >=40kHz --- 7 bits
      *       cannot be higher than 100kHz
      */
-    constexpr uint32_t PWM_frequency = 40000U;
+    constexpr uint32_t PWM_frequency = 20000U;
 
     // NOLINTBEGIN
     /**
@@ -49,7 +49,7 @@ namespace Motor
         // 0x00, 0x00,
         0x01, 0x03, 0x00, 0xFE,                // 2~5
         0x00, 0x00, 0x10, 0x20, 0x00,          // 6~10
-        0x01, 0x00, 0x00, 0x97, 0x15 /*0xD5*/, // 11~15
+        0x01, 0x00, 0x00, 0x97, 0x15 /*0x15*/, // 11~15
         0x00, 0xE6, 0x03, 0x16, 0x0A,          // 16~20
         0x8F, 0x7F, 0x3F, 0xC0,                // 21~24
     };
@@ -113,6 +113,8 @@ namespace Motor
      *
      * @param duty duty cycle (when in open loop mode) or motor speed (when in
      * closed loop mode)
+     * 
+     * @warning duty only has 5 bit resolution, ranging from 0~32. Where 0 stops the motor.
      */
     void Set_speed(const uint32_t duty);
 
