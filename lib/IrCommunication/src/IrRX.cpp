@@ -1229,7 +1229,7 @@ namespace IR
                     start[i] = recent_timing_buffer.peek_tail(i);
 
                     // break if time reached
-                    if (history_time && (curr_time - start[i].time_arr[0]) > history_time)
+                    if (history_time && (curr_time - start[i].Get_avg_time()) > history_time)
                     {
                         len = i;
                         break;
@@ -1240,6 +1240,11 @@ namespace IR
             while (io_flag != curr_flag);
 
             return len;
+        }
+
+        Circbuffer_copycat<Msg_timing_t, Timing_buffer_history_size> Get_timing_buffer()
+        {
+            return Circbuffer_copycat<Msg_timing_t, Timing_buffer_history_size>{&recent_timing_buffer};
         }
 
         uint32_t Get_neighboring_robots_ID(uint32_t *const start, const int64_t history_time)
@@ -1479,6 +1484,11 @@ namespace IR
             }
             xTaskResumeAll();
             return false;
+        }
+
+        int64_t Msg_timing_t::Get_avg_time()
+        {
+            return (time_arr[1] >> 1) + (time_arr[2] >> 1);
         }
     } // namespace RX
 } // namespace IR

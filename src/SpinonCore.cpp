@@ -49,7 +49,7 @@ void real_setup_core_0(void *pvParameters)
     // set global parameters
     // run it **ONCE** after calibration!
     // Write_global_parameters(11U, 18.3F, -0.03F, 0.0436332F, 0.18F, 39.0518F, 0.0555407F, -43.9161F);
-    // Write_global_parameters(12U, 17.2F, 0.05F, 0.0261799F, 0.18F, 26.6286F, 0.00152896F, -5.96417F);
+    Write_global_parameters(12U, 17.0F, 0.05F, 0.0261799F, 0.18F, 2.66286F, 0.00152896F, -0.596417F);
 
     // init global parameters
     if (!Init_global_parameters())

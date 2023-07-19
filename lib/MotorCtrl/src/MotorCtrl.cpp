@@ -47,7 +47,7 @@ namespace Motor
 		 */
 		constexpr uint32_t Compute_throttle(float thrust)
 		{
-			return uint32_t(4.25F * thrust + 40.0F);
+			return uint32_t(round(0.53F * thrust + 5.0F));
 		}
 	} // anonymous namespace
 
@@ -114,6 +114,10 @@ namespace Motor
 		{
 			Last_set_speed = duty;
 			ledcWrite(Motor_LEDC_PWM_channel, duty ? (8U * duty - 4U) : 0U);
+
+			// uint32_t duty_1 = ((duty + 4) / 8) * 8 - 4;
+			// Last_set_speed = duty_1;
+			// ledcWrite(Motor_LEDC_PWM_channel, (duty < 4) ? duty_1 : 0U);
 		}
 	}
 
@@ -122,7 +126,7 @@ namespace Motor
 		return Last_set_speed;
 	}
 
-	uint32_t Measure_speed()
+	uint16_t Measure_speed()
 	{
 		// set a time out (in CPU ticks) or else it will freeze the core when at 0 speed.
 		constexpr uint32_t time_out_ticks = 100000U;
@@ -145,7 +149,7 @@ namespace Motor
 		}
 		int64_t t_end = cpu_hal_get_cycle_count();
 		// directly return if timed out
-		return (t_end - t_enter >= time_out_ticks) ? 0U : t_end - t_start;
+		return (t_end - t_enter >= time_out_ticks) ? 0U : (t_end - t_start) / 240U;
 	}
 
 	void Active_brake()

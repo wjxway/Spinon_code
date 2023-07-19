@@ -139,7 +139,7 @@ namespace Motor
      * settings. if we ever need to, we can switch to an interrupt based, always
      * on function, but I will keep it like this for now.
      */
-    uint32_t Measure_speed();
+    uint16_t Measure_speed();
 
     /**
      * @brief forcefully brake (not break) the motor

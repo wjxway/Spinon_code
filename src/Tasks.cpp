@@ -212,11 +212,6 @@ namespace
 
 namespace
 {
-    constexpr uint16_t Compute_throttle(const float thrust)
-    {
-        return uint16_t(4.25F * thrust + 40.0F);
-    }
-
     // constexpr size_t Position_buffer_max_size = 500U;
     // Circbuffer<IR::Localization::Position_data, Position_buffer_max_size + 5> Position_buffer;
     // Circbuffer<IR::Localization::Position_data, Position_buffer_max_size + 5> Filtered_Position_buffer;
@@ -253,14 +248,16 @@ namespace
     {
     public:
         Motor_info_1() {}
-        Motor_info_1(const float fba, const float fbx, const float fby, const uint32_t timet) : FB_a(fba * 10.0F), FB_x(fbx * 10.0F), FB_y(fby * 10.0F), time(timet) {}
-        int16_t FB_a = 0;
-        int16_t FB_x = 0;
-        int16_t FB_y = 0;
+        Motor_info_1(uint16_t sl, uint16_t sh, uint16_t msl, uint16_t msh, float sa, uint32_t t) : spd_low(sl), spd_high(sh), meas_spd_low(msl), meas_spd_high(msh), spd_angle(sa), time(t) {}
+        uint16_t spd_low = 0;
+        uint16_t spd_high = 0;
+        uint16_t meas_spd_low = 0;
+        uint16_t meas_spd_high = 0;
+        float spd_angle = 0;
         uint32_t time = 0U;
     };
 
-    constexpr size_t Motor_buffer_max_size = 5U; // 500U;
+    constexpr size_t Motor_buffer_max_size = 450U; // 500U;
     Circbuffer<Motor_info_1, Motor_buffer_max_size + 5> Motor_buffer;
 
     struct Position_data_short
@@ -274,7 +271,7 @@ namespace
         fixed_point<3U> rot_speed = 0.0F; // rotation speed in Hz
         uint32_t time = 0U;               // the time of data, which is the last measurement's time
     };
-    constexpr uint32_t Position_data_short_buffer_max_size = 5U; // 1500U;
+    constexpr uint32_t Position_data_short_buffer_max_size = 1500U; // 1500U;
     Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 5> Filtered_position_buffer_short;
 
     struct Timing_data_short
@@ -283,7 +280,7 @@ namespace
         uint16_t rid;
     };
 
-    constexpr uint32_t Timing_buffer_max_size = 5U; // 1500U;
+    constexpr uint32_t Timing_buffer_max_size = 1350U; // 1500U;
     Circbuffer<Timing_data_short, Timing_buffer_max_size + 5> Timing_buffer;
 
     // starting from when we apply constant thrust
@@ -370,7 +367,7 @@ namespace
                 {
                     auto fdat = Motor_buffer.pop();
 
-                    std::string v = std::string("update_t : ") + std::to_string(fdat.time) + std::string(", FB_a : ") + std::to_string(fdat.FB_a) + std::string(", FB_x : ") + std::to_string(fdat.FB_x) + std::string(", FB_y : ") + std::to_string(fdat.FB_y) + "\n";
+                    std::string v = std::string("update_t : ") + std::to_string(fdat.time) + std::string(", spd_low : ") + std::to_string(fdat.spd_low) + std::string(", spd_high : ") + std::to_string(fdat.spd_high) + std::string(", meas_spd_low : ") + std::to_string(fdat.meas_spd_low) + std::string(", meas_spd_high : ") + std::to_string(fdat.meas_spd_high) + std::string(", spd_angle : ") + std::to_string(fdat.spd_angle) + "\n";
 
                     Serial.print(v.c_str());
                 }
@@ -608,7 +605,7 @@ namespace
     /**
      * @brief minimum delay time, if lower than this, we trigger after this.
      */
-    constexpr int64_t Delay_min_time = 60LL;
+    constexpr int64_t Delay_min_time = 500LL;
 
     struct LED_callback_args
     {
@@ -676,12 +673,12 @@ namespace
 
     struct Motor_timing_t
     {
-        int64_t t_start;          // when we should switch the motor to thrust_high, absolute time.
+        int64_t t_start;          // when we should switch the motor to spd_high, absolute time.
         int64_t period;           // period of rotation
-        float thrust_high = 0.0F; // higher half thrust
-        float thrust_low = 0.0F;  // lower half thrust
+        uint16_t spd_low = 0.0F;  // speed low end
+        uint16_t spd_high = 0.0F; // speed high end
 
-        float FB[3]; // let's also include this information
+        float thrust_angle = 0.0F; // at which angle the thrust is high
     };
 
     struct Motor_callback_args
@@ -723,10 +720,14 @@ namespace
         // thrust to be set, 0 -> low, 1 -> high
         static bool to_set_thrust = 0;
 
+        // measured speed
+        // 0 is low, 1 is high
+        static uint16_t meas_spd[2];
+
         // how long should we delay before next switch
         uint64_t next_time;
 
-        Motor_timing_t temp;
+        Motor_timing_t temp, lmt;
 
         // state = 0 -> before pulse
         // state = 1 -> in pulse
@@ -749,6 +750,8 @@ namespace
         case 2: // if was 2, the next time period should be new before pulse
             // get latest motor timing data
 
+            // lmt is short for last motor target
+            lmt = arg->Last_motor_target;
             if (Feedback_enabled)
             {
                 temp = arg->buffer->peek_tail();
@@ -784,12 +787,19 @@ namespace
         {
             LED_set(1, to_set_thrust);
 
+            Motor::Set_speed(to_set_thrust ? arg->Last_motor_target.spd_high : arg->Last_motor_target.spd_low);
+
+            // if was 2, we push to storage
             if (arg->Motor_state == 0)
             {
-                Motor_buffer.push(Motor_info_1{temp.FB[2], temp.FB[0], temp.FB[1], static_cast<uint32_t>(t_now)});
+                // when to_set_thrust is 1, we set the motor to spd_low, but this is actually when the speed is the highest.
+                Motor_buffer.push(Motor_info_1{lmt.spd_low, lmt.spd_high, meas_spd[0], meas_spd[1], lmt.thrust_angle, static_cast<uint32_t>(t_now)});
             }
-
-            Motor::Set_thrust(to_set_thrust ? arg->Last_motor_target.thrust_high : arg->Last_motor_target.thrust_low);
+            // if was 0 or 1, we measure the speed and store them
+            else
+            {
+                meas_spd[to_set_thrust] = Motor::Measure_speed();
+            }
         }
 
         // reset timer
@@ -1362,26 +1372,6 @@ void Motor_control_task(void *pvParameters)
         // cap the duration!
         constexpr int64_t Duration_max_time = 25000;
 
-        // // compute timing for callback_1 that use LED to indicate position
-        // LED_timing_t Callback_dat_1;
-
-        // Callback_dat_1.duration = clip(int64_t(0.005F * norm(P_comp[0], P_comp[1]) / pos_0.angular_velocity), 0LL, Duration_max_time);
-        // Callback_dat_1.t_start = pos_0.rotation_time * 5 - Callback_dat_1.duration / 2 - int64_t((LED_angle_offset + pos_0.angle_0 - atan2f(P_comp[1], P_comp[0])) / pos_0.angular_velocity);
-        // Callback_dat_1.period = pos_0.rotation_time;
-
-        // // push inside buffer
-        // timing_buf_1.push(Callback_dat_1);
-
-        // // compute timing for callback_2 that use LED to indicate velocity
-        // LED_timing_t Callback_dat_2;
-
-        // Callback_dat_2.duration = clip(int64_t(0.005F * norm(D_comp[0], D_comp[1]) / pos_0.angular_velocity), 0LL, Duration_max_time);
-        // Callback_dat_2.t_start = pos_0.rotation_time * 5 - Callback_dat_2.duration / 2 - int64_t((LED_angle_offset + pos_0.angle_0 - atan2f(D_comp[1], D_comp[0])) / pos_0.angular_velocity);
-        // Callback_dat_2.period = pos_0.rotation_time;
-
-        // // push inside buffer
-        // timing_buf_2.push(Callback_dat_2);
-
         // compute timing for callback_3 that use LED to indicate feedback value
         Motor_timing_t Callback_dat_m;
 
@@ -1389,9 +1379,8 @@ void Motor_control_task(void *pvParameters)
         Callback_dat_m.period = pos_0.rotation_time;
         Callback_dat_m.t_start = int64_t((atan2f(FB_val[1], FB_val[0]) + K_rot - Motor_angle_offset - pos_0.angle_0 + 10.5F * M_PI) / pos_0.angular_velocity);
 
-        Callback_dat_m.FB[0] = -FB_val[1];
-        Callback_dat_m.FB[1] = FB_val[0];
-        Callback_dat_m.FB[2] = FB_val[2];
+        // FB[0~2] is F_a, Delta F, and angle.
+        Callback_dat_m.thrust_angle = atan2f(FB_val[1], FB_val[0]);
 
         float min_thrust = Motor::Min_thrust, max_thrust = Motor::Max_thrust;
 
@@ -1405,25 +1394,22 @@ void Motor_control_task(void *pvParameters)
 
         // clip add_val to make sure that the average is still the average and the values will not exceed limits.
         // similar for motor settings.
-        FB_val[2] = clip(FB_val[2], min_thrust, max_thrust);
 
-        float add_val = norm(FB_val[0], FB_val[1]);
-        if (FB_val[2] > (max_thrust + min_thrust) / 2)
-        {
-            if (FB_val[2] + add_val > max_thrust)
-            {
-                add_val = max_thrust - FB_val[2];
-            }
-        }
-        else
-        {
-            if (FB_val[2] - add_val < min_thrust)
-            {
-                add_val = FB_val[2] - min_thrust;
-            }
-        }
-        Callback_dat_m.thrust_high = FB_val[2] + add_val;
-        Callback_dat_m.thrust_low = FB_val[2] - add_val;
+        // It would be better if the thrust can be computed in the interrupt so we can carry on the residue to make things more accurate, but for now let's just compute it here.
+
+        // min and max speed command
+        constexpr uint32_t spd_max = 23U, spd_min = 7U;
+
+        uint32_t spd_high, spd_low, spd_diff;
+        uint32_t spd_avg_2 = clip(uint32_t(ceil(FB_val[2] * 1.0625F + 10.0F)), spd_min * 2, spd_max * 2);
+        spd_low = spd_avg_2 / 2;
+        spd_high = spd_avg_2 - spd_low;
+
+        spd_diff = spd_high - spd_low;
+        spd_diff = min(min(uint32_t(round((1.0625F * norm(FB_val[0], FB_val[1]) - spd_diff) / 2.0F)), spd_max - spd_high), spd_low - spd_min);
+
+        Callback_dat_m.spd_low = spd_low - spd_diff;
+        Callback_dat_m.spd_high = spd_high + spd_diff;
 
         // push inside buffer
         timing_buf_m.push(Callback_dat_m);
@@ -1432,40 +1418,6 @@ void Motor_control_task(void *pvParameters)
         if (!ISR_started)
         {
             ISR_started = true;
-
-            // // Callback/ISR 1
-            // callback_args_1.buffer = &timing_buf_1;
-            // callback_args_1.Last_LED_timing = Callback_dat_1;
-            // callback_args_1.LED_num = 0;
-            // callback_args_1.LED_state = false;
-            // callback_args_1.Last_trig_time = 0;
-            // callback_args_1.Next_trig_time = 0;
-
-            // const esp_timer_create_args_t oneshot_timer_callback_args_1 = {
-            //     .callback = &LED_callback,
-            //     /* argument specified here will be passed to timer callback function */
-            //     .arg = (void *)(&callback_args_1),
-            //     .dispatch_method = ESP_TIMER_TASK,
-            //     .name = "position"};
-
-            // esp_timer_create(&oneshot_timer_callback_args_1, &(callback_args_1.handle));
-
-            // // Callback/ISR 2
-            // callback_args_2.buffer = &timing_buf_2;
-            // callback_args_2.Last_LED_timing = Callback_dat_2;
-            // callback_args_2.LED_num = 1;
-            // callback_args_2.LED_state = false;
-            // callback_args_2.Last_trig_time = 0;
-            // callback_args_2.Next_trig_time = 0;
-
-            // const esp_timer_create_args_t oneshot_timer_callback_args_2 = {
-            //     .callback = &LED_callback,
-            //     /* argument specified here will be passed to timer callback function */
-            //     .arg = (void *)(&callback_args_2),
-            //     .dispatch_method = ESP_TIMER_TASK,
-            //     .name = "velocity"};
-
-            // esp_timer_create(&oneshot_timer_callback_args_2, &(callback_args_2.handle));
 
             // Callback/ISR 3
             callback_args_m.buffer = &timing_buf_m;
@@ -1489,58 +1441,6 @@ void Motor_control_task(void *pvParameters)
         // in us
         constexpr uint64_t No_operation_time = 200ULL;
         int64_t t_delay;
-
-        // // updating timer info
-        // // not sure if clipping is necessary, but we will add it anyways,
-        // // it's not gonna influence anything.
-        // t_delay = clip((Callback_dat_1.t_start - (esp_timer_get_time() % Callback_dat_1.period)) % Callback_dat_1.period, Delay_min_time, 1000000LL);
-
-        // if (callback_args_1.LED_state == false)
-        // {
-        //     int64_t t_now = esp_timer_get_time();
-        //     // make sure that we won't reset the timer just after LED turns on.
-        //     // also make sure that we won't reset the timer just before LED
-        //     // turns on.
-        //     if (t_now - callback_args_1.Last_trig_time > No_operation_time && (callback_args_1.Next_trig_time == 0 || callback_args_1.Next_trig_time - t_now > No_operation_time))
-        //     {
-        //         callback_args_1.Next_trig_time = t_now + t_delay;
-        //         esp_timer_stop(callback_args_1.handle);
-        //         esp_timer_start_once(callback_args_1.handle, t_delay);
-        //     }
-        // }
-
-        // t_delay = clip((Callback_dat_2.t_start - (esp_timer_get_time() % Callback_dat_2.period)) % Callback_dat_2.period, Delay_min_time, 1000000LL);
-
-        // if (callback_args_2.LED_state == false)
-        // {
-        //     int64_t t_now = esp_timer_get_time();
-        //     // make sure that we won't reset the timer just after LED turns on.
-        //     // also make sure that we won't reset the timer just before LED
-        //     // turns on.
-        //     if (t_now - callback_args_2.Last_trig_time > No_operation_time && (callback_args_2.Next_trig_time == 0 || callback_args_2.Next_trig_time - t_now > No_operation_time))
-        //     {
-        //         callback_args_2.Next_trig_time = t_now + t_delay;
-        //         esp_timer_stop(callback_args_2.handle);
-        //         esp_timer_start_once(callback_args_2.handle, t_delay);
-        //     }
-        // }
-
-        // t_delay = clip((Callback_dat_m.t_start - (esp_timer_get_time() % Callback_dat_m.period)) % Callback_dat_m.period, Delay_min_time, 1000000LL);
-
-        // if (callback_args_m.Motor_state == false)
-        // {
-        //     int64_t t_now = esp_timer_get_time();
-        //     // make sure that we won't reset the timer just after motor turns +.
-        //     // also make sure that we won't reset the timer just before motor
-        //     // turns on.
-        //     if (t_now - callback_args_m.Last_trig_time > No_operation_time && (callback_args_m.Next_trig_time == 0 || callback_args_m.Next_trig_time - t_now > No_operation_time))
-        //     {
-        //         callback_args_m.Next_trig_time = t_now + t_delay;
-        //         esp_timer_stop(callback_args_m.handle);
-        //         esp_timer_start_once(callback_args_m.handle, t_delay);
-        //     }
-        // }
-        // QUENCH_G;
     }
 }
 
@@ -1572,11 +1472,9 @@ void Motor_monitor_task(void *pvParameters)
             {
                 Feedback_enabled = false;
 
-                callback_args_m.Last_motor_target.thrust_high = Power_low_value * Robot_mass;
-                callback_args_m.Last_motor_target.thrust_low = Power_low_value * Robot_mass;
-                callback_args_m.Last_motor_target.FB[0] = 0;
-                callback_args_m.Last_motor_target.FB[1] = 0;
-                callback_args_m.Last_motor_target.FB[2] = Power_low_value * Robot_mass;
+                callback_args_m.Last_motor_target.spd_low = 15U;
+                callback_args_m.Last_motor_target.spd_high = 15U;
+                callback_args_m.Last_motor_target.thrust_angle = 0.0F;
 
                 Motor::Set_thrust(Power_low_value * Robot_mass);
             }

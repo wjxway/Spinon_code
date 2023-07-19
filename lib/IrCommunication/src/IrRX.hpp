@@ -107,6 +107,8 @@ namespace IR
             uint32_t robot_ID;
             /**
              * @brief time for different channels
+             * 
+             * @note the order is middle, right, left.
              */
             int64_t time_arr[RMT_RX_CHANNEL_COUNT];
             /**
@@ -127,6 +129,13 @@ namespace IR
              * @brief byte channel represents whether all timing data is valid
              */
             uint32_t timing_valid_Q = 0U;
+
+            /**
+             * @brief a quick function to obtain the left-right sensor average time
+             * 
+             * @return int64_t L-R average time
+             */
+            int64_t Get_avg_time();
         };
 
         /**
@@ -237,6 +246,13 @@ namespace IR
          * @return uint32_t length of Msg_timing_t array
          */
         uint32_t Get_timing_data(Msg_timing_t *const start, const int64_t history_time = 0);
+
+        /**
+         * @brief get the recent_timing_buffer's copycat
+         *
+         * @return Circbuffer_copycat<Msg_timing_t, Timing_buffer_history_size>
+         */
+        Circbuffer_copycat<Msg_timing_t, Timing_buffer_history_size> Get_timing_buffer();
 
         /**
          * @brief get all neighboring robot's ID
