@@ -72,7 +72,7 @@ namespace IR
          * @param handle Task handle to be added
          * @return bool true if successfully added, false if already exists.
          */
-        bool Add_Localization_Notification(const TaskHandle_t &handle);
+        bool Add_localization_notification(const TaskHandle_t &handle);
 
         /**
          * @brief No longer notify this task when data is updated!
@@ -80,7 +80,7 @@ namespace IR
          * @param handle Task handle to be removed
          * @return bool true if successfully removed, false if never exist.
          */
-        bool Remove_Localization_Notification(const TaskHandle_t &handle);
+        bool Remove_localization_notification(const TaskHandle_t &handle);
 
         /**
          * @brief Get the latest unfiltered position information

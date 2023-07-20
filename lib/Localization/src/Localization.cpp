@@ -959,7 +959,7 @@ namespace IR
             auto task_status = xTaskCreatePinnedToCore(
                 Localization_task,
                 "Localization_task",
-                50000,
+                20000,
                 NULL,
                 Localization_task_priority,
                 &Localization_task_handle,
@@ -981,7 +981,7 @@ namespace IR
             return true;
         }
 
-        bool Add_Localization_Notification(const TaskHandle_t &handle)
+        bool Add_localization_notification(const TaskHandle_t &handle)
         {
             vTaskSuspendAll();
             if (std::find(TaskHandle_list.begin(), TaskHandle_list.end(), handle) == TaskHandle_list.end())
@@ -994,7 +994,7 @@ namespace IR
             return false;
         }
 
-        bool Remove_Localization_Notification(const TaskHandle_t &handle)
+        bool Remove_localization_notification(const TaskHandle_t &handle)
         {
             vTaskSuspendAll();
             auto it = std::find(TaskHandle_list.begin(), TaskHandle_list.end(), handle);

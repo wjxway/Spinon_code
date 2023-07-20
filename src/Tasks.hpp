@@ -29,6 +29,11 @@ void IRAM_ATTR Occupy_time_task(void *pvParameters);
 void LED_off_task(void *pvParameters);
 
 /**
+ * @brief buffer EKF data
+ */
+void Buffer_EKF_task(void *pvParameters);
+
+/**
  * @brief buffer localization data
  */
 void Buffer_data_task(void *pvParameters);

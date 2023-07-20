@@ -8,6 +8,7 @@
 #include <MotorCtrl.hpp>
 #include <IrCommunication.hpp>
 #include <Localization.hpp>
+#include <EKFTask.hpp>
 #include "Tasks.hpp"
 
 // Blink the LED
@@ -49,7 +50,7 @@ void real_setup_core_0(void *pvParameters)
     // set global parameters
     // run it **ONCE** after calibration!
     // Write_global_parameters(11U, 18.3F, -0.03F, 0.0436332F, 0.18F, 39.0518F, 0.0555407F, -43.9161F);
-    Write_global_parameters(12U, 17.0F, 0.05F, 0.0261799F, 0.18F, 2.66286F, 0.00152896F, -0.596417F);
+    // Write_global_parameters(12U, 17.0F, 0.05F, 0.0261799F, 0.18F, 26.6286F, 0.00152896F, -5.96417F);
 
     // init global parameters
     if (!Init_global_parameters())
@@ -129,6 +130,8 @@ void real_setup_core_0(void *pvParameters)
     IR::Localization::Init();
     DEBUG_C(Serial.println("Localization inited!"));
 
+    EKF::Init();
+
     DEBUG_C(Serial.println("Init finished, launching tasks!"));
 
     BaseType_t task_status = pdTRUE, task_status_temp;
@@ -203,21 +206,35 @@ void real_setup_core_0(void *pvParameters)
         0);
     task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
     // trigger buffer data when localization is updated.
-    IR::Localization::Add_Localization_Notification(Buffer_data_handle);
+    IR::Localization::Add_localization_notification(Buffer_data_handle);
 
-    // buffer raw timing data
-    TaskHandle_t Buffer_raw_data_handle;
+    // // buffer raw timing data
+    // TaskHandle_t Buffer_raw_data_handle;
+    // task_status_temp = xTaskCreatePinnedToCore(
+    //     Buffer_raw_data_task,
+    //     "Buffer_raw_data_task",
+    //     8000,
+    //     NULL,
+    //     8,
+    //     &Buffer_raw_data_handle,
+    //     0);
+    // task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
+    // // trigger buffer data when localization is updated.
+    // IR::RX::Add_RX_Notification(Buffer_raw_data_handle);
+
+    // buffer EKF data
+    TaskHandle_t Buffer_EKF_handle;
     task_status_temp = xTaskCreatePinnedToCore(
-        Buffer_raw_data_task,
-        "Buffer_raw_data_task",
+        Buffer_EKF_task,
+        "Buffer_EKF_task",
         8000,
         NULL,
         8,
-        &Buffer_raw_data_handle,
+        &Buffer_EKF_handle,
         0);
     task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
     // trigger buffer data when localization is updated.
-    IR::RX::Add_RX_Notification(Buffer_raw_data_handle);
+    EKF::Add_localization_notification(Buffer_EKF_handle);
 
     // lit LED and control motor based on position
     TaskHandle_t Motor_control_handle;
@@ -231,7 +248,7 @@ void real_setup_core_0(void *pvParameters)
         0);
     task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
     // trigger Motor_control when localization is updated.
-    IR::Localization::Add_Localization_Notification(Motor_control_handle);
+    IR::Localization::Add_localization_notification(Motor_control_handle);
 
     // monitor motor's state
     task_status_temp = xTaskCreatePinnedToCore(
@@ -252,6 +269,22 @@ void real_setup_core_0(void *pvParameters)
     {
         DEBUG_C(Serial.println("Task cannot be allocated..."));
     }
+
+    // // when to_set_thrust is 1, we set the motor to spd_low, but this is actually when the speed is the highest.
+    // // Motor_buffer.push(Motor_info_1{lmt.spd_low, lmt.spd_high, meas_spd[0], meas_spd[1], lmt.thrust_angle, static_cast<uint32_t>(t_now)});
+    // EKF::Motor_info_t tempinfo;
+    // tempinfo.spd_low = 12;
+    // tempinfo.spd_high = 23;
+    // tempinfo.spd_FB_low = 130;
+    // tempinfo.spd_FB_high = 140;
+    // tempinfo.thrust_angle = 0;
+    // tempinfo.stop_time = esp_timer_get_time();
+
+    // EKF::Push_to_motor_buffer(tempinfo);
+
+    // Serial.println(esp_timer_get_time());
+    // EKF::Notify_Localization_Task();
+    // Serial.println(esp_timer_get_time());
 
     // remove this task after use
     vTaskDelete(NULL);

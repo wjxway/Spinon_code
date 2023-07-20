@@ -6,6 +6,8 @@
 #define EKFTASK_HPP__
 
 #include "Arduino.h"
+#include "EKFCore.hpp"
+#include <IrRX.hpp>
 
 namespace EKF
 {
@@ -16,7 +18,7 @@ namespace EKF
      * @brief priority of Localization task, it should be marginally smaller
      * than Preprocess task, but still higher than the rest.
      */
-    constexpr uint32_t Localization_task_priority = RX::Preprocess_task_priority - 1;
+    constexpr uint32_t Localization_task_priority = IR::RX::Preprocess_task_priority - 2;
 
     struct Motor_info_t
     {
@@ -32,12 +34,20 @@ namespace EKF
     };
 
     /**
+     * @brief Initialize EKF routine
+     * 
+     * @param loc_msg_type type of position message
+     * @return bool whether init is successful
+     */
+    bool Init(const uint32_t loc_msg_type = 4U);
+
+    /**
      * @brief Notify this task when data is updated!
      *
      * @param handle Task handle to be added
      * @return bool true if successfully added, false if already exists.
      */
-    bool Add_Localization_Notification(const TaskHandle_t &handle);
+    bool Add_localization_notification(const TaskHandle_t &handle);
 
     /**
      * @brief No longer notify this task when data is updated!
@@ -45,14 +55,21 @@ namespace EKF
      * @param handle Task handle to be removed
      * @return bool true if successfully removed, false if never exist.
      */
-    bool Remove_Localization_Notification(const TaskHandle_t &handle);
+    bool Remove_localization_notification(const TaskHandle_t &handle);
 
     /**
-     * @brief get handle to localization task
+     * @brief notify localization task
      *
-     * @note should only be accessed by the motor task or motor interrupt, because they trigger each localization update.
+     * @warning should only be accessed by the motor task or motor interrupt, because they trigger each localization update.
      */
-    TaskHandle_t Get_Localization_Task_Handle();
+    void Notify_Localization_Task();
+
+    /**
+     * @brief push into motor_buffer
+     *
+     * @warning should only be accessed by the motor task or motor interrupt.
+     */
+    void Push_to_motor_buffer(const Motor_info_t &info);
 } // EKF namespace
 
 #endif

@@ -1,7 +1,5 @@
 #include "EKFTask.hpp"
-#include "EKFCore.hpp"
 #include <vector>
-#include <IrRX.hpp>
 #include <Utilities.hpp>
 
 namespace EKF
@@ -37,6 +35,11 @@ namespace EKF
         constexpr float Max_valid_angle = 60.0F;
 
         /**
+         * @brief max history time we fetch data from in us.
+         */
+        constexpr int64_t Relative_measurements_expire_time = 100000L;
+
+        /**
          * @brief Motor_data_buffer's max size
          */
         constexpr size_t Motor_data_buffer_size = 5U;
@@ -48,7 +51,7 @@ namespace EKF
         /**
          * @brief a copycat class for timing buffer
          */
-        Circbuffer_copycat<IR::RX::Msg_timing_t, 24U> Timing_buffer_copycat;
+        Circbuffer_copycat<IR::RX::Msg_timing_t, 24U> Timing_buffer_copycat = IR::RX::Get_timing_buffer();
 
         /**
          * @brief compute distance based on angle
@@ -59,7 +62,7 @@ namespace EKF
          */
         float Distance_expectation(const float LR_angle)
         {
-            return IR::RX::Distance_param_a / sin((LR_angle * float(DEG_TO_RAD) + IR::RX::Distance_param_b) / 2.0F) + IR::RX::Distance_param_c;
+            return Position_scaling_factor * (IR::RX::Distance_param_a / sin((LR_angle * float(DEG_TO_RAD) + IR::RX::Distance_param_b) / 2.0F) + IR::RX::Distance_param_c);
         }
 
         /**
@@ -115,6 +118,12 @@ namespace EKF
                     else
                     {
                         Timing_buffer_copycat.pop();
+                    }
+
+                    // we don't process too old messages
+                    if (timing_dat.Get_avg_time() < motor_dat.stop_time - Relative_measurements_expire_time)
+                    {
+                        continue;
                     }
 
                     Meas_vector meas;
@@ -208,6 +217,8 @@ namespace EKF
 
     bool Init(const uint32_t loc_msg_type)
     {
+        EKF::Init_state();
+
         if (loc_msg_type > detail::Single_transmission_msg_type && loc_msg_type <= detail::Msg_type_max)
         {
             Localization_Msg_type = loc_msg_type;
@@ -227,8 +238,8 @@ namespace EKF
 
         auto task_status = xTaskCreatePinnedToCore(
             Localization_task,
-            "Localization_task",
-            50000,
+            "EKF_task",
+            20000,
             NULL,
             Localization_task_priority,
             &Localization_task_handle,
@@ -236,7 +247,8 @@ namespace EKF
 
         if (task_status != pdTRUE)
         {
-            DEBUG_C(Serial.println("Localization startup failed!"));
+            DEBUG_C(Serial.print("Localization startup failed!\nReason: "));
+            DEBUG_C(Serial.println(task_status));
             return false;
         }
 
@@ -244,7 +256,7 @@ namespace EKF
         return true;
     }
 
-    bool Add_Localization_Notification(const TaskHandle_t &handle)
+    bool Add_localization_notification(const TaskHandle_t &handle)
     {
         vTaskSuspendAll();
         if (std::find(TaskHandle_list.begin(), TaskHandle_list.end(), handle) == TaskHandle_list.end())
@@ -257,7 +269,7 @@ namespace EKF
         return false;
     }
 
-    bool Remove_Localization_Notification(const TaskHandle_t &handle)
+    bool Remove_localization_notification(const TaskHandle_t &handle)
     {
         vTaskSuspendAll();
         auto it = std::find(TaskHandle_list.begin(), TaskHandle_list.end(), handle);
@@ -271,8 +283,14 @@ namespace EKF
         return false;
     }
 
-    TaskHandle_t Get_Localization_Task_Handle()
+    void Notify_Localization_Task()
     {
-        return Localization_task_handle;
+        vTaskNotifyGiveFromISR(Localization_task_handle, NULL);
+        // xTaskNotifyGive(Localization_task_handle);
+    }
+
+    void Push_to_motor_buffer(const Motor_info_t &info)
+    {
+        Motor_data_buffer.push(info);
     }
 } // EKF namespace

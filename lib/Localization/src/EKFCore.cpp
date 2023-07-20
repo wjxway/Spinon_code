@@ -67,6 +67,11 @@ namespace EKF
 			auto cova = drone_cov[avail_index], covf = drone_cov[free_index];
 
 			float dt = 1.0e-6f * (t_target - drone_state_time[avail_index]);
+			// cap dt to 1s... just to make things not outrageously high
+			if(dt>1.0f)
+			{
+				dt=1.0f;
+			}
 
 			// state extrapolation
 			float C1 = 4.0f * thrust_offset * gravity * dt / (I_0 * dsa[omega] * (float(M_PI) * float(M_PI) * degree * degree));
@@ -417,6 +422,8 @@ namespace EKF
 			}
 			drone_cov[0][i][i] = 1000000.0f;
 		}
+
+		drone_state_time[avail_index] = 0;
 	}
 
 	void Set_state(const int64_t tt, const float *st, const float (*co)[dim_state])

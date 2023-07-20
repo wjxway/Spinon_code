@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 #include <esp_timer.h>
-
+#include <EKFTask.hpp>
 #include <MotorCtrl.hpp>
 
 #define _USE_MATH_DEFINES
@@ -244,22 +244,6 @@ namespace
     // constexpr size_t Motor_buffer_max_size = 1000U;
     // Circbuffer<Motor_info, Motor_buffer_max_size + 5> Motor_buffer;
 
-    struct Motor_info_1
-    {
-    public:
-        Motor_info_1() {}
-        Motor_info_1(uint16_t sl, uint16_t sh, uint16_t msl, uint16_t msh, float sa, uint32_t t) : spd_low(sl), spd_high(sh), meas_spd_low(msl), meas_spd_high(msh), spd_angle(sa), time(t) {}
-        uint16_t spd_low = 0;
-        uint16_t spd_high = 0;
-        uint16_t meas_spd_low = 0;
-        uint16_t meas_spd_high = 0;
-        float spd_angle = 0;
-        uint32_t time = 0U;
-    };
-
-    constexpr size_t Motor_buffer_max_size = 450U; // 500U;
-    Circbuffer<Motor_info_1, Motor_buffer_max_size + 5> Motor_buffer;
-
     struct Position_data_short
     {
     public:
@@ -271,7 +255,7 @@ namespace
         fixed_point<3U> rot_speed = 0.0F; // rotation speed in Hz
         uint32_t time = 0U;               // the time of data, which is the last measurement's time
     };
-    constexpr uint32_t Position_data_short_buffer_max_size = 1500U; // 1500U;
+    constexpr uint32_t Position_data_short_buffer_max_size = 2000U; // 1500U;
     Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 5> Filtered_position_buffer_short;
 
     struct Timing_data_short
@@ -280,8 +264,11 @@ namespace
         uint16_t rid;
     };
 
-    constexpr uint32_t Timing_buffer_max_size = 1350U; // 1500U;
+    constexpr uint32_t Timing_buffer_max_size = 5U; // 1500U;
     Circbuffer<Timing_data_short, Timing_buffer_max_size + 5> Timing_buffer;
+
+    constexpr uint32_t EKF_buffer_max_size = 1000U; // 1500U;
+    Circbuffer<Position_data_short, EKF_buffer_max_size + 5> EKF_buffer;
 
     // starting from when we apply constant thrust
     int64_t T_const_thrust = 0;
@@ -342,15 +329,25 @@ namespace
                     Serial.print(v.c_str());
                 }
 
-                Serial.println("---- Raw timing ----");
-                while (Timing_buffer.n_elem > 0)
+                Serial.println("---- EKF position ----");
+                while (EKF_buffer.n_elem > 0)
                 {
-                    auto pdat = Timing_buffer.pop();
+                    auto pdat = EKF_buffer.pop();
 
-                    std::string v = std::string("ID : ") + std::to_string(pdat.rid) + std::string(", t_mid : ") + std::to_string(pdat.time[0]) + std::string(", t_left : ") + std::to_string(pdat.time[1]) + std::string(", t_right : ") + std::to_string(pdat.time[2]) + "\n";
+                    std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", x : ") + std::string(pdat.x) + std::string(", y : ") + std::string(pdat.y) + std::string(", z : ") + std::string(pdat.z) + std::string(", f : ") + std::string(pdat.rot_speed) + "\n";
 
                     Serial.print(v.c_str());
                 }
+
+                // Serial.println("---- Raw timing ----");
+                // while (Timing_buffer.n_elem > 0)
+                // {
+                //     auto pdat = Timing_buffer.pop();
+
+                //     std::string v = std::string("ID : ") + std::to_string(pdat.rid) + std::string(", t_mid : ") + std::to_string(pdat.time[0]) + std::string(", t_left : ") + std::to_string(pdat.time[1]) + std::string(", t_right : ") + std::to_string(pdat.time[2]) + "\n";
+
+                //     Serial.print(v.c_str());
+                // }
 
                 // Serial.println("---- Motor feedback data ----");
                 // while (Motor_buffer.n_elem > 0)
@@ -362,15 +359,15 @@ namespace
                 //     Serial.print(v.c_str());
                 // }
 
-                Serial.println("---- Motor feedback data ----");
-                while (Motor_buffer.n_elem > 0)
-                {
-                    auto fdat = Motor_buffer.pop();
+                // Serial.println("---- Motor feedback data ----");
+                // while (Motor_buffer.n_elem > 0)
+                // {
+                //     auto fdat = Motor_buffer.pop();
 
-                    std::string v = std::string("update_t : ") + std::to_string(fdat.time) + std::string(", spd_low : ") + std::to_string(fdat.spd_low) + std::string(", spd_high : ") + std::to_string(fdat.spd_high) + std::string(", meas_spd_low : ") + std::to_string(fdat.meas_spd_low) + std::string(", meas_spd_high : ") + std::to_string(fdat.meas_spd_high) + std::string(", spd_angle : ") + std::to_string(fdat.spd_angle) + "\n";
+                //     std::string v = std::string("update_t : ") + std::to_string(fdat.time) + std::string(", spd_low : ") + std::to_string(fdat.spd_low) + std::string(", spd_high : ") + std::to_string(fdat.spd_high) + std::string(", meas_spd_low : ") + std::to_string(fdat.meas_spd_low) + std::string(", meas_spd_high : ") + std::to_string(fdat.meas_spd_high) + std::string(", spd_angle : ") + std::to_string(fdat.spd_angle) + "\n";
 
-                    Serial.print(v.c_str());
-                }
+                //     Serial.print(v.c_str());
+                // }
 
                 // Serial.println("---- Control data ----");
                 // while (Control_buffer.n_elem > 0)
@@ -383,6 +380,26 @@ namespace
                 // }
             }
         }
+    }
+}
+
+void Buffer_EKF_task(void *pvParameters)
+{
+    while (true)
+    {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        int64_t t_now = esp_timer_get_time();
+        auto st = EKF::Get_state(t_now, Robot_mass);
+        Position_data_short pos;
+
+        pos.time = t_now;
+        pos.rot_speed = st.state[EKF::state_para::omega];
+        pos.x = st.state[EKF::state_para::x];
+        pos.y = st.state[EKF::state_para::y];
+        pos.z = st.state[EKF::state_para::z];
+
+        EKF_buffer.push(pos);
     }
 }
 
@@ -444,52 +461,6 @@ void Buffer_data_task(void *pvParameters)
         // }
     }
 }
-
-// // this version buffer raw timing data
-// void Buffer_raw_data_task(void *pvParameters)
-// {
-//     // if send message task has been started.
-//     bool send_task_not_started = true;
-
-//     // // send me messages through serial!
-//     // xTaskCreatePinnedToCore(
-//     //     Send_message_task,
-//     //     "Send_message_task",
-//     //     8000,
-//     //     NULL,
-//     //     3,
-//     //     NULL,
-//     //     0);
-
-//     int64_t t_prev = 0, t_now = 0;
-
-//     while (true)
-//     {
-//         // wait till next timing data is obtained
-//         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-
-//         // get data
-//         uint32_t io_flag;
-//         uint32_t temp_size = 0;
-//         IR::RX::Msg_timing_t temp[25];
-//         do
-//         {
-//             t_now = esp_timer_get_time();
-
-//             io_flag = IR::Localization::Get_io_flag();
-
-//             temp_size = IR::RX::Get_timing_data(temp, t_now - t_prev);
-
-//         } while (io_flag != IR::Localization::Get_io_flag());
-
-//         for (int i = 0; i < temp_size; i++)
-//         {
-//             Raw_timing_buffer.push(temp[temp_size - i - 1]);
-//         }
-
-//         t_prev = t_now;
-//     }
-// }
 
 void Buffer_raw_data_task(void *pvParameters)
 {
@@ -793,7 +764,17 @@ namespace
             if (arg->Motor_state == 0)
             {
                 // when to_set_thrust is 1, we set the motor to spd_low, but this is actually when the speed is the highest.
-                Motor_buffer.push(Motor_info_1{lmt.spd_low, lmt.spd_high, meas_spd[0], meas_spd[1], lmt.thrust_angle, static_cast<uint32_t>(t_now)});
+                // Motor_buffer.push(Motor_info_1{lmt.spd_low, lmt.spd_high, meas_spd[0], meas_spd[1], lmt.thrust_angle, static_cast<uint32_t>(t_now)});
+                EKF::Motor_info_t tempinfo;
+                tempinfo.spd_low = lmt.spd_low;
+                tempinfo.spd_high = lmt.spd_high;
+                tempinfo.spd_FB_low = meas_spd[0];
+                tempinfo.spd_FB_high = meas_spd[1];
+                tempinfo.thrust_angle = lmt.thrust_angle;
+                tempinfo.stop_time = t_now;
+
+                EKF::Push_to_motor_buffer(tempinfo);
+                EKF::Notify_Localization_Task();
             }
             // if was 0 or 1, we measure the speed and store them
             else
