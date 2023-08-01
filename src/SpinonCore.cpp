@@ -278,12 +278,18 @@ void real_setup_core_0(void *pvParameters)
     // tempinfo.spd_FB_low = 130;
     // tempinfo.spd_FB_high = 140;
     // tempinfo.thrust_angle = 0;
-    // tempinfo.stop_time = esp_timer_get_time();
-
+    // tempinfo.stop_time = 1024000;
     // EKF::Push_to_motor_buffer(tempinfo);
 
-    // Serial.println(esp_timer_get_time());
     // EKF::Notify_Localization_Task();
+
+    // vTaskDelay(pdMS_TO_TICKS(100));
+    // float err;
+    // auto st = EKF::Get_state(1020000,Robot_mass,&err);
+    // Serial.println(st.state[EKF::state_para::x]);
+    // Serial.println(st.state[EKF::state_para::y]);
+    // Serial.println(st.state[EKF::state_para::z]);
+    // Serial.println(err);
     // Serial.println(esp_timer_get_time());
 
     // remove this task after use

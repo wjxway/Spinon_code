@@ -23,6 +23,8 @@
 
 #include <cstdint>
 
+// #define private public
+
 /**
  * @brief copycat class for circbuffer
  *
@@ -267,7 +269,7 @@ public:
      *
      * @param orig1 a pointer to what it's gonna copy
      */
-    explicit Circbuffer_copycat(Circbuffer<T, msize> *orig1) : orig{orig1}, start{orig1->start}, end{orig1->end}, max_size{orig1->max_size}
+    Circbuffer_copycat(Circbuffer<T, msize> *orig1) : orig{orig1}, start{orig1->start}, end{orig1->end}, max_size{msize}
     {
         uint32_t curr_flag;
         do

@@ -24,15 +24,14 @@ namespace EKF
         std::vector<TaskHandle_t> TaskHandle_list;
 
         /**
-         * @brief the minimum tolerable timing for distance measurements is
-         * 6 degrees, corresponding to a distance of ~50cm
+         * @brief the minimum tolerable LR timing is 0.8ms, corresponding to a distance of ~50cm at 25rps.
          */
-        constexpr float Min_valid_angle = 6.0F;
+        constexpr float Min_valid_time = 0.0007F;
         /**
-         * @brief the maximum tolerable timing is 60 degrees, corresponding
+         * @brief the maximum tolerable timing is 10ms, corresponding
          * to two robots touching each other.
          */
-        constexpr float Max_valid_angle = 60.0F;
+        constexpr float Max_valid_time = 0.01F;
 
         /**
          * @brief max history time we fetch data from in us.
@@ -52,18 +51,6 @@ namespace EKF
          * @brief a copycat class for timing buffer
          */
         Circbuffer_copycat<IR::RX::Msg_timing_t, 24U> Timing_buffer_copycat = IR::RX::Get_timing_buffer();
-
-        /**
-         * @brief compute distance based on angle
-         *
-         * @param LR_angle difference between angle received by left and
-         * right receiver.
-         * @return constexpr float distance estimation in cm
-         */
-        float Distance_expectation(const float LR_angle)
-        {
-            return Position_scaling_factor * (IR::RX::Distance_param_a / sin((LR_angle * float(DEG_TO_RAD) + IR::RX::Distance_param_b) / 2.0F) + IR::RX::Distance_param_c);
-        }
 
         /**
          * @brief thrust vs. angular velocity
@@ -89,18 +76,26 @@ namespace EKF
                 // construct actuation vector
                 Act_vector act;
 
+                if (motor_dat.spd_FB_high == 0 || motor_dat.spd_FB_low == 0)
+                {
+                    continue;
+                }
+
                 float w_high = 1.0e6f / (12.0f * float(motor_dat.spd_FB_high));
                 float w_low = 1.0e6f / (12.0f * float(motor_dat.spd_FB_low));
 
                 float w_avg = (w_high + w_low) / 2.0f;
-                float dw = sqrtf(0.0005f * ((motor_dat.spd_high - motor_dat.spd_low) + (math::fast::exp(-0.5f * float(motor_dat.spd_high - motor_dat.spd_low)) - 1.0f) * 2.0f)) * w_avg;
+                float dw = 0.0f;
+                if (motor_dat.spd_high >= motor_dat.spd_low)
+                {
+                    float dv_set = (motor_dat.spd_high - motor_dat.spd_low);
+                    dw = sqrtf(0.0005f * (dv_set + (math::fast::exp(-0.5f * dv_set) - 1.0f) * 2.0f)) * w_avg;
+                }
                 float dt = (Thrust_function(w_avg + dw) - Thrust_function(w_avg - dw)) / 2;
 
                 act.F_a = Thrust_function(w_avg);
                 act.F_x = -dt * sin(motor_dat.thrust_angle);
                 act.F_y = dt * cos(motor_dat.thrust_angle);
-                // let set it to 0 for now.
-                act.F_beta = 0.0f;
 
                 // now start to process the timing buffer one by one
                 // because this is executed when the previous round is just completed (or half a round later)
@@ -161,19 +156,17 @@ namespace EKF
                     int64_t avg_time = timing_dat.Get_avg_time();
                     meas.time = avg_time;
 
-                    // angular velocity in degree/s
-                    float angular_velocity = Get_last_angular_velocity() * 1.0e-6;
                     // timing difference between left and right receiver.
-                    float LR_diff = float(timing_dat.time_arr[1] - timing_dat.time_arr[2]) * angular_velocity;
+                    float LR_dt = float(timing_dat.time_arr[1] - timing_dat.time_arr[2]) * 1.0e-6f;
                     // timing difference between center and average of LR.
-                    float Cent_diff = float(timing_dat.time_arr[0] - avg_time) * angular_velocity;
+                    float Cent_dt = float(timing_dat.time_arr[0] - avg_time) * 1.0e-6f;
 
-                    float Compensated_LR_diff = LR_diff + IR::RX::LR_angle_compensation * Cent_diff;
+                    float Compensated_LR_dt = LR_dt + IR::RX::LR_angle_compensation * Cent_dt;
 
                     // compensate for up/low emitter
                     if (timing_dat.emitter_pos == 0)
                     {
-                        meas.z_0 += IR::detail::LED_elevation_diff;
+                        meas.z_0 += IR::detail::LED_elevation_diff * Position_scaling_factor;
                     }
 
                     // check if timing data is reasonable
@@ -186,17 +179,21 @@ namespace EKF
                     // Max_valid_angle, which is basic for sanity, we
                     // record its angle info. but not necessarily
                     // distance info.
-                    if (Compensated_LR_diff > 0.0F && Compensated_LR_diff < Max_valid_angle)
+                    if (Compensated_LR_dt > 0.0F && Compensated_LR_dt < Max_valid_time)
                     {
                         // we only record the distance info if the
                         // distance could be usefully accurate (~ <42cm)
                         // you can adjust that threshold for using the
                         // distance information or not by adjusting the
                         // Min/Max valid angle
-                        if (Compensated_LR_diff > Min_valid_angle)
+                        if (Compensated_LR_dt > Min_valid_time)
                         {
-                            meas.d = Distance_expectation(Compensated_LR_diff);
-                            meas.phi = Cent_diff;
+                            meas.LR_dt = Compensated_LR_dt;
+                            meas.Cent_dt = Cent_dt;
+                        }
+                        else
+                        {
+                            meas.LR_dt = 0.0f;
                         }
 
                         // construct and feed data to EKFCore

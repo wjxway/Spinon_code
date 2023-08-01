@@ -255,7 +255,7 @@ namespace
         fixed_point<3U> rot_speed = 0.0F; // rotation speed in Hz
         uint32_t time = 0U;               // the time of data, which is the last measurement's time
     };
-    constexpr uint32_t Position_data_short_buffer_max_size = 2000U; // 1500U;
+    constexpr uint32_t Position_data_short_buffer_max_size = 2400U; // 1500U;
     Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 5> Filtered_position_buffer_short;
 
     struct Timing_data_short
@@ -267,7 +267,7 @@ namespace
     constexpr uint32_t Timing_buffer_max_size = 5U; // 1500U;
     Circbuffer<Timing_data_short, Timing_buffer_max_size + 5> Timing_buffer;
 
-    constexpr uint32_t EKF_buffer_max_size = 1000U; // 1500U;
+    constexpr uint32_t EKF_buffer_max_size = 800U; // 1500U;
     Circbuffer<Position_data_short, EKF_buffer_max_size + 5> EKF_buffer;
 
     // starting from when we apply constant thrust
@@ -339,6 +339,28 @@ namespace
                     Serial.print(v.c_str());
                 }
 
+                // Serial.println("---- act & meas ----");
+
+                // auto actp = EKF::Get_act_list();
+                // auto measp = EKF::Get_meas_list();
+
+                // if (actp->n_elem == measp->n_elem)
+                // {
+                //     while (actp->n_elem)
+                //     {
+                //         auto adat = actp->pop();
+                //         auto mdat = measp->pop();
+
+                //         std::string v = std::string("t_0 : ") + std::to_string(mdat.time) + std::string(", x_0 : ") + std::to_string(mdat.x_0) + std::string(", y_0 : ") + std::to_string(mdat.y_0) + std::string(", z_0 : ") + std::to_string(mdat.z_0) + std::string(", LR_dt : ") + std::to_string(mdat.LR_dt * 1.0e3f) + std::string(", Cent_dt : ") + std::to_string(mdat.Cent_dt * 1.0e3f) + std::string(", F_a : ") + std::to_string(adat.F_a) + std::string(", F_x : ") + std::to_string(adat.F_x) + std::string(", F_y : ") + std::to_string(adat.F_y) + "\n";
+
+                //         Serial.print(v.c_str());
+                //     }
+                // }
+                // else
+                // {
+                //     Serial.println("act and meas not match!");
+                // }
+
                 // Serial.println("---- Raw timing ----");
                 // while (Timing_buffer.n_elem > 0)
                 // {
@@ -394,7 +416,8 @@ void Buffer_EKF_task(void *pvParameters)
         Position_data_short pos;
 
         pos.time = t_now;
-        pos.rot_speed = st.state[EKF::state_para::omega];
+
+        pos.rot_speed = st.state[EKF::state_para::omega] / 360.0f;
         pos.x = st.state[EKF::state_para::x];
         pos.y = st.state[EKF::state_para::y];
         pos.z = st.state[EKF::state_para::z];
@@ -1361,7 +1384,14 @@ void Motor_control_task(void *pvParameters)
         Callback_dat_m.t_start = int64_t((atan2f(FB_val[1], FB_val[0]) + K_rot - Motor_angle_offset - pos_0.angle_0 + 10.5F * M_PI) / pos_0.angular_velocity);
 
         // FB[0~2] is F_a, Delta F, and angle.
-        Callback_dat_m.thrust_angle = atan2f(FB_val[1], FB_val[0]);
+        if (fabs(FB_val[1]) <= 1.0e-5f && fabs(FB_val[0]) <= 1.0e-5f)
+        {
+            Callback_dat_m.thrust_angle = 0.0f;
+        }
+        else
+        {
+            Callback_dat_m.thrust_angle = atan2f(FB_val[1], FB_val[0]);
+        }
 
         float min_thrust = Motor::Min_thrust, max_thrust = Motor::Max_thrust;
 

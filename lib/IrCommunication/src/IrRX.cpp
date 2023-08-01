@@ -8,6 +8,9 @@
 #include <vector>
 #include "driver/rmt.h"
 
+// #include <BitCast.hpp>
+// #define private public
+
 namespace IR
 {
     using namespace detail;
@@ -1210,7 +1213,7 @@ namespace IR
 
         Circbuffer_copycat<Parsed_msg_completed, Recent_msg_buffer_history_size> Get_msg_buffer_by_type(const uint32_t msg_type)
         {
-            return Circbuffer_copycat<Parsed_msg_completed, Recent_msg_buffer_history_size>{&recent_msg_buffer[msg_type]};
+            return Circbuffer_copycat<Parsed_msg_completed, Recent_msg_buffer_history_size>{&(recent_msg_buffer[msg_type])};
         }
 
         uint32_t Get_timing_data(Msg_timing_t *const start, const int64_t history_time)
@@ -1455,6 +1458,56 @@ namespace IR
                 return false;
             }
 #endif
+
+            // // for test
+            // auto robot_ptr_1 = Add_new_robot(1);
+            // Parsed_msg_multiple pos_1, pos_2;
+            // pos_1.content_valid_flag = true;
+            // pos_1.msg_count = 4;
+            // pos_1.msg_ID_max = 3;
+            // pos_1.last_reception_time = 1000000;
+            // pos_1.content[0] = std::bit_cast<uint16_t>(int16_t(-200));
+            // pos_1.content[1] = std::bit_cast<uint16_t>(0);
+            // pos_1.content[2] = std::bit_cast<uint16_t>(0);
+            // robot_ptr_1->last_reception_time = 1000000;
+            // robot_ptr_1->multiple_dat[0].push(pos_1);
+
+            // auto robot_ptr_2 = Add_new_robot(2);
+            // pos_2.content_valid_flag = true;
+            // pos_2.msg_count = 4;
+            // pos_2.msg_ID_max = 3;
+            // pos_2.last_reception_time = 1020000;
+            // pos_2.content[0] = std::bit_cast<uint16_t>(int16_t(200));
+            // pos_2.content[1] = std::bit_cast<uint16_t>(0);
+            // pos_2.content[2] = std::bit_cast<uint16_t>(0);
+            // robot_ptr_2->last_reception_time = 1020000;
+            // robot_ptr_2->multiple_dat[0].push(pos_2);
+
+            // Msg_timing_t tm_1, tm_2, tm_3;
+            // tm_1.robot_ID = 2;
+            // tm_1.timing_valid_Q = true;
+            // tm_1.emitter_pos = 0;
+            // tm_1.receiver = 7;
+            // tm_1.time_arr[0] = 980000;
+            // tm_1.time_arr[1] = 980800;
+            // tm_1.time_arr[2] = 979200;
+            // tm_2.robot_ID = 1;
+            // tm_2.timing_valid_Q = true;
+            // tm_2.emitter_pos = 0;
+            // tm_2.receiver = 7;
+            // tm_2.time_arr[0] = 1000000;
+            // tm_2.time_arr[1] = 1000800;
+            // tm_2.time_arr[2] = 999200;
+            // tm_3.robot_ID = 2;
+            // tm_3.timing_valid_Q = true;
+            // tm_3.emitter_pos = 0;
+            // tm_3.receiver = 7;
+            // tm_3.time_arr[0] = 1020000;
+            // tm_3.time_arr[1] = 1020800;
+            // tm_3.time_arr[2] = 1019200;
+            // recent_timing_buffer.push(tm_1);
+            // recent_timing_buffer.push(tm_2);
+            // recent_timing_buffer.push(tm_3);
 
             return true;
         }
