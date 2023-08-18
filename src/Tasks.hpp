@@ -63,7 +63,14 @@ void LED_set(uint32_t color,float duty);
  * 
  * @param pvParameters 
  */
-void Motor_control_task(void *pvParameters);
+void Motor_control_task_opt(void *pvParameters);
+
+/**
+ * @brief similar to LED_control task, but actually turns the motor.
+ * 
+ * @param pvParameters 
+ */
+void Motor_control_task_EKF(void *pvParameters);
 
 /**
  * @brief a task that monitors update of motor control commands and slower /

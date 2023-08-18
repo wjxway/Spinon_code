@@ -49,8 +49,9 @@ void real_setup_core_0(void *pvParameters)
 
     // set global parameters
     // run it **ONCE** after calibration!
-    // Write_global_parameters(11U, 18.3F, -0.03F, 0.0436332F, 0.18F, 39.0518F, 0.0555407F, -43.9161F);
+    // Write_global_parameters(11U, 20.0F, -0.03F, 0.0436332F, 0.18F, 39.0518F, 0.0555407F, -43.9161F);
     // Write_global_parameters(12U, 17.0F, 0.05F, 0.0261799F, 0.18F, 26.6286F, 0.00152896F, -5.96417F);
+    // Write_global_parameters(13U, 18.5F, 0.05F, 0.0261799F, 0.18F, 26.6286F, 0.00152896F, -5.96417F);
 
     // init global parameters
     if (!Init_global_parameters())
@@ -187,7 +188,7 @@ void real_setup_core_0(void *pvParameters)
     task_status_temp = xTaskCreatePinnedToCore(
         LED_off_task,
         "LED_off_task",
-        8000,
+        5000,
         NULL,
         2,
         NULL,
@@ -199,7 +200,7 @@ void real_setup_core_0(void *pvParameters)
     task_status_temp = xTaskCreatePinnedToCore(
         Buffer_data_task,
         "Buffer_data_task",
-        8000,
+        5000,
         NULL,
         8,
         &Buffer_data_handle,
@@ -227,7 +228,7 @@ void real_setup_core_0(void *pvParameters)
     task_status_temp = xTaskCreatePinnedToCore(
         Buffer_EKF_task,
         "Buffer_EKF_task",
-        8000,
+        5000,
         NULL,
         8,
         &Buffer_EKF_handle,
@@ -237,24 +238,39 @@ void real_setup_core_0(void *pvParameters)
     EKF::Add_localization_notification(Buffer_EKF_handle);
 
     // lit LED and control motor based on position
-    TaskHandle_t Motor_control_handle;
+    TaskHandle_t Motor_control_handle_opt;
     task_status_temp = xTaskCreatePinnedToCore(
-        Motor_control_task,
-        "Motor_control_task",
-        12000,
+        Motor_control_task_opt,
+        "Motor_control_task_opt",
+        5000,
         NULL,
         8,
-        &Motor_control_handle,
+        &Motor_control_handle_opt,
         0);
     task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
     // trigger Motor_control when localization is updated.
-    IR::Localization::Add_localization_notification(Motor_control_handle);
+    IR::Localization::Add_localization_notification(Motor_control_handle_opt);
+
+    
+    // lit LED and control motor based on position
+    TaskHandle_t Motor_control_handle_EKF;
+    task_status_temp = xTaskCreatePinnedToCore(
+        Motor_control_task_EKF,
+        "Motor_control_task_EKF",
+        5000,
+        NULL,
+        8,
+        &Motor_control_handle_EKF,
+        0);
+    task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
+    // trigger Motor_control when localization is updated.
+    EKF::Add_localization_notification(Motor_control_handle_EKF);
 
     // monitor motor's state
     task_status_temp = xTaskCreatePinnedToCore(
         Motor_monitor_task,
         "Motor_monitor_task",
-        8000,
+        5000,
         NULL,
         3,
         NULL,

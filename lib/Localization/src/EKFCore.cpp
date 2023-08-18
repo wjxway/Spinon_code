@@ -10,8 +10,6 @@ namespace EKF
 {
 	namespace
 	{
-		// drone mass in g
-		constexpr float drone_mass = 20.16f;
 		// gravity constant in cm/s^2
 		constexpr float gravity = 980.0f;
 		// distance between thrust point and center of geometry in cm
@@ -41,17 +39,17 @@ namespace EKF
 		size_t avail_index = 0;
 
 		// corresponding time of the drone's state
-		int64_t drone_state_time[2] = { 0 };
+		int64_t drone_state_time[2] = {0};
 
 		// state of the drone
-		float drone_state[2][dim_state] = { 0 };
+		float drone_state[2][dim_state] = {0};
 
 		// covariance matrix of the drone
-		float drone_cov[2][dim_state][dim_state] = { 0 };
+		float drone_cov[2][dim_state][dim_state] = {0};
 
 		// covariance increase rate
 		// note that here we assume it's a diagonal matrix, so we only record the diagonal
-		constexpr float Cov_increase_rate[dim_state] = { 1.0f, 1.0f, 4.0f, 4.0f, 4.0f, 4.0f, 100.0f, 4.0f, 10000.0f, 1.0f, 100000.0f };
+		constexpr float Cov_increase_rate[dim_state] = {1.0f, 1.0f, 4.0f, 4.0f, 4.0f, 4.0f, 100.0f, 4.0f, 10000.0f, 1.0f, 100000.0f};
 
 		/**
 		 * @brief extrapolate the state and covariance
@@ -89,7 +87,7 @@ namespace EKF
 			dsf[z] = dsa[z] + dsa[v_z] * dt;
 
 			dsf[omega] = dsa[omega] + (k_Fa * act.F_a - k_drag * dsa[omega] - dsa[offset]) * dt;
-			dsf[theta] = dsa[theta] + dsa[omega] * dt;
+			dsf[theta] = std::fmod(dsa[theta] + dsa[omega] * dt, 360.0f);
 
 			dsf[offset] = dsa[offset];
 
@@ -107,7 +105,7 @@ namespace EKF
 				// exploit the sparse nature of F to speed up the computation
 
 				// covtemp can be static as it's re-initialized every time.
-				static float covtemp[dim_state][dim_state] = { 0 };
+				static float covtemp[dim_state][dim_state] = {0};
 
 				// F.cov
 				for (int i = 0; i < dim_state; i++)
@@ -172,7 +170,7 @@ namespace EKF
 			float H4 = (dsf[y] - meas.y_0) * dr_isq, H5 = (meas.x_0 - dsf[x]) * dr_isq, H9 = degree;
 
 			// compute kalman gain K
-			float K[dim_state] = { 0 };
+			float K[dim_state] = {0};
 
 			// compute cov.H^T
 			for (int i = 0; i < dim_state; i++)
@@ -197,7 +195,7 @@ namespace EKF
 			}
 
 			// I-K.H
-			float temp2[dim_state][dim_state] = { 0 }, temp3[dim_state][dim_state];
+			float temp2[dim_state][dim_state] = {0}, temp3[dim_state][dim_state];
 
 			for (int i = 0; i < dim_state; i++)
 			{
@@ -206,7 +204,7 @@ namespace EKF
 				temp2[i][y] -= H5 * K[i];
 				temp2[i][theta] -= H9 * K[i];
 			}
-			
+
 			// (I-K.H).cov
 			dspm_mult_f32_ae32(temp2[0], covf[0], temp3[0], dim_state, dim_state, dim_state);
 
@@ -247,29 +245,29 @@ namespace EKF
 			float dr_isq = 1.0f / square(dr);
 
 			// err is error vector, obs_cov is observation covariance matrix
-			float err[3] = { atan2f(meas.y_0 - dsf[y], meas.x_0 - dsf[x]) / (2.0F * float(M_PI)) - (dsf[theta] + 10.0f) / 360.0f,
+			float err[3] = {atan2f(meas.y_0 - dsf[y], meas.x_0 - dsf[x]) / (2.0F * float(M_PI)) - (dsf[theta] + 10.0f) / 360.0f,
 							dr - 0.1f * (IR::RX::Distance_param_a / ((meas.LR_dt * dsf[omega] * degree + IR::RX::Distance_param_b) / 2.0F) + IR::RX::Distance_param_c),
-							(meas.z_0 - dsf[z]) / dr - sinf((meas.Cent_dt * dsf[omega] - psi_s) * degree) * tilt_factor };
+							(meas.z_0 - dsf[z]) / dr - sinf((meas.Cent_dt * dsf[omega] - psi_s) * degree) * tilt_factor};
 			err[0] = (err[0] - round(err[0])) * 2.0F * float(M_PI);
-			float obs_cov[3][3] = { {square(meas.sigma_0) * dr_isq / 3.0f + square(sigma_theta * degree), 0, 0},
+			float obs_cov[3][3] = {{square(meas.sigma_0) * dr_isq / 3.0f + square(sigma_theta * degree), 0, 0},
 								   {0, square(meas.sigma_0) / 3.0f + square(degree * IR::RX::Distance_param_a * dsf[omega] * sigma_time / (5.0f * square(IR::RX::Distance_param_b + degree * dsf[omega] * meas.LR_dt))), (dsf[z] - meas.z_0) * square(meas.sigma_0) * dr_isq / 3.0f},
 								   {0, (dsf[z] - meas.z_0) * square(meas.sigma_0) * dr_isq / 3.0f,
-									square(meas.sigma_0 * dr_isq) * (square(dr) + square(meas.z_0 - dsf[z])) / 3.0f + square(degree * sigma_time * dsf[omega] * cosf((psi_s - dsf[omega] * meas.Cent_dt) * degree) * tilt_factor)} };
+									square(meas.sigma_0 * dr_isq) * (square(dr) + square(meas.z_0 - dsf[z])) / 3.0f + square(degree * sigma_time * dsf[omega] * cosf((psi_s - dsf[omega] * meas.Cent_dt) * degree) * tilt_factor)}};
 
 			// observation matrix's elements
 			float H04 = (dsf[y] - meas.y_0) * dr_isq,
-				H05 = (meas.x_0 - dsf[x]) * dr_isq,
-				H09 = degree;
+				  H05 = (meas.x_0 - dsf[x]) * dr_isq,
+				  H09 = degree;
 			float H14 = (meas.x_0 - dsf[x]) / dr,
-				H15 = (meas.y_0 - dsf[y]) / dr,
-				H18 = -(meas.LR_dt * IR::RX::Distance_param_a * degree) / (5.0f * square(meas.LR_dt * dsf[omega] * degree + IR::RX::Distance_param_b));
+				  H15 = (meas.y_0 - dsf[y]) / dr,
+				  H18 = -(meas.LR_dt * IR::RX::Distance_param_a * degree) / (5.0f * square(meas.LR_dt * dsf[omega] * degree + IR::RX::Distance_param_b));
 			float H24 = H14 * (dsf[z] - meas.z_0) * dr_isq,
-				H25 = H15 * (dsf[z] - meas.z_0) * dr_isq,
-				H27 = 1.0f / dr,
-				H28 = degree * meas.Cent_dt * cosf((psi_s - dsf[omega] * meas.Cent_dt) * degree) * tilt_factor;
+				  H25 = H15 * (dsf[z] - meas.z_0) * dr_isq,
+				  H27 = 1.0f / dr,
+				  H28 = degree * meas.Cent_dt * cosf((psi_s - dsf[omega] * meas.Cent_dt) * degree) * tilt_factor;
 
 			// compute kalman gain K
-			float temp0[dim_state][3] = { 0 };
+			float temp0[dim_state][3] = {0};
 
 			// compute cov.H^T
 			for (int i = 0; i < dim_state; i++)
@@ -280,7 +278,7 @@ namespace EKF
 			}
 
 			// compute (H.cov.H^T + R)
-			float temp1[3][3] = { 0 }, temp2[3][3] = { 0 };
+			float temp1[3][3] = {0}, temp2[3][3] = {0};
 
 			for (int i = 0; i < 3; i++)
 			{
@@ -335,7 +333,7 @@ namespace EKF
 			}
 
 			// I-K.H
-			float temp3[dim_state][dim_state] = { 0 }, temp4[dim_state][dim_state];
+			float temp3[dim_state][dim_state] = {0}, temp4[dim_state][dim_state];
 
 			for (int i = 0; i < dim_state; i++)
 			{
@@ -405,16 +403,11 @@ namespace EKF
 
 	} // anonymous namespace
 
-	float sigma_d(const float d)
-	{
-		return 0.0033f * d * d;
-	}
-
 	void Init_state()
 	{
 		avail_index = 0;
 
-		constexpr float init_state[dim_state] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, default_angular_velocity, 0.0f, 0.0f };
+		constexpr float init_state[dim_state] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, default_angular_velocity, 0.0f, 0.0f};
 		for (int i = 0; i < dim_state; i++)
 		{
 			drone_state[0][i] = init_state[i];
@@ -432,7 +425,7 @@ namespace EKF
 		drone_state_time[0] = 0;
 	}
 
-	void Set_state(const int64_t tt, const float* st, const float(*co)[dim_state])
+	void Set_state(const int64_t tt, const float *st, const float (*co)[dim_state])
 	{
 		size_t free_index = 1 - avail_index;
 
@@ -454,7 +447,7 @@ namespace EKF
 		avail_index = free_index;
 	}
 
-	State_vector Get_state(const int64_t t_target, const float Fa, float* std_ptr)
+	State_vector Get_state(const int64_t t_target, const float Fa, float *std_ptr)
 	{
 		auto avail_index_temp = avail_index;
 		State_vector temp;
@@ -485,6 +478,8 @@ namespace EKF
 			temp.state[omega] += (k_Fa * Fa - k_drag * dsa[omega] - dsa[offset]) * dt;
 			temp.state[theta] += dsa[omega] * dt;
 
+			temp.state[theta] = std::fmod(temp.state[theta], 360.0f);
+
 			pos_std = sqrtf(cova[x][x] + cova[y][y] + cova[z][z]);
 		} while (avail_index != avail_index_temp);
 
@@ -498,7 +493,15 @@ namespace EKF
 
 	float Get_last_angular_velocity()
 	{
-		return drone_state[avail_index][omega];
+		auto avail_index_temp = avail_index;
+		float ang_v;
+
+		do
+		{
+			ang_v = drone_state[avail_index][omega];
+		} while (avail_index != avail_index_temp);
+
+		return ang_v;
 	}
 
 	void Iterate_state(const Act_vector act, const Meas_vector meas)
@@ -508,7 +511,7 @@ namespace EKF
 		Correct_state(meas);
 
 		// add a correction stage to help with converging
-		drone_state[1 - avail_index][omega] = math::fast::clip(drone_state[1 - avail_index][omega], 20.0f * 360.0f, 30.0f * 360.0f);
+		drone_state[1 - avail_index][omega] = math::fast::clip(drone_state[1 - avail_index][omega], 18.0f * 360.0f, 30.0f * 360.0f);
 
 		avail_index = 1 - avail_index;
 	}

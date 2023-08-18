@@ -10,6 +10,10 @@
 
 namespace EKF
 {
+	// drone mass in g
+	// constexpr float drone_mass = 20.16f;
+	constexpr float drone_mass = 19.48f;
+
 	// dimension of state vector
 	constexpr size_t dim_state = 11;
 
@@ -59,17 +63,15 @@ namespace EKF
 	 */
 	struct Act_vector
 	{
-		float F_a;	  // average thrust. Unit in gf.
-		float F_x;	  // differential thrust in X direction. Unit in gf.
-		float F_y;	  // differential thrust in Y direction. Unit in gf.
+		float F_a; // average thrust. Unit in gf.
+		float F_x; // differential thrust in X direction. Unit in gf.
+		float F_y; // differential thrust in Y direction. Unit in gf.
 	};
 
 	// standard deviation of angle measurement
 	constexpr float sigma_theta = 1.5f;
 	// standard deviation of timing measurement (for both distance and elevation)
 	constexpr float sigma_time = 0.0001f;
-	// standard deviation function of distance measurements
-	float sigma_d(const float d);
 
 	// measurement vector
 	struct Meas_vector
@@ -101,7 +103,7 @@ namespace EKF
 	 * @warning this is not write thread safe!
 	 * @warning this function will not do validity check for covariance!
 	 */
-	void Set_state(const int64_t tt, const float* st, const float(*co)[dim_state]);
+	void Set_state(const int64_t tt, const float *st, const float (*co)[dim_state]);
 
 	/**
 	 * @brief get the state of the drone at a certain time
@@ -112,7 +114,7 @@ namespace EKF
 	 *
 	 * @return State_vector the predicted state at that time.
 	 */
-	State_vector Get_state(const int64_t t_target, const float Fa, float* std_ptr = nullptr);
+	State_vector Get_state(const int64_t t_target, const float Fa, float *std_ptr = nullptr);
 
 	/**
 	 * @brief get the angular velocity at last update, unit in degree/s

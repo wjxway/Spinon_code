@@ -11,6 +11,13 @@
 
 namespace EKF
 {
+    // struct actmeas
+    // {
+    //     Act_vector act;
+    //     Meas_vector meas;
+    // };
+    // extern Circbuffer<actmeas, 100> actmeas_list;
+
     // transmitted int * Position_scaling_factor => actual position in cm
     constexpr float Position_scaling_factor = 0.1f;
 
@@ -35,7 +42,7 @@ namespace EKF
 
     /**
      * @brief Initialize EKF routine
-     * 
+     *
      * @param loc_msg_type type of position message
      * @return bool whether init is successful
      */

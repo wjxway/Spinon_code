@@ -6,6 +6,9 @@ namespace EKF
 {
     using namespace IR;
 
+    // buffer for print
+    // Circbuffer<actmeas, 100> actmeas_list;
+
     namespace
     {
         /**
@@ -86,7 +89,7 @@ namespace EKF
 
                 float w_avg = (w_high + w_low) / 2.0f;
                 float dw = 0.0f;
-                if (motor_dat.spd_high >= motor_dat.spd_low)
+                if (motor_dat.spd_high > motor_dat.spd_low)
                 {
                     float dv_set = (motor_dat.spd_high - motor_dat.spd_low);
                     dw = sqrtf(0.0005f * (dv_set + (math::fast::exp(-0.5f * dv_set) - 1.0f) * 2.0f)) * w_avg;
@@ -195,6 +198,9 @@ namespace EKF
                         {
                             meas.LR_dt = 0.0f;
                         }
+
+                        // buffer for print
+                        // actmeas_list.push({act, meas});
 
                         // construct and feed data to EKFCore
                         Iterate_state(act, meas);
