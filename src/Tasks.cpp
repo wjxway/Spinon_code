@@ -232,17 +232,17 @@ namespace
     // constexpr uint32_t Control_buffer_max_size = 300U;
     // Circbuffer<Control_info, Control_buffer_max_size + 5> Control_buffer;
 
-    struct Motor_info
-    {
-    public:
-        Motor_info() {}
-        Motor_info(uint16_t spd, uint32_t t) : speed(spd), time(t) {}
-        uint16_t speed = 0U;
-        uint32_t time = 0U;
-    };
+    // struct Motor_info
+    // {
+    // public:
+    //     Motor_info() {}
+    //     Motor_info(uint16_t spd, uint32_t t) : speed(spd), time(t) {}
+    //     uint16_t speed = 0U;
+    //     uint32_t time = 0U;
+    // };
 
-    constexpr size_t Motor_buffer_max_size = 1000U;
-    Circbuffer<Motor_info, Motor_buffer_max_size + 5> Motor_buffer;
+    // constexpr size_t Motor_buffer_max_size = 1000U;
+    // Circbuffer<Motor_info, Motor_buffer_max_size + 5> Motor_buffer;
 
     struct Position_data_short
     {
@@ -391,15 +391,15 @@ namespace
                 //     Serial.print(v.c_str());
                 // }
 
-                Serial.println("---- Motor timing data ----");
-                while (Motor_buffer.n_elem > 0)
-                {
-                    auto fdat = Motor_buffer.pop();
+                // Serial.println("---- Motor timing data ----");
+                // while (Motor_buffer.n_elem > 0)
+                // {
+                //     auto fdat = Motor_buffer.pop();
 
-                    std::string v = std::string("update_t : ") + std::to_string(fdat.time) + std::string(", spd : ") + std::to_string(fdat.speed) + "\n";
+                //     std::string v = std::string("update_t : ") + std::to_string(fdat.time) + std::string(", spd : ") + std::to_string(fdat.speed) + "\n";
 
-                    Serial.print(v.c_str());
-                }
+                //     Serial.print(v.c_str());
+                // }
 
                 // Serial.println("---- Motor feedback data ----");
                 // while (Motor_buffer.n_elem > 0)
@@ -817,7 +817,7 @@ namespace
             LED_set(1, to_set_thrust);
 
             Motor::Set_speed(to_set_thrust ? command_ptr->Current_motor_target.spd_high : command_ptr->Current_motor_target.spd_low);
-            Motor_buffer.push({to_set_thrust ? command_ptr->Current_motor_target.spd_high : command_ptr->Current_motor_target.spd_low, uint32_t(t_now)});
+           // Motor_buffer.push({to_set_thrust ? command_ptr->Current_motor_target.spd_high : command_ptr->Current_motor_target.spd_low, uint32_t(t_now)});
 
             // if was 2, we push to storage
             if (command_ptr->Motor_state == 0)
@@ -1561,7 +1561,7 @@ void Motor_control_task_EKF(void *pvParameters)
 
         // each cycle start with low->high
         Callback_dat_m.period = rotation_period;
-        Callback_dat_m.t_start = int64_t((atan2f(FB_val[1], FB_val[0]) + K_rot - Motor_angle_offset - st.state[EKF::state_para::theta] * float(M_PI) / 180.0f + 10.5F * M_PI) / (ang_v * float(M_PI) / 180.0f) * 1.0e6f);
+        Callback_dat_m.t_start = t_predict + int64_t((atan2f(FB_val[1], FB_val[0]) + K_rot - Motor_angle_offset - st.state[EKF::state_para::theta] * float(M_PI) / 180.0f + 10.5F * M_PI) / (ang_v * float(M_PI) / 180.0f) * 1.0e6f);
 
         // FB[0~2] is F_a, Delta F, and angle.
         if (fabs(FB_val[1]) <= 1.0e-5f && fabs(FB_val[0]) <= 1.0e-5f)
