@@ -51,7 +51,8 @@ void real_setup_core_0(void *pvParameters)
     // run it **ONCE** after calibration!
     // Write_global_parameters(11U, 20.0F, -0.03F, 0.0436332F, 0.18F, 39.0518F, 0.0555407F, -43.9161F);
     // Write_global_parameters(12U, 17.0F, 0.05F, 0.0261799F, 0.18F, 26.6286F, 0.00152896F, -5.96417F);
-    // Write_global_parameters(13U, 18.5F, 0.05F, 0.0261799F, 0.18F, 26.6286F, 0.00152896F, -5.96417F);
+    // Write_global_parameters(13U, 18.5F, -0.01F, -0.0279253F, 0.18F, 25.1755F, 0.027526F, -0.09398F);
+    // Write_global_parameters(14U, 18.5F, 0.0F, 0.00349066F, 0.18F, 39.5786F, 0.10672F, -36.3366F);
 
     // init global parameters
     if (!Init_global_parameters())
@@ -251,7 +252,6 @@ void real_setup_core_0(void *pvParameters)
     // trigger Motor_control when localization is updated.
     IR::Localization::Add_localization_notification(Motor_control_handle_opt);
 
-    
     // lit LED and control motor based on position
     TaskHandle_t Motor_control_handle_EKF;
     task_status_temp = xTaskCreatePinnedToCore(

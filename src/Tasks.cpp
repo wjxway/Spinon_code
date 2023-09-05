@@ -26,15 +26,15 @@ using math::fast::square;
 float target_point[3] = {0.0F, 0.0F, 0.0F};
 
 // K_I has time unit of 1/s
-constexpr float K_I_XY = 2.0e-2F;
-constexpr float I_XY_range = 150.0F;
+constexpr float K_I_XY = 1.5e-2F; // 2.0e-2F
+constexpr float I_XY_range = 400.0F;
 
-constexpr float K_P_XY = 8.0e-2F;
-constexpr float P_XY_range = 60.0F;
+constexpr float K_P_XY = 6.0e-2F; // 8.0e-2F
+constexpr float P_XY_range = 200.0F;
 // K_D has time unit of s
-constexpr float K_D_XY = 5.5e-2F;
+constexpr float K_D_XY = 5.5e-2F; // 5.5e-2F
 // K_A has time unit of s^2
-constexpr float K_A_XY = 5.0e-2F;
+constexpr float K_A_XY = 2.5e-2F; // 5.0e-2F
 
 constexpr float K_I_Z = 1.0e-2F;
 constexpr float K_P_Z = 2.5e-2F;
@@ -255,7 +255,7 @@ namespace
         fixed_point<3U> rot_speed = 0.0F; // rotation speed in Hz
         uint32_t time = 0U;               // the time of data, which is the last measurement's time
     };
-    constexpr uint32_t Position_data_short_buffer_max_size = 1200U; // 1500U;
+    constexpr uint32_t Position_data_short_buffer_max_size = 1500U;
     Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 5> Filtered_position_buffer_short;
 
     struct Timing_data_short
@@ -264,7 +264,7 @@ namespace
         uint16_t rid;
     };
 
-    constexpr uint32_t Timing_buffer_max_size = 5U; // 1500U;
+    constexpr uint32_t Timing_buffer_max_size = 5U;
     Circbuffer<Timing_data_short, Timing_buffer_max_size + 5> Timing_buffer;
 
     struct EKF_all
@@ -273,7 +273,7 @@ namespace
         uint32_t time;
     };
 
-    constexpr uint32_t EKF_buffer_max_size = 400U; // 1500U;
+    constexpr uint32_t EKF_buffer_max_size = Position_data_short_buffer_max_size / 3U;
     Circbuffer<EKF_all, EKF_buffer_max_size + 5> EKF_buffer;
 
     // struct Motor_timing_t
@@ -817,7 +817,7 @@ namespace
             LED_set(1, to_set_thrust);
 
             Motor::Set_speed(to_set_thrust ? command_ptr->Current_motor_target.spd_high : command_ptr->Current_motor_target.spd_low);
-           // Motor_buffer.push({to_set_thrust ? command_ptr->Current_motor_target.spd_high : command_ptr->Current_motor_target.spd_low, uint32_t(t_now)});
+            // Motor_buffer.push({to_set_thrust ? command_ptr->Current_motor_target.spd_high : command_ptr->Current_motor_target.spd_low, uint32_t(t_now)});
 
             // if was 2, we push to storage
             if (command_ptr->Motor_state == 0)

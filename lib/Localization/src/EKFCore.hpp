@@ -12,7 +12,7 @@ namespace EKF
 {
 	// drone mass in g
 	// constexpr float drone_mass = 20.16f;
-	constexpr float drone_mass = 19.48f;
+	constexpr float drone_mass = 19.772f;
 
 	// dimension of state vector
 	constexpr size_t dim_state = 11;
