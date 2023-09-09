@@ -49,7 +49,7 @@ namespace EKF
 
 		// covariance increase rate
 		// note that here we assume it's a diagonal matrix, so we only record the diagonal
-		constexpr float Cov_increase_rate[dim_state] = {1.0f, 1.0f, 4.0f, 4.0f, 4.0f, 4.0f, 100.0f, 4.0f, 10000.0f, 1.0f, 100000.0f};
+		constexpr float Cov_increase_rate[dim_state] = {16.0f, 16.0f, 4.0f, 4.0f, 4.0f, 4.0f, 100.0f, 4.0f, 10000.0f, 1.0f, 100000.0f};
 
 		/**
 		 * @brief extrapolate the state and covariance

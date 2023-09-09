@@ -26,23 +26,23 @@ using math::fast::square;
 float target_point[3] = {0.0F, 0.0F, 0.0F};
 
 // K_I has time unit of 1/s
-constexpr float K_I_XY = 1.5e-2F; // 2.0e-2F
-constexpr float I_XY_range = 400.0F;
+constexpr float K_I_XY = 0.011F; // 0.022F; // 1.5e-2F // 2.0e-2F
+constexpr float I_XY_range = 2000.0F;
 
-constexpr float K_P_XY = 6.0e-2F; // 8.0e-2F
-constexpr float P_XY_range = 200.0F;
+constexpr float K_P_XY = 0.039F; // 0.073F; // 6.9e-2F; // 8.0e-2F
+constexpr float P_XY_range = 2000.0F;
 // K_D has time unit of s
-constexpr float K_D_XY = 5.5e-2F; // 5.5e-2F
+constexpr float K_D_XY = 0.052F; // 0.077F; // 8.1e-2F; // 5.5e-2F
 // K_A has time unit of s^2
-constexpr float K_A_XY = 2.5e-2F; // 5.0e-2F
+constexpr float K_A_XY = 0.015F; // 0.028F; // 1.2e-2F; // 5.0e-2F
 
 constexpr float K_I_Z = 1.0e-2F;
 constexpr float K_P_Z = 2.5e-2F;
 constexpr float K_D_Z = 1.5e-2F;
 
 // rotation angle of execution in rad.
-constexpr float K_rot = 5.0F / 180.0F * M_PI;
-constexpr float P_rot = 5.0F / 180.0F * M_PI;
+constexpr float K_rot = 0.0F / 180.0F * M_PI;
+constexpr float P_rot = 0.0F / 180.0F * M_PI;
 
 // time coefficient for filters in s
 constexpr float V_filter_t_coef = 0.06F;
@@ -1256,7 +1256,7 @@ void Motor_control_task_opt(void *pvParameters)
             break;
 
         case 2:
-            if (esp_timer_get_time() - Reach_target_speed_time > 10000000LL)
+            if (esp_timer_get_time() - Reach_target_speed_time > 8000000LL)
             {
                 // LIT_R;
                 T_switch_EKF = esp_timer_get_time();
