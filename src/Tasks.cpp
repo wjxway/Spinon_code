@@ -26,23 +26,25 @@ using math::fast::square;
 float target_point[3] = {0.0F, 0.0F, 0.0F};
 
 // K_I has time unit of 1/s
-constexpr float K_I_XY = 0.011F; // 0.022F; // 1.5e-2F // 2.0e-2F
+constexpr float K_I_XY = 0.020F; // 1.5e-2F // 2.0e-2F
 constexpr float I_XY_range = 2000.0F;
 
-constexpr float K_P_XY = 0.039F; // 0.073F; // 6.9e-2F; // 8.0e-2F
+constexpr float K_P_XY = 0.050F; // 0.060F; // 6.9e-2F; // 8.0e-2F
 constexpr float P_XY_range = 2000.0F;
 // K_D has time unit of s
-constexpr float K_D_XY = 0.052F; // 0.077F; // 8.1e-2F; // 5.5e-2F
+constexpr float K_D_XY = 0.060F; // 0.070F; // 8.1e-2F; // 5.5e-2F
 // K_A has time unit of s^2
-constexpr float K_A_XY = 0.015F; // 0.028F; // 1.2e-2F; // 5.0e-2F
+constexpr float K_A_XY = 0.020F; // 0.035F; // 1.2e-2F; // 5.0e-2F
 
 constexpr float K_I_Z = 1.0e-2F;
 constexpr float K_P_Z = 2.5e-2F;
 constexpr float K_D_Z = 1.5e-2F;
 
 // rotation angle of execution in rad.
-constexpr float K_rot = 0.0F / 180.0F * M_PI;
-constexpr float P_rot = 0.0F / 180.0F * M_PI;
+constexpr float K_rot = 5.0F / 180.0F * M_PI;
+constexpr float P_rot = 5.0F / 180.0F * M_PI;
+
+constexpr int64_t t_controller_switch = 80000000LL;
 
 // time coefficient for filters in s
 constexpr float V_filter_t_coef = 0.06F;
@@ -1256,7 +1258,7 @@ void Motor_control_task_opt(void *pvParameters)
             break;
 
         case 2:
-            if (esp_timer_get_time() - Reach_target_speed_time > 8000000LL)
+            if (esp_timer_get_time() - Reach_target_speed_time > t_controller_switch)
             {
                 // LIT_R;
                 T_switch_EKF = esp_timer_get_time();
@@ -1430,7 +1432,7 @@ void Motor_control_task_opt(void *pvParameters)
         // It would be better if the thrust can be computed in the interrupt so we can carry on the residue to make things more accurate, but for now let's just compute it here.
 
         // min and max speed command
-        constexpr uint32_t spd_max = 25U, spd_min = 7U;
+        constexpr uint32_t spd_max = 23U, spd_min = 7U;
 
         uint32_t spd_high, spd_low, spd_diff;
         uint32_t spd_avg_2 = clip(uint32_t(ceil(FB_val[2] * 1.0625F + 10.0F)), spd_min * 2, spd_max * 2);
@@ -1525,6 +1527,17 @@ void Motor_control_task_EKF(void *pvParameters)
         A_comp[0] = st.state[EKF::state_para::gamma_x] * float(M_PI) / 180.0f * 9800.0f;
         A_comp[1] = st.state[EKF::state_para::gamma_y] * float(M_PI) / 180.0f * 9800.0f;
 
+        // filter acceleration
+        static float Filt_A_comp[2];
+        static int64_t A_last_update_time = 0;
+        constexpr float A_filter_t_coef = 3.0F;
+        float update_coef = clip(1e-6F * float(t_predict - A_last_update_time) / A_filter_t_coef, 0.0F, 1.0F);
+
+        for (size_t i = 0; i < 2; i++)
+        {
+            Filt_A_comp[i] = A_comp[i] * update_coef + Filt_A_comp[i] * (1.0F - update_coef);
+        }
+
         if (control_on == 3)
         {
             float t_coef = float(t_predict - last_I_time) / 2.0e6F;
@@ -1546,8 +1559,8 @@ void Motor_control_task_EKF(void *pvParameters)
         last_I_time = t_predict;
 
         // construct X,Y,Z control law
-        FB_val[0] = -K_P_XY * P_comp[0] - K_D_XY * D_comp[0] - K_A_XY * A_comp[0] - K_I_XY * I_comp[0];
-        FB_val[1] = -K_P_XY * P_comp[1] - K_D_XY * D_comp[1] - K_A_XY * A_comp[1] - K_I_XY * I_comp[1];
+        FB_val[0] = -K_P_XY * P_comp[0] - K_D_XY * D_comp[0] - K_A_XY * (A_comp[0] - Filt_A_comp[0]) - K_I_XY * I_comp[0];
+        FB_val[1] = -K_P_XY * P_comp[1] - K_D_XY * D_comp[1] - K_A_XY * (A_comp[1] - Filt_A_comp[1]) - K_I_XY * I_comp[1];
         FB_val[2] = -K_P_Z * P_comp[2] - K_D_Z * D_comp[2] - K_I_Z * I_comp[2] + Robot_mass;
 
         // if (norm(EKF_scaling * st.state[EKF::state_para::x] - target_point[0], EKF_scaling * st.state[EKF::state_para::y] - target_point[1]) > 200.0F)
@@ -1561,7 +1574,7 @@ void Motor_control_task_EKF(void *pvParameters)
 
         // each cycle start with low->high
         Callback_dat_m.period = rotation_period;
-        Callback_dat_m.t_start = t_predict + int64_t((atan2f(FB_val[1], FB_val[0]) + K_rot - Motor_angle_offset - st.state[EKF::state_para::theta] * float(M_PI) / 180.0f + 10.5F * M_PI) / (ang_v * float(M_PI) / 180.0f) * 1.0e6f);
+        Callback_dat_m.t_start = t_predict + int64_t((atan2f(FB_val[1], FB_val[0]) + K_rot + 0.18F /*the offset in view angle*/ - Motor_angle_offset - st.state[EKF::state_para::theta] * float(M_PI) / 180.0f + 10.5F * M_PI) / (ang_v * float(M_PI) / 180.0f) * 1.0e6f);
 
         // FB[0~2] is F_a, Delta F, and angle.
         if (fabs(FB_val[1]) <= 1.0e-5f && fabs(FB_val[0]) <= 1.0e-5f)
@@ -1579,7 +1592,7 @@ void Motor_control_task_EKF(void *pvParameters)
         // It would be better if the thrust can be computed in the interrupt so we can carry on the residue to make things more accurate, but for now let's just compute it here.
 
         // min and max speed command
-        constexpr uint32_t spd_max = 25U, spd_min = 7U;
+        constexpr uint32_t spd_max = 23U, spd_min = 7U;
 
         uint32_t spd_high, spd_low, spd_diff;
         uint32_t spd_avg_2 = clip(uint32_t(ceil(FB_val[2] * 1.0625F + 10.0F)), spd_min * 2, spd_max * 2);

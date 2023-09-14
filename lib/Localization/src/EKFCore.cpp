@@ -49,7 +49,7 @@ namespace EKF
 
 		// covariance increase rate
 		// note that here we assume it's a diagonal matrix, so we only record the diagonal
-		constexpr float Cov_increase_rate[dim_state] = {16.0f, 16.0f, 4.0f, 4.0f, 4.0f, 4.0f, 100.0f, 4.0f, 10000.0f, 1.0f, 100000.0f};
+		constexpr float Cov_increase_rate[dim_state] = {10.0f, 10.0f, 1.0f, 1.0f, 0.01f, 0.01f, 10.0f, 0.1f, 10000.0f, 1.0f, 100000.0f};
 
 		/**
 		 * @brief extrapolate the state and covariance
@@ -419,7 +419,7 @@ namespace EKF
 			{
 				drone_cov[0][i][j] = 0.0f;
 			}
-			drone_cov[0][i][i] = 1000000.0f;
+			drone_cov[0][i][i] = 100000.0f;
 		}
 
 		drone_state_time[0] = 0;
@@ -511,7 +511,7 @@ namespace EKF
 		Correct_state(meas);
 
 		// add a correction stage to help with converging
-		drone_state[1 - avail_index][omega] = math::fast::clip(drone_state[1 - avail_index][omega], 18.0f * 360.0f, 30.0f * 360.0f);
+		drone_state[1 - avail_index][omega] = math::fast::clip(drone_state[1 - avail_index][omega], 18.0f * 360.0f, 35.0f * 360.0f);
 
 		avail_index = 1 - avail_index;
 	}

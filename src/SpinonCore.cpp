@@ -52,7 +52,7 @@ void real_setup_core_0(void *pvParameters)
     // Write_global_parameters(11U, 20.0F, -0.03F, 0.0436332F, 0.18F, 39.0518F, 0.0555407F, -43.9161F);
     // Write_global_parameters(12U, 17.0F, 0.05F, 0.0261799F, 0.18F, 26.6286F, 0.00152896F, -5.96417F);
     // Write_global_parameters(13U, 18.5F, -0.01F, -0.0279253F, 0.18F, 25.1755F, 0.027526F, -0.09398F);
-    // Write_global_parameters(14U, 18.5F, 0.0F, 0.00349066F, 0.18F, 39.5786F, 0.10672F, -36.3366F);
+    // Write_global_parameters(14U, 18.0F, -0.01F, -0.0279253F, 0.18F, 25.1755F, 0.027526F, -0.09398F);
 
     // init global parameters
     if (!Init_global_parameters())
