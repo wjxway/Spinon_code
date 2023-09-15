@@ -26,15 +26,15 @@ using math::fast::square;
 float target_point[3] = {0.0F, 0.0F, 0.0F};
 
 // K_I has time unit of 1/s
-constexpr float K_I_XY = 0.020F; // 1.5e-2F // 2.0e-2F
-constexpr float I_XY_range = 2000.0F;
+constexpr float K_I_XY = 0.015F; // 1.5e-2F // 2.0e-2F
+constexpr float I_XY_range = 200.0F;
 
-constexpr float K_P_XY = 0.050F; // 0.060F; // 6.9e-2F; // 8.0e-2F
-constexpr float P_XY_range = 2000.0F;
+constexpr float K_P_XY = 0.060F; // 0.060F; // 6.9e-2F; // 8.0e-2F
+constexpr float P_XY_range = 200.0F;
 // K_D has time unit of s
-constexpr float K_D_XY = 0.060F; // 0.070F; // 8.1e-2F; // 5.5e-2F
+constexpr float K_D_XY = 0.070F; // 0.070F; // 8.1e-2F; // 5.5e-2F
 // K_A has time unit of s^2
-constexpr float K_A_XY = 0.020F; // 0.035F; // 1.2e-2F; // 5.0e-2F
+constexpr float K_A_XY = 0.035F; // 0.035F; // 1.2e-2F; // 5.0e-2F
 
 constexpr float K_I_Z = 1.0e-2F;
 constexpr float K_P_Z = 2.5e-2F;
