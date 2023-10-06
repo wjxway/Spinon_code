@@ -26,15 +26,15 @@ using math::fast::square;
 float target_point[3] = {0.0F, 0.0F, 0.0F};
 
 // K_I has time unit of 1/s
-constexpr float K_I_XY = 0.010F; // 1.5e-2F // 2.0e-2F
+constexpr float K_I_XY = 0.01F; // 1.5e-2F // 2.0e-2F
 constexpr float I_XY_range = 200.0F;
 
-constexpr float K_P_XY = 0.060F; // 0.060F; // 6.9e-2F; // 8.0e-2F
-constexpr float P_XY_range = 150.0F;
+constexpr float K_P_XY = 0.06F; // 0.060F; // 6.9e-2F; // 8.0e-2F
+constexpr float P_XY_range = 200.0F;
 // K_D has time unit of s
-constexpr float K_D_XY = 0.070F; // 0.070F; // 8.1e-2F; // 5.5e-2F
+constexpr float K_D_XY = 0.04F; // 0.070F; // 8.1e-2F; // 5.5e-2F
 // K_A has time unit of s^2
-constexpr float K_A_XY = 0.035F; // 0.035F; // 1.2e-2F; // 5.0e-2F
+constexpr float K_A_XY = 0.04F; // 0.035F; // 1.2e-2F; // 5.0e-2F
 
 constexpr float K_I_Z = 1.0e-2F;
 constexpr float K_P_Z = 2.5e-2F;
@@ -49,6 +49,8 @@ constexpr int64_t t_controller_switch = 80000000LL;
 // time coefficient for filters in s
 constexpr float V_filter_t_coef = 0.06F;
 constexpr float A_filter_t_coef = 0.30F;
+
+constexpr uint32_t SPD_MAX_ALLOWED = 26;
 
 void IRAM_ATTR Idle_stats_task(void *pvParameters)
 {
@@ -257,7 +259,7 @@ namespace
         fixed_point<3U> rot_speed = 0.0F; // rotation speed in Hz
         uint32_t time = 0U;               // the time of data, which is the last measurement's time
     };
-    constexpr uint32_t Position_data_short_buffer_max_size = 3500U;
+    constexpr uint32_t Position_data_short_buffer_max_size = 1500U;
     Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 5> Filtered_position_buffer_short;
 
     struct Timing_data_short
@@ -269,14 +271,14 @@ namespace
     constexpr uint32_t Timing_buffer_max_size = 5U;
     Circbuffer<Timing_data_short, Timing_buffer_max_size + 5> Timing_buffer;
 
-    // struct EKF_all
-    // {
-    //     EKF::State_vector st;
-    //     uint32_t time;
-    // };
+    struct EKF_all
+    {
+        EKF::State_vector st;
+        uint32_t time;
+    };
 
-    // constexpr uint32_t EKF_buffer_max_size = Position_data_short_buffer_max_size / 3U;
-    // Circbuffer<EKF_all, EKF_buffer_max_size + 5> EKF_buffer;
+    constexpr uint32_t EKF_buffer_max_size = Position_data_short_buffer_max_size / 3U;
+    Circbuffer<EKF_all, EKF_buffer_max_size + 5> EKF_buffer;
 
     // struct Motor_timing_t
     // {
@@ -316,7 +318,7 @@ namespace
                 Serial.println(T_switch_EKF);
 
                 std::string v = "Robot_ID: ";
-                v += std::to_string(This_robot_ID) + "\nK_P_Z = " + std::to_string(K_P_Z) + ", K_D_Z = " + std::to_string(K_D_Z) + ", K_I_Z = " + std::to_string(K_I_Z) + "\nK_I_XY = " + std::to_string(K_I_XY) +", K_P_XY = " + std::to_string(K_P_XY) + ", K_D_XY = " + std::to_string(K_D_XY) + ", K_A_XY = " + std::to_string(K_A_XY) + "\nV_filter_t_coef = " + std::to_string(V_filter_t_coef) + ", A_filter_t_coef = " + std::to_string(A_filter_t_coef) + "\nTarget = { " + std::to_string(target_point[0]) + " , " + std::to_string(target_point[1]) + " , " + std::to_string(target_point[2]) + " }\n";
+                v += std::to_string(This_robot_ID) + "\nK_P_Z = " + std::to_string(K_P_Z) + ", K_D_Z = " + std::to_string(K_D_Z) + ", K_I_Z = " + std::to_string(K_I_Z) + "\nK_P_XY = " + std::to_string(K_P_XY) + ", K_D_XY = " + std::to_string(K_D_XY) + ", K_A_XY = " + std::to_string(K_A_XY) + "\nV_filter_t_coef = " + std::to_string(V_filter_t_coef) + ", A_filter_t_coef = " + std::to_string(A_filter_t_coef) + "\nTarget = { " + std::to_string(target_point[0]) + " , " + std::to_string(target_point[1]) + " , " + std::to_string(target_point[2]) + " }\n";
 
                 Serial.print(v.c_str());
 
@@ -350,15 +352,15 @@ namespace
                     Serial.print(v.c_str());
                 }
 
-                // Serial.println("---- EKF position ----");
-                // while (EKF_buffer.n_elem > 0)
-                // {
-                //     auto pdat = EKF_buffer.pop();
+                Serial.println("---- EKF position ----");
+                while (EKF_buffer.n_elem > 0)
+                {
+                    auto pdat = EKF_buffer.pop();
 
-                //     std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", gamma_x : ") + std::to_string(pdat.st.state[EKF::state_para::gamma_x]) + std::string(", gamma_y : ") + std::to_string(pdat.st.state[EKF::state_para::gamma_y]) + std::string(", v_x : ") + std::to_string(pdat.st.state[EKF::state_para::v_x]) + std::string(", v_y : ") + std::to_string(pdat.st.state[EKF::state_para::v_y]) + std::string(", x : ") + std::to_string(pdat.st.state[EKF::state_para::x]) + std::string(", y : ") + std::to_string(pdat.st.state[EKF::state_para::y]) + std::string(", v_z : ") + std::to_string(pdat.st.state[EKF::state_para::v_z]) + std::string(", z : ") + std::to_string(pdat.st.state[EKF::state_para::z]) + std::string(", omega : ") + std::to_string(pdat.st.state[EKF::state_para::omega]) + "\n";
+                    std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", gamma_x : ") + std::to_string(pdat.st.state[EKF::state_para::gamma_x]) + std::string(", gamma_y : ") + std::to_string(pdat.st.state[EKF::state_para::gamma_y]) + std::string(", v_x : ") + std::to_string(pdat.st.state[EKF::state_para::v_x]) + std::string(", v_y : ") + std::to_string(pdat.st.state[EKF::state_para::v_y]) + std::string(", x : ") + std::to_string(pdat.st.state[EKF::state_para::x]) + std::string(", y : ") + std::to_string(pdat.st.state[EKF::state_para::y]) + std::string(", v_z : ") + std::to_string(pdat.st.state[EKF::state_para::v_z]) + std::string(", z : ") + std::to_string(pdat.st.state[EKF::state_para::z]) + std::string(", omega : ") + std::to_string(pdat.st.state[EKF::state_para::omega]) + "\n";
 
-                //     Serial.print(v.c_str());
-                // }
+                    Serial.print(v.c_str());
+                }
 
                 // Serial.println("---- Motor timing ----");
                 // while (Motor_timing_buffer.n_elem > 0)
@@ -427,21 +429,21 @@ namespace
     }
 }
 
-// void Buffer_EKF_task(void *pvParameters)
-// {
-//     while (true)
-//     {
-//         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+void Buffer_EKF_task(void *pvParameters)
+{
+    while (true)
+    {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-//         int64_t t_now = esp_timer_get_time();
-//         EKF_all pos;
+        int64_t t_now = esp_timer_get_time();
+        EKF_all pos;
 
-//         pos.time = t_now;
-//         pos.st = EKF::Get_state(t_now, EKF::drone_mass);
+        pos.time = t_now;
+        pos.st = EKF::Get_state(t_now, EKF::drone_mass);
 
-//         EKF_buffer.push(pos);
-//     }
-// }
+        EKF_buffer.push(pos);
+    }
+}
 
 // this version buffer localization data
 void Buffer_data_task(void *pvParameters)
@@ -821,27 +823,27 @@ namespace
             Motor::Set_speed(to_set_thrust ? command_ptr->Current_motor_target.spd_high : command_ptr->Current_motor_target.spd_low);
             // Motor_buffer.push({to_set_thrust ? command_ptr->Current_motor_target.spd_high : command_ptr->Current_motor_target.spd_low, uint32_t(t_now)});
 
-            // // if was 2, we push to storage
-            // if (command_ptr->Motor_state == 0)
-            // {
-            //     // when to_set_thrust is 1, we set the motor to spd_low, but this is actually when the speed is the highest.
-            //     // Motor_buffer.push(Motor_info_1{lmt.spd_low, lmt.spd_high, meas_spd[0], meas_spd[1], lmt.thrust_angle, static_cast<uint32_t>(t_now)});
-            //     EKF::Motor_info_t tempinfo;
-            //     tempinfo.spd_low = lmt.spd_low;
-            //     tempinfo.spd_high = lmt.spd_high;
-            //     tempinfo.spd_FB_low = meas_spd[0];
-            //     tempinfo.spd_FB_high = meas_spd[1];
-            //     tempinfo.thrust_angle = lmt.thrust_angle;
-            //     tempinfo.stop_time = t_now;
+            // if was 2, we push to storage
+            if (command_ptr->Motor_state == 0)
+            {
+                // when to_set_thrust is 1, we set the motor to spd_low, but this is actually when the speed is the highest.
+                // Motor_buffer.push(Motor_info_1{lmt.spd_low, lmt.spd_high, meas_spd[0], meas_spd[1], lmt.thrust_angle, static_cast<uint32_t>(t_now)});
+                EKF::Motor_info_t tempinfo;
+                tempinfo.spd_low = lmt.spd_low;
+                tempinfo.spd_high = lmt.spd_high;
+                tempinfo.spd_FB_low = meas_spd[0];
+                tempinfo.spd_FB_high = meas_spd[1];
+                tempinfo.thrust_angle = lmt.thrust_angle;
+                tempinfo.stop_time = t_now;
 
-            //     EKF::Push_to_motor_buffer(tempinfo);
-            //     EKF::Notify_Localization_Task();
-            // }
-            // // if was 0 or 1, we measure the speed and store them
-            // else
-            // {
-            //     meas_spd[to_set_thrust] = Motor::Measure_speed();
-            // }
+                EKF::Push_to_motor_buffer(tempinfo);
+                EKF::Notify_Localization_Task();
+            }
+            // if was 0 or 1, we measure the speed and store them
+            else
+            {
+                meas_spd[to_set_thrust] = Motor::Measure_speed();
+            }
         }
 
         // not sure if this is necessary, but we will add it anyways, it's not gonna influence anything.
@@ -1373,11 +1375,11 @@ void Motor_control_task_opt(void *pvParameters)
         FB_val[1] = -K_P_XY * (sin_rot * P_comp[0] + cos_rot * P_comp[1]) - K_D_XY * Filtered_D_comp[1] - K_A_XY * Filtered_A_comp[1] - K_I_XY * I_comp[1];
         FB_val[2] = -K_P_Z * P_comp[2] - K_D_Z * D_comp[2] - K_I_Z * I_comp[2] + Robot_mass;
 
-        if (norm(pos_0.x - target_point[0], pos_0.y - target_point[1]) > 200.0F)
-        {
-            FB_val[0] = -(cos_rot * P_comp[0] - sin_rot * P_comp[1]);
-            FB_val[1] = -(sin_rot * P_comp[0] + cos_rot * P_comp[1]);
-        }
+        // if (norm(pos_0.x - target_point[0], pos_0.y - target_point[1]) > 200.0F)
+        // {
+        //     FB_val[0] = -K_P_XY * (cos_rot * P_comp[0] - sin_rot * P_comp[1]);
+        //     FB_val[1] = -K_P_XY * (sin_rot * P_comp[0] + cos_rot * P_comp[1]);
+        // }
 
         // static float FB_filtered = 0.0F;
         // static uint32_t FB_count = 0U;
@@ -1432,7 +1434,7 @@ void Motor_control_task_opt(void *pvParameters)
         // It would be better if the thrust can be computed in the interrupt so we can carry on the residue to make things more accurate, but for now let's just compute it here.
 
         // min and max speed command
-        constexpr uint32_t spd_max = 23U, spd_min = 7U;
+        constexpr uint32_t spd_max = SPD_MAX_ALLOWED, spd_min = 7U;
 
         uint32_t spd_high, spd_low, spd_diff;
         uint32_t spd_avg_2 = clip(uint32_t(ceil(FB_val[2] * 1.0625F + 10.0F)), spd_min * 2, spd_max * 2);
@@ -1565,8 +1567,8 @@ void Motor_control_task_EKF(void *pvParameters)
 
         // if (norm(EKF_scaling * st.state[EKF::state_para::x] - target_point[0], EKF_scaling * st.state[EKF::state_para::y] - target_point[1]) > 200.0F)
         // {
-        //     FB_val[0] = -P_comp[0];
-        //     FB_val[1] = -P_comp[1];
+        //     FB_val[0] = -K_P_XY * P_comp[0];
+        //     FB_val[1] = -K_P_XY * P_comp[1];
         // }
 
         // compute timing for callback_3 that use LED to indicate feedback value
@@ -1592,7 +1594,7 @@ void Motor_control_task_EKF(void *pvParameters)
         // It would be better if the thrust can be computed in the interrupt so we can carry on the residue to make things more accurate, but for now let's just compute it here.
 
         // min and max speed command
-        constexpr uint32_t spd_max = 23U, spd_min = 7U;
+        constexpr uint32_t spd_max = SPD_MAX_ALLOWED, spd_min = 7U;
 
         uint32_t spd_high, spd_low, spd_diff;
         uint32_t spd_avg_2 = clip(uint32_t(ceil(FB_val[2] * 1.0625F + 10.0F)), spd_min * 2, spd_max * 2);
