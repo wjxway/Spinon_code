@@ -64,7 +64,11 @@ void real_setup(void *pvParameters)
         IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)-260), std::bit_cast<uint16_t>((int16_t)-150), std::bit_cast<uint16_t>((int16_t)0)}, 2);
         break;
     case 4:
-        IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)0), std::bit_cast<uint16_t>((int16_t)-600), std::bit_cast<uint16_t>((int16_t)0)}, 2);
+        IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)260), std::bit_cast<uint16_t>((int16_t)-450), std::bit_cast<uint16_t>((int16_t)0)}, 2);
+        break;
+    case 5:
+        IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)-260), std::bit_cast<uint16_t>((int16_t)-450), std::bit_cast<uint16_t>((int16_t)0)}, 2);
+        break;
     default:
         Serial.println("This_robot_ID Error!");
         blink_led(20);
