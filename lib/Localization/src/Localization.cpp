@@ -974,7 +974,7 @@ namespace IR
             // if it's trigger based, add trigger to Localization task
             if (trig == Trigger_type::Trigger_based)
             {
-                RX::Add_RX_Notification(Localization_task_handle);
+                RX::Add_RX_notification(Localization_task_handle);
             }
 
             DEBUG_C(Serial.println("Localization setup finished!"));

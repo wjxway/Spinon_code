@@ -1512,7 +1512,7 @@ namespace IR
             return true;
         }
 
-        bool Add_RX_Notification(const TaskHandle_t &handle)
+        bool Add_RX_notification(const TaskHandle_t &handle)
         {
             vTaskSuspendAll();
             if (std::find(TaskHandle_list.begin(), TaskHandle_list.end(), handle) == TaskHandle_list.end())
@@ -1525,7 +1525,7 @@ namespace IR
             return false;
         }
 
-        bool Remove_RX_Notification(const TaskHandle_t &handle)
+        bool Remove_RX_notification(const TaskHandle_t &handle)
         {
             vTaskSuspendAll();
             auto it = std::find(TaskHandle_list.begin(), TaskHandle_list.end(), handle);

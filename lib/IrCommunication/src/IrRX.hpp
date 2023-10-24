@@ -157,7 +157,7 @@ namespace IR
          * @param handle Task handle to be added
          * @return bool true if successfully added, false if already exists.
          */
-        bool Add_RX_Notification(const TaskHandle_t &handle);
+        bool Add_RX_notification(const TaskHandle_t &handle);
 
         /**
          * @brief No longer notify this task when data is updated!
@@ -165,7 +165,7 @@ namespace IR
          * @param handle Task handle to be removed
          * @return bool true if successfully removed, false if never exist.
          */
-        bool Remove_RX_Notification(const TaskHandle_t &handle);
+        bool Remove_RX_notification(const TaskHandle_t &handle);
 
         /**
          * @brief get io_flag, can be used to implement one's own read routine.

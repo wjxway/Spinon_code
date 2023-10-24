@@ -70,7 +70,7 @@ void real_setup_core_0(void *pvParameters)
             0);
     }
 
-    target_point[1]=(This_robot_ID == 13) ? 0.0F : -300.0F;
+    // target_point[1]=(This_robot_ID == 13) ? 0.0F : -300.0F;
 
     DEBUG_C(Serial.println("Global parameters initialized!"));
     DEBUG_C(Serial.print("Robot #"));
@@ -131,7 +131,7 @@ void real_setup_core_0(void *pvParameters)
     IR::Localization::Init();
     DEBUG_C(Serial.println("Localization inited!"));
 
-    EKF::Init();
+    // EKF::Init();
 
     DEBUG_C(Serial.println("Init finished, launching tasks!"));
 
@@ -221,21 +221,21 @@ void real_setup_core_0(void *pvParameters)
     //     0);
     // task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
     // // trigger buffer data when localization is updated.
-    // IR::RX::Add_RX_Notification(Buffer_raw_data_handle);
+    // IR::RX::Add_RX_notification(Buffer_raw_data_handle);
 
-    // buffer EKF data
-    TaskHandle_t Buffer_EKF_handle;
-    task_status_temp = xTaskCreatePinnedToCore(
-        Buffer_EKF_task,
-        "Buffer_EKF_task",
-        5000,
-        NULL,
-        8,
-        &Buffer_EKF_handle,
-        0);
-    task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
-    // trigger buffer data when localization is updated.
-    EKF::Add_localization_notification(Buffer_EKF_handle);
+    // // buffer EKF data
+    // TaskHandle_t Buffer_EKF_handle;
+    // task_status_temp = xTaskCreatePinnedToCore(
+    //     Buffer_EKF_task,
+    //     "Buffer_EKF_task",
+    //     5000,
+    //     NULL,
+    //     8,
+    //     &Buffer_EKF_handle,
+    //     0);
+    // task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
+    // // trigger buffer data when localization is updated.
+    // EKF::Add_localization_notification(Buffer_EKF_handle);
 
     // lit LED and control motor based on position
     TaskHandle_t Motor_control_handle_opt;
@@ -244,26 +244,26 @@ void real_setup_core_0(void *pvParameters)
         "Motor_control_task_opt",
         5000,
         NULL,
-        8,
+        9,
         &Motor_control_handle_opt,
         0);
     task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
     // trigger Motor_control when localization is updated.
     IR::Localization::Add_localization_notification(Motor_control_handle_opt);
 
-    // lit LED and control motor based on position
-    TaskHandle_t Motor_control_handle_EKF;
-    task_status_temp = xTaskCreatePinnedToCore(
-        Motor_control_task_EKF,
-        "Motor_control_task_EKF",
-        5000,
-        NULL,
-        8,
-        &Motor_control_handle_EKF,
-        0);
-    task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
-    // trigger Motor_control when localization is updated.
-    EKF::Add_localization_notification(Motor_control_handle_EKF);
+    // // lit LED and control motor based on position
+    // TaskHandle_t Motor_control_handle_EKF;
+    // task_status_temp = xTaskCreatePinnedToCore(
+    //     Motor_control_task_EKF,
+    //     "Motor_control_task_EKF",
+    //     5000,
+    //     NULL,
+    //     8,
+    //     &Motor_control_handle_EKF,
+    //     0);
+    // task_status = (task_status_temp == pdTRUE) ? task_status : pdFALSE;
+    // // trigger Motor_control when localization is updated.
+    // EKF::Add_localization_notification(Motor_control_handle_EKF);
 
     // monitor motor's state
     task_status_temp = xTaskCreatePinnedToCore(
