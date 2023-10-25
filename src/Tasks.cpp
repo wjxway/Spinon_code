@@ -50,7 +50,7 @@ constexpr int64_t t_controller_switch = 800000000LL;
 constexpr float V_filter_t_coef = 0.06F;
 constexpr float A_filter_t_coef = 0.30F;
 
-constexpr uint32_t SPD_MAX_ALLOWED = 26;
+constexpr uint32_t SPD_MAX_ALLOWED = 26; // 30;
 
 void IRAM_ATTR Idle_stats_task(void *pvParameters)
 {
@@ -259,7 +259,7 @@ namespace
         fixed_point<3U> rot_speed = 0.0F; // rotation speed in Hz
         uint32_t time = 0U;               // the time of data, which is the last measurement's time
     };
-    constexpr uint32_t Position_data_short_buffer_max_size = 2000U;
+    constexpr uint32_t Position_data_short_buffer_max_size = 3000U;
     Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 5> Filtered_position_buffer_short;
 
     struct Timing_data_short
@@ -318,7 +318,7 @@ namespace
                 Serial.println(T_switch_EKF);
 
                 std::string v = "Robot_ID: ";
-                v += std::to_string(This_robot_ID) + "\nK_P_Z = " + std::to_string(K_P_Z) + ", K_D_Z = " + std::to_string(K_D_Z) + ", K_I_Z = " + std::to_string(K_I_Z) + "\nK_P_XY = " + std::to_string(K_P_XY) + ", K_D_XY = " + std::to_string(K_D_XY) + ", K_A_XY = " + std::to_string(K_A_XY) + "\nV_filter_t_coef = " + std::to_string(V_filter_t_coef) + ", A_filter_t_coef = " + std::to_string(A_filter_t_coef) + "\nTarget = { " + std::to_string(target_point[0]) + " , " + std::to_string(target_point[1]) + " , " + std::to_string(target_point[2]) + " }\n";
+                v += std::to_string(This_robot_ID) + "\nK_P_Z = " + std::to_string(K_P_Z) + ", K_D_Z = " + std::to_string(K_D_Z) + ", K_I_Z = " + std::to_string(K_I_Z) + ", K_I_XY = " + std::to_string(K_I_XY) + ", K_P_XY = " + std::to_string(K_P_XY) + ", K_D_XY = " + std::to_string(K_D_XY) + ", K_A_XY = " + std::to_string(K_A_XY) + "\nV_filter_t_coef = " + std::to_string(V_filter_t_coef) + ", A_filter_t_coef = " + std::to_string(A_filter_t_coef) + "\nTarget = { " + std::to_string(target_point[0]) + " , " + std::to_string(target_point[1]) + " , " + std::to_string(target_point[2]) + " }\n";
 
                 Serial.print(v.c_str());
 
@@ -1273,7 +1273,7 @@ void Motor_control_task_opt(void *pvParameters)
             break;
         }
 
-        if (!integration_on && filt_pos_0.z >= -125.0F)
+        if (!integration_on && filt_pos_0.z >= -50.0F)
         {
             I_comp[0] = 0;
             I_comp[1] = 0;

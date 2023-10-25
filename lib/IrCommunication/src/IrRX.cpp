@@ -783,6 +783,22 @@ namespace IR
              */
             Robot_RX *Add_new_robot(const uint32_t robot_ID)
             {
+                // a filter
+                if (This_robot_ID == 13)
+                {
+                    if (robot_ID == 4 || robot_ID == 5)
+                    {
+                        return nullptr;
+                    }
+                }
+                else if (This_robot_ID == 14)
+                {
+                    if (robot_ID <= 3)
+                    {
+                        return nullptr;
+                    }
+                }
+
                 // return directly if the robot already exists in msg_buffer.
                 if (msg_buffer_dict[robot_ID])
                 {
@@ -893,6 +909,13 @@ namespace IR
 
                         // obtain pointer to buffer, create Robot_RX instance if needed.
                         Robot_RX *robot_ptr = Add_new_robot(robot_ID);
+
+                        // skip if robot_ptr cannot be allocated
+                        // this could happen due to multiple reasons. In specific, the we might want to filter out messages from certain robots.
+                        if (!robot_ptr)
+                        {
+                            continue;
+                        }
 
                         // deal with timing buffer
                         // note that we always update timing buffer regardless of

@@ -50,8 +50,8 @@ void real_setup_core_0(void *pvParameters)
     // set global parameters
     // run it **ONCE** after calibration!
     // Write_global_parameters(11U, 20.0F, -0.03F, 0.0436332F, 0.18F, 39.0518F, 0.0555407F, -43.9161F);
-    // Write_global_parameters(12U, 17.0F, 0.05F, 0.0261799F, 0.18F, 26.6286F, 0.00152896F, -5.96417F);
-    // Write_global_parameters(13U, 18.0F, -0.01F, -0.0279253F, 0.18F, 25.1755F, 0.027526F, -0.09398F);
+    // Write_global_parameters(12U, 20.0F, 0.05F, 0.0261799F, 0.18F, 26.6286F, 0.00152896F, -5.96417F);
+    // Write_global_parameters(13U, 19.0F, -0.01F, -0.0279253F, 0.18F, 25.1755F, 0.027526F, -0.09398F);
     // Write_global_parameters(14U, 17.5F, 0.00F, 0.0087F, 0.18F, 29.7381F, 0.0479783F, -15.9752F);
 
     // init global parameters
@@ -70,7 +70,7 @@ void real_setup_core_0(void *pvParameters)
             0);
     }
 
-    // target_point[1]=(This_robot_ID == 13) ? 0.0F : -300.0F;
+    target_point[1]=(This_robot_ID == 13) ? 50.0F : -300.0F;
 
     DEBUG_C(Serial.println("Global parameters initialized!"));
     DEBUG_C(Serial.print("Robot #"));
@@ -102,15 +102,15 @@ void real_setup_core_0(void *pvParameters)
     Motor::Active_brake();
     DEBUG_C(Serial.println("Motor started!"));
 
-    // if (This_robot_ID == 12)
-    // {
-    //     IR::TX::Init();
-    //     DEBUG_C(Serial.println("TX inited!"));
-    //     // this is the data task that has type 2 and transmit {0x0123}
-    //     // the content is meaningless...
-    //     IR::TX::Add_to_schedule(2, std::vector<uint16_t>{0x0123}, 1, -1, 1);
-    //     DEBUG_C(Serial.println("TX data set!"));
-    // }
+    if (This_robot_ID == 13)
+    {
+        IR::TX::Init();
+        DEBUG_C(Serial.println("TX inited!"));
+        // this is the data task that has type 2 and transmit {0x0123}
+        // the content is meaningless...
+        IR::TX::Add_to_schedule(2, std::vector<uint16_t>{0x0123}, 1, -1, 1);
+        DEBUG_C(Serial.println("TX data set!"));
+    }
 
     // launch the RX init task on core 1, lock core 0 init task before
     // proceeding.
