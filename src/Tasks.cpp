@@ -259,8 +259,10 @@ namespace
         fixed_point<3U> rot_speed = 0.0F; // rotation speed in Hz
         uint32_t time = 0U;               // the time of data, which is the last measurement's time
     };
-    constexpr uint32_t Position_data_short_buffer_max_size = 3000U;
-    Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 5> Filtered_position_buffer_short;
+    constexpr uint32_t Position_data_short_buffer_max_size = 3800U;
+    Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 3> Filtered_position_buffer_short;
+    Circbuffer<Position_data_short, 3> Position_buffer_short;
+    Circbuffer<Position_data_short, 3> Position_buffer_short_test;
 
     struct Timing_data_short
     {
@@ -268,8 +270,8 @@ namespace
         uint16_t rid;
     };
 
-    constexpr uint32_t Timing_buffer_max_size = 5U;
-    Circbuffer<Timing_data_short, Timing_buffer_max_size + 5> Timing_buffer;
+    constexpr uint32_t Timing_buffer_max_size = 2U;
+    Circbuffer<Timing_data_short, Timing_buffer_max_size + 3> Timing_buffer;
 
     struct EKF_all
     {
@@ -277,8 +279,8 @@ namespace
         uint32_t time;
     };
 
-    constexpr uint32_t EKF_buffer_max_size = 3;// Position_data_short_buffer_max_size / 3U;
-    Circbuffer<EKF_all, EKF_buffer_max_size + 5> EKF_buffer;
+    constexpr uint32_t EKF_buffer_max_size = 2; // Position_data_short_buffer_max_size / 3U;
+    Circbuffer<EKF_all, EKF_buffer_max_size + 3> EKF_buffer;
 
     // struct Motor_timing_t
     // {
@@ -346,6 +348,26 @@ namespace
                 while (Filtered_position_buffer_short.n_elem > 0)
                 {
                     auto pdat = Filtered_position_buffer_short.pop();
+
+                    std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", x : ") + std::string(pdat.x) + std::string(", y : ") + std::string(pdat.y) + std::string(", z : ") + std::string(pdat.z) + std::string(", f : ") + std::string(pdat.rot_speed) + "\n";
+
+                    Serial.print(v.c_str());
+                }
+
+                // Serial.println("---- Unfiltered position ----");
+                // while (Position_buffer_short.n_elem > 0)
+                // {
+                //     auto pdat = Position_buffer_short.pop();
+
+                //     std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", x : ") + std::string(pdat.x) + std::string(", y : ") + std::string(pdat.y) + std::string(", z : ") + std::string(pdat.z) + std::string(", f : ") + std::string(pdat.rot_speed) + "\n";
+
+                //     Serial.print(v.c_str());
+                // }
+
+                Serial.println("---- Filtered position test ----");
+                while (Position_buffer_short_test.n_elem > 0)
+                {
+                    auto pdat = Position_buffer_short_test.pop();
 
                     std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", x : ") + std::string(pdat.x) + std::string(", y : ") + std::string(pdat.y) + std::string(", z : ") + std::string(pdat.z) + std::string(", f : ") + std::string(pdat.rot_speed) + "\n";
 
@@ -471,7 +493,7 @@ void Buffer_data_task(void *pvParameters)
 
         // get data
         uint32_t io_flag;
-        IR::Localization::Position_data pos_0, pos_1;
+        IR::Localization::Position_data pos_0, pos_1, pos_test;
         bool not_enough_data = false;
         do
         {
@@ -484,8 +506,9 @@ void Buffer_data_task(void *pvParameters)
                 break;
             }
 
-            // pos_0 = IR::Localization::Get_position();
-            pos_1 = IR::Localization::Get_filtered_position();
+            pos_0 = IR::Localization::Get_filtered_position();
+            pos_test = IR::Localization::Get_test_position();
+            // pos_1 = IR::Localization::Get_position();
         } while (io_flag != IR::Localization::Get_io_flag());
 
         if (not_enough_data)
@@ -494,7 +517,10 @@ void Buffer_data_task(void *pvParameters)
         }
 
         // Position_buffer.push(pos_0);
-        Filtered_position_buffer_short.push(Position_data_short{pos_1.x, pos_1.y, pos_1.z, pos_1.angular_velocity * 1.0e6F / 2.0F / float(M_PI), static_cast<uint32_t>(pos_1.time)});
+        // Filtered_position_buffer_short.push(Position_data_short{pos_1.x, pos_1.y, pos_1.z, pos_1.angular_velocity * 1.0e6F / 2.0F / float(M_PI), static_cast<uint32_t>(pos_1.time)});
+
+        Filtered_position_buffer_short.push(Position_data_short{pos_0.x, pos_0.y, pos_0.z, pos_0.angular_velocity * 1.0e6F / 2.0F / float(M_PI), static_cast<uint32_t>(pos_0.time)});
+        Position_buffer_short_test.push(Position_data_short{pos_test.x, pos_test.y, pos_test.z, pos_test.angular_velocity * 1.0e6F / 2.0F / float(M_PI), static_cast<uint32_t>(pos_test.time)});
 
         // if (send_task_not_started && Position_buffer.n_elem >= Position_buffer_max_size)
         // {
@@ -525,7 +551,6 @@ void Buffer_raw_data_task(void *pvParameters)
 
             // check if there's enough data to use
             temp_len = IR::RX::Get_timing_data(temp, min(esp_timer_get_time() - last_access_time + 1000, 50000LL));
-
         } while (io_flag != IR::RX::Get_io_flag());
 
         if (temp_len != 0)
@@ -534,7 +559,7 @@ void Buffer_raw_data_task(void *pvParameters)
             if (last_access_time_new > last_access_time)
             {
                 LIT_G;
-                delay(1);
+                vTaskDelay(1);
                 QUENCH_G;
 
                 Timing_data_short ts;
@@ -1349,6 +1374,7 @@ void Motor_control_task_opt(void *pvParameters)
         }
 
         // compute acceleration based on filtered D comp and also filter with average over 0.2s, so total is 0.3s + Kalmann Filter delay.
+        // the update coefficient should be acceleration update time, but we don't expect to see any difference.
         update_coef = clip(1e-6F * float(D_this_update_time - D_last_update_time) / A_filter_t_coef, 0.0F, 1.0F);
         for (size_t i = 0; i < 3; i++)
         {

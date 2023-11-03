@@ -147,6 +147,11 @@ namespace IR
             Circbuffer<Position_data, Position_stack_length> Position_stack;
 
             /**
+             * @brief a queue to store history of localization data (without P2P), only for test use.
+             */
+            Circbuffer<Position_data, Position_stack_length> Position_stack_test;
+
+            /**
              * @brief a queue to store history of filtered localization data
              */
             Circbuffer<Position_data, Position_stack_length> Filtered_position_stack;
@@ -924,6 +929,64 @@ namespace IR
                         Filtered_position_stack.push(res);
                     }
 
+                    // what if we don't have R2R comm?
+                    // only store filtered data
+                    Loc_data.erase(std::remove_if(begin(Loc_data), end(Loc_data), [](Relative_position_data i)
+                                                  { return i.Robot_ID >= 10; }),
+                                   end(Loc_data));
+                    res = Execute_localization(Loc_data, xmean, ymean);
+                    res.rotation_time = rotation_time;
+                    res.angular_velocity = angular_velocity;
+                    res.time = last_message_time;
+                    // if the old data is valid, we use Kalman filter to merge
+                    // the old with the new before pushing into the filtered
+                    // stack.
+                    if (old_valid)
+                    {
+                        last = Position_stack_test.peek_tail();
+
+                        // now we start to kalmann filter stuff
+                        // new filtered result
+                        Position_data filt;
+                        // add some basic info
+                        filt.rotation_time = rotation_time;
+                        filt.angular_velocity = angular_velocity;
+                        filt.time = last_message_time;
+                        // filt.mean_error_factor=0;
+
+                        // determine how much variance should be added to the
+                        // old measurement due to drifting of drone
+                        float var_drift = square(float(res.time - last.time) * Error_increase_rate);
+
+                        // determine the variance after taking into consideration of error factor
+                        float var_z_scaled = Error_scaling_function(res.var_z, res.mean_error_factor);
+                        float var_xy_scaled = Error_scaling_function(res.var_xy, res.mean_error_factor);
+
+                        // determine z and var_z
+                        float tmpv = 1.0F / (var_z_scaled + last.var_z + var_drift);
+                        filt.z = (last.z * var_z_scaled + res.z * (last.var_z + var_drift)) * tmpv;
+                        filt.var_z = var_z_scaled * (last.var_z + var_drift) * tmpv;
+
+                        // similar for xy and var_xy
+                        tmpv = 1.0F / (var_xy_scaled + last.var_xy + var_drift);
+                        filt.x = (last.x * var_xy_scaled + res.x * (last.var_xy + var_drift)) * tmpv;
+                        filt.y = (last.y * var_xy_scaled + res.y * (last.var_xy + var_drift)) * tmpv;
+                        filt.var_xy = var_xy_scaled * (last.var_xy + var_drift) * tmpv;
+
+                        // compute angle based on new xyz
+                        filt.angle_0 = Angle_average(Loc_data, filt.x, filt.y);
+
+                        // store in filtered stack
+                        Position_stack_test.push(filt);
+                    }
+                    // if we don't have available previous info to merge,
+                    // directly push into the filtered stack.
+                    else
+                    {
+                        // res.mean_error_factor=old_invalid_reason;
+                        Position_stack_test.push(res);
+                    }
+
                     vTaskSuspendAll();
                     // notify all tasks that should be notified
                     for (auto &hand : TaskHandle_list)
@@ -1013,6 +1076,15 @@ namespace IR
             if (Position_stack.n_elem > age)
             {
                 return Position_stack.peek_tail(age);
+            }
+            return Position_data{};
+        }
+
+        Position_data Get_test_position(const uint32_t age)
+        {
+            if (Position_stack_test.n_elem > age)
+            {
+                return Position_stack_test.peek_tail(age);
             }
             return Position_data{};
         }

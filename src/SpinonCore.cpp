@@ -70,7 +70,7 @@ void real_setup_core_0(void *pvParameters)
             0);
     }
 
-    target_point[1]=(This_robot_ID == 13) ? 50.0F : -300.0F;
+    // target_point[1]=(This_robot_ID == 13) ? 50.0F : -300.0F;
 
     DEBUG_C(Serial.println("Global parameters initialized!"));
     DEBUG_C(Serial.print("Robot #"));
@@ -102,15 +102,15 @@ void real_setup_core_0(void *pvParameters)
     Motor::Active_brake();
     DEBUG_C(Serial.println("Motor started!"));
 
-    if (This_robot_ID == 13)
-    {
-        IR::TX::Init();
-        DEBUG_C(Serial.println("TX inited!"));
-        // this is the data task that has type 2 and transmit {0x0123}
-        // the content is meaningless...
-        IR::TX::Add_to_schedule(2, std::vector<uint16_t>{0x0123}, 1, -1, 1);
-        DEBUG_C(Serial.println("TX data set!"));
-    }
+    // if (This_robot_ID == 13)
+    // {
+    //     IR::TX::Init();
+    //     DEBUG_C(Serial.println("TX inited!"));
+    //     // this is the data task that has type 2 and transmit {0x0123}
+    //     // the content is meaningless...
+    //     IR::TX::Add_to_schedule(2, std::vector<uint16_t>{0x0123}, 1, -1, 1);
+    //     DEBUG_C(Serial.println("TX data set!"));
+    // }
 
     // launch the RX init task on core 1, lock core 0 init task before
     // proceeding.

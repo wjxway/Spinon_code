@@ -95,6 +95,9 @@ namespace IR
          */
         Position_data Get_position(const uint32_t age = 0);
 
+        // test
+        Position_data Get_test_position(const uint32_t age = 0);
+
         /**
          * @brief Get the latest filtered position information
          *

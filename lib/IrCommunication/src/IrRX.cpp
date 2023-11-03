@@ -783,21 +783,21 @@ namespace IR
              */
             Robot_RX *Add_new_robot(const uint32_t robot_ID)
             {
-                // a filter
-                if (This_robot_ID == 13)
-                {
-                    if (robot_ID == 4 || robot_ID == 5)
-                    {
-                        return nullptr;
-                    }
-                }
-                else if (This_robot_ID == 14)
-                {
-                    if (robot_ID <= 3)
-                    {
-                        return nullptr;
-                    }
-                }
+                // // a filter
+                // if (This_robot_ID == 13)
+                // {
+                //     if (robot_ID == 4 || robot_ID == 5)
+                //     {
+                //         return nullptr;
+                //     }
+                // }
+                // else if (This_robot_ID == 14)
+                // {
+                //     if (robot_ID <= 3)
+                //     {
+                //         return nullptr;
+                //     }
+                // }
 
                 // return directly if the robot already exists in msg_buffer.
                 if (msg_buffer_dict[robot_ID])
