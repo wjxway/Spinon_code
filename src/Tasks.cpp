@@ -41,8 +41,8 @@ constexpr float K_P_Z = 2.5e-2F;
 constexpr float K_D_Z = 1.5e-2F;
 
 // rotation angle of execution in rad.
-constexpr float K_rot = 5.0F / 180.0F * M_PI;
-constexpr float P_rot = 5.0F / 180.0F * M_PI;
+constexpr float K_rot = 10.0F / 180.0F * M_PI;
+constexpr float P_rot = 10.0F / 180.0F * M_PI;
 
 constexpr int64_t t_controller_switch = 800000000LL;
 
@@ -364,15 +364,15 @@ namespace
                 //     Serial.print(v.c_str());
                 // }
 
-                Serial.println("---- Filtered position test ----");
-                while (Position_buffer_short_test.n_elem > 0)
-                {
-                    auto pdat = Position_buffer_short_test.pop();
+                // Serial.println("---- Filtered position test ----");
+                // while (Position_buffer_short_test.n_elem > 0)
+                // {
+                //     auto pdat = Position_buffer_short_test.pop();
 
-                    std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", x : ") + std::string(pdat.x) + std::string(", y : ") + std::string(pdat.y) + std::string(", z : ") + std::string(pdat.z) + std::string(", f : ") + std::string(pdat.rot_speed) + "\n";
+                //     std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", x : ") + std::string(pdat.x) + std::string(", y : ") + std::string(pdat.y) + std::string(", z : ") + std::string(pdat.z) + std::string(", f : ") + std::string(pdat.rot_speed) + "\n";
 
-                    Serial.print(v.c_str());
-                }
+                //     Serial.print(v.c_str());
+                // }
 
                 // Serial.println("---- EKF position ----");
                 // while (EKF_buffer.n_elem > 0)
@@ -507,7 +507,7 @@ void Buffer_data_task(void *pvParameters)
             }
 
             pos_0 = IR::Localization::Get_filtered_position();
-            pos_test = IR::Localization::Get_test_position();
+            // pos_test = IR::Localization::Get_test_position();
             // pos_1 = IR::Localization::Get_position();
         } while (io_flag != IR::Localization::Get_io_flag());
 
@@ -520,7 +520,7 @@ void Buffer_data_task(void *pvParameters)
         // Filtered_position_buffer_short.push(Position_data_short{pos_1.x, pos_1.y, pos_1.z, pos_1.angular_velocity * 1.0e6F / 2.0F / float(M_PI), static_cast<uint32_t>(pos_1.time)});
 
         Filtered_position_buffer_short.push(Position_data_short{pos_0.x, pos_0.y, pos_0.z, pos_0.angular_velocity * 1.0e6F / 2.0F / float(M_PI), static_cast<uint32_t>(pos_0.time)});
-        Position_buffer_short_test.push(Position_data_short{pos_test.x, pos_test.y, pos_test.z, pos_test.angular_velocity * 1.0e6F / 2.0F / float(M_PI), static_cast<uint32_t>(pos_test.time)});
+        // Position_buffer_short_test.push(Position_data_short{pos_test.x, pos_test.y, pos_test.z, pos_test.angular_velocity * 1.0e6F / 2.0F / float(M_PI), static_cast<uint32_t>(pos_test.time)});
 
         // if (send_task_not_started && Position_buffer.n_elem >= Position_buffer_max_size)
         // {
@@ -1306,24 +1306,6 @@ void Motor_control_task_opt(void *pvParameters)
 
             integration_on = true;
         }
-
-        // // change target point to make step response
-        // int64_t t_elapsed = esp_timer_get_time() - Reach_target_speed_time;
-        // if (Reach_target_speed_time != 0 && t_elapsed >= 20000000LL)
-        // {
-        //     if (t_elapsed >= 50000000LL)
-        //     {
-        //         target_point[0] = -80.0F;
-        //     }
-        //     else if (t_elapsed >= 35000000LL)
-        //     {
-        //         target_point[0] = 80.0F;
-        //     }
-        //     else
-        //     {
-        //         target_point[0] = -80.0F;
-        //     }
-        // }
 
         Last_position_update_time = esp_timer_get_time();
 
