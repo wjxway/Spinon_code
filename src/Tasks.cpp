@@ -41,8 +41,8 @@ constexpr float K_P_Z = 2.5e-2F;
 constexpr float K_D_Z = 1.5e-2F;
 
 // rotation angle of execution in rad.
-constexpr float K_rot = 5.0F / 180.0F * M_PI;
-constexpr float P_rot = 5.0F / 180.0F * M_PI;
+constexpr float K_rot = 10.0F / 180.0F * M_PI;
+constexpr float P_rot = 10.0F / 180.0F * M_PI;
 
 constexpr int64_t t_controller_switch = 800000000LL;
 
@@ -259,10 +259,10 @@ namespace
         fixed_point<3U> rot_speed = 0.0F; // rotation speed in Hz
         uint32_t time = 0U;               // the time of data, which is the last measurement's time
     };
-    constexpr uint32_t Position_data_short_buffer_max_size = 3800U;
+    constexpr uint32_t Position_data_short_buffer_max_size = 1900U;
     Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 3> Filtered_position_buffer_short;
     Circbuffer<Position_data_short, 3> Position_buffer_short;
-    Circbuffer<Position_data_short, 3> Position_buffer_short_test;
+    Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 3> Position_buffer_short_test;
 
     struct Timing_data_short
     {
@@ -1306,24 +1306,6 @@ void Motor_control_task_opt(void *pvParameters)
 
             integration_on = true;
         }
-
-        // // change target point to make step response
-        // int64_t t_elapsed = esp_timer_get_time() - Reach_target_speed_time;
-        // if (Reach_target_speed_time != 0 && t_elapsed >= 20000000LL)
-        // {
-        //     if (t_elapsed >= 50000000LL)
-        //     {
-        //         target_point[0] = -80.0F;
-        //     }
-        //     else if (t_elapsed >= 35000000LL)
-        //     {
-        //         target_point[0] = 80.0F;
-        //     }
-        //     else
-        //     {
-        //         target_point[0] = -80.0F;
-        //     }
-        // }
 
         Last_position_update_time = esp_timer_get_time();
 
