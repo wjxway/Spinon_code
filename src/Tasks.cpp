@@ -41,8 +41,8 @@ constexpr float K_P_Z = 2.5e-2F;
 constexpr float K_D_Z = 1.5e-2F;
 
 // rotation angle of execution in rad.
-constexpr float K_rot = 5.0F / 180.0F * M_PI;
-constexpr float P_rot = 5.0F / 180.0F * M_PI;
+constexpr float K_rot = 10.0F / 180.0F * M_PI;
+constexpr float P_rot = 10.0F / 180.0F * M_PI;
 
 constexpr int64_t t_controller_switch = 800000000LL;
 
@@ -51,6 +51,13 @@ constexpr float V_filter_t_coef = 0.06F;
 constexpr float A_filter_t_coef = 0.30F;
 
 constexpr uint32_t SPD_MAX_ALLOWED = 26; // 30;
+
+// when to start the step response
+constexpr int64_t start_response_time = 20000000;
+// end point of response in mm
+constexpr float response_endpoint[3] = {0.0F, -600.0F, 0.0F};
+// how long will the response take in seconds
+constexpr float response_time = 12.0F;
 
 void IRAM_ATTR Idle_stats_task(void *pvParameters)
 {
@@ -297,6 +304,7 @@ namespace
 
     // starting from when we apply constant thrust
     int64_t T_switch_EKF = 0;
+    int64_t Pos_switch = 0;
 
     // this version sends raw timing readings
     void Send_message_task(void *pvParameters)
@@ -318,6 +326,19 @@ namespace
 
                 Serial.print("Const thrust from ");
                 Serial.println(T_switch_EKF);
+                Serial.print("Pos switch from ");
+                Serial.println(Pos_switch);
+                Serial.print("Response time = ");
+                Serial.println(response_time);
+
+                Serial.print("Endpoint: { ");
+                Serial.print(response_endpoint[0]);
+                Serial.print(" , ");
+                Serial.print(response_endpoint[1]);
+                Serial.print(" , ");
+                Serial.print(response_endpoint[2]);
+                Serial.println(" }");
+
 
                 std::string v = "Robot_ID: ";
                 v += std::to_string(This_robot_ID) + "\nK_P_Z = " + std::to_string(K_P_Z) + ", K_D_Z = " + std::to_string(K_D_Z) + ", K_I_Z = " + std::to_string(K_I_Z) + ", K_I_XY = " + std::to_string(K_I_XY) + ", K_P_XY = " + std::to_string(K_P_XY) + ", K_D_XY = " + std::to_string(K_D_XY) + ", K_A_XY = " + std::to_string(K_A_XY) + "\nV_filter_t_coef = " + std::to_string(V_filter_t_coef) + ", A_filter_t_coef = " + std::to_string(A_filter_t_coef) + "\nTarget = { " + std::to_string(target_point[0]) + " , " + std::to_string(target_point[1]) + " , " + std::to_string(target_point[2]) + " }\n";
@@ -364,15 +385,15 @@ namespace
                 //     Serial.print(v.c_str());
                 // }
 
-                Serial.println("---- Filtered position test ----");
-                while (Position_buffer_short_test.n_elem > 0)
-                {
-                    auto pdat = Position_buffer_short_test.pop();
+                // Serial.println("---- Filtered position test ----");
+                // while (Position_buffer_short_test.n_elem > 0)
+                // {
+                //     auto pdat = Position_buffer_short_test.pop();
 
-                    std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", x : ") + std::string(pdat.x) + std::string(", y : ") + std::string(pdat.y) + std::string(", z : ") + std::string(pdat.z) + std::string(", f : ") + std::string(pdat.rot_speed) + "\n";
+                //     std::string v = std::string("t : ") + std::to_string(pdat.time) + std::string(", x : ") + std::string(pdat.x) + std::string(", y : ") + std::string(pdat.y) + std::string(", z : ") + std::string(pdat.z) + std::string(", f : ") + std::string(pdat.rot_speed) + "\n";
 
-                    Serial.print(v.c_str());
-                }
+                //     Serial.print(v.c_str());
+                // }
 
                 // Serial.println("---- EKF position ----");
                 // while (EKF_buffer.n_elem > 0)
@@ -507,7 +528,7 @@ void Buffer_data_task(void *pvParameters)
             }
 
             pos_0 = IR::Localization::Get_filtered_position();
-            pos_test = IR::Localization::Get_test_position();
+            // pos_test = IR::Localization::Get_test_position();
             // pos_1 = IR::Localization::Get_position();
         } while (io_flag != IR::Localization::Get_io_flag());
 
@@ -520,7 +541,7 @@ void Buffer_data_task(void *pvParameters)
         // Filtered_position_buffer_short.push(Position_data_short{pos_1.x, pos_1.y, pos_1.z, pos_1.angular_velocity * 1.0e6F / 2.0F / float(M_PI), static_cast<uint32_t>(pos_1.time)});
 
         Filtered_position_buffer_short.push(Position_data_short{pos_0.x, pos_0.y, pos_0.z, pos_0.angular_velocity * 1.0e6F / 2.0F / float(M_PI), static_cast<uint32_t>(pos_0.time)});
-        Position_buffer_short_test.push(Position_data_short{pos_test.x, pos_test.y, pos_test.z, pos_test.angular_velocity * 1.0e6F / 2.0F / float(M_PI), static_cast<uint32_t>(pos_test.time)});
+        // Position_buffer_short_test.push(Position_data_short{pos_test.x, pos_test.y, pos_test.z, pos_test.angular_velocity * 1.0e6F / 2.0F / float(M_PI), static_cast<uint32_t>(pos_test.time)});
 
         // if (send_task_not_started && Position_buffer.n_elem >= Position_buffer_max_size)
         // {
@@ -1298,6 +1319,7 @@ void Motor_control_task_opt(void *pvParameters)
             break;
         }
 
+        // start integration only after launch
         if (!integration_on && filt_pos_0.z >= -50.0F)
         {
             I_comp[0] = 0;
@@ -1305,6 +1327,35 @@ void Motor_control_task_opt(void *pvParameters)
             I_comp[2] = 0;
 
             integration_on = true;
+        }
+
+        // switch position after a certain time
+        static bool target_moved = false;
+        static bool target_reached = false;
+
+        if (!target_reached && Reach_target_speed_time != 0 && esp_timer_get_time() - Reach_target_speed_time > start_response_time)
+        {
+            float mov_time = float(esp_timer_get_time() - Reach_target_speed_time - start_response_time) / 1000000.0F;
+
+            for (int i = 0; i < 3; i++)
+            {
+                target_point[i] = response_endpoint[i] * mov_time / response_time;
+            }
+
+            if (mov_time >= response_time)
+            {
+                target_reached = true;
+                for (int i = 0; i < 3; i++)
+                {
+                    target_point[i] = response_endpoint[i];
+                }
+            }
+
+            if (!target_moved)
+            {
+                target_moved = true;
+                Pos_switch = esp_timer_get_time();
+            }
         }
 
         // // change target point to make step response
