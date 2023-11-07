@@ -22,22 +22,31 @@ using math::fast::clip;
 using math::fast::norm;
 using math::fast::square;
 
+// when to start the step response
+constexpr int64_t start_response_time = 35000000;
+// start point of response in mm
+constexpr float response_startpoint[3] = {0.0F, 100.0F, 0.0F};
+// end point of response in mm
+constexpr float response_endpoint[3] = {0.0F, -700.0F, 0.0F};
+// how long will the response take in seconds
+constexpr float response_time = 8.0F;
+
 // target point pos
-float target_point[3] = {0.0F, 0.0F, 0.0F};
+float target_point[3] = {response_startpoint[0], response_startpoint[1], response_startpoint[2]};
 
 // K_I has time unit of 1/s
-constexpr float K_I_XY = 0.015F; // 1.5e-2F // 2.0e-2F
+constexpr float K_I_XY = 0.01F; // 1.5e-2F // 2.0e-2F
 constexpr float I_XY_range = 400.0F;
 
-constexpr float K_P_XY = 0.06F; // 0.060F; // 6.9e-2F; // 8.0e-2F
+constexpr float K_P_XY = 0.07F; // 0.060F; // 6.9e-2F; // 8.0e-2F
 constexpr float P_XY_range = 200.0F;
 // K_D has time unit of s
-constexpr float K_D_XY = 0.05F; // 0.070F; // 8.1e-2F; // 5.5e-2F
+constexpr float K_D_XY = 0.07F; // 0.070F; // 8.1e-2F; // 5.5e-2F
 // K_A has time unit of s^2
-constexpr float K_A_XY = 0.04F; // 0.035F; // 1.2e-2F; // 5.0e-2F
+constexpr float K_A_XY = 0.035F; // 0.035F; // 1.2e-2F; // 5.0e-2F
 
-constexpr float K_I_Z = 1.0e-2F;
-constexpr float K_P_Z = 2.5e-2F;
+constexpr float K_I_Z = 0.7e-2F;
+constexpr float K_P_Z = 2.0e-2F;
 constexpr float K_D_Z = 1.5e-2F;
 
 // rotation angle of execution in rad.
@@ -51,13 +60,6 @@ constexpr float V_filter_t_coef = 0.06F;
 constexpr float A_filter_t_coef = 0.30F;
 
 constexpr uint32_t SPD_MAX_ALLOWED = 26; // 30;
-
-// when to start the step response
-constexpr int64_t start_response_time = 20000000;
-// end point of response in mm
-constexpr float response_endpoint[3] = {0.0F, -600.0F, 0.0F};
-// how long will the response take in seconds
-constexpr float response_time = 12.0F;
 
 void IRAM_ATTR Idle_stats_task(void *pvParameters)
 {
@@ -338,7 +340,6 @@ namespace
                 Serial.print(" , ");
                 Serial.print(response_endpoint[2]);
                 Serial.println(" }");
-
 
                 std::string v = "Robot_ID: ";
                 v += std::to_string(This_robot_ID) + "\nK_P_Z = " + std::to_string(K_P_Z) + ", K_D_Z = " + std::to_string(K_D_Z) + ", K_I_Z = " + std::to_string(K_I_Z) + ", K_I_XY = " + std::to_string(K_I_XY) + ", K_P_XY = " + std::to_string(K_P_XY) + ", K_D_XY = " + std::to_string(K_D_XY) + ", K_A_XY = " + std::to_string(K_A_XY) + "\nV_filter_t_coef = " + std::to_string(V_filter_t_coef) + ", A_filter_t_coef = " + std::to_string(A_filter_t_coef) + "\nTarget = { " + std::to_string(target_point[0]) + " , " + std::to_string(target_point[1]) + " , " + std::to_string(target_point[2]) + " }\n";
@@ -1339,7 +1340,7 @@ void Motor_control_task_opt(void *pvParameters)
 
             for (int i = 0; i < 3; i++)
             {
-                target_point[i] = response_endpoint[i] * mov_time / response_time;
+                target_point[i] = response_startpoint[i] + (response_endpoint[i] - response_startpoint[i]) * mov_time / response_time;
             }
 
             if (mov_time >= response_time)
