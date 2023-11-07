@@ -26,18 +26,18 @@ using math::fast::square;
 float target_point[3] = {0.0F, 0.0F, 0.0F};
 
 // K_I has time unit of 1/s
-constexpr float K_I_XY = 0.015F; // 1.5e-2F // 2.0e-2F
+constexpr float K_I_XY = 0.01F; // 1.5e-2F // 2.0e-2F
 constexpr float I_XY_range = 400.0F;
 
-constexpr float K_P_XY = 0.06F; // 0.060F; // 6.9e-2F; // 8.0e-2F
+constexpr float K_P_XY = 0.07F; // 0.060F; // 6.9e-2F; // 8.0e-2F
 constexpr float P_XY_range = 200.0F;
 // K_D has time unit of s
-constexpr float K_D_XY = 0.05F; // 0.070F; // 8.1e-2F; // 5.5e-2F
+constexpr float K_D_XY = 0.07F; // 0.070F; // 8.1e-2F; // 5.5e-2F
 // K_A has time unit of s^2
-constexpr float K_A_XY = 0.04F; // 0.035F; // 1.2e-2F; // 5.0e-2F
+constexpr float K_A_XY = 0.035F; // 0.035F; // 1.2e-2F; // 5.0e-2F
 
-constexpr float K_I_Z = 1.0e-2F;
-constexpr float K_P_Z = 2.5e-2F;
+constexpr float K_I_Z = 0.7e-2F;
+constexpr float K_P_Z = 2.0e-2F;
 constexpr float K_D_Z = 1.5e-2F;
 
 // rotation angle of execution in rad.
@@ -259,6 +259,14 @@ namespace
         fixed_point<3U> rot_speed = 0.0F; // rotation speed in Hz
         uint32_t time = 0U;               // the time of data, which is the last measurement's time
     };
+    
+    // // for drone 13
+    // constexpr uint32_t Position_data_short_buffer_max_size = 3800U;
+    // Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 3> Filtered_position_buffer_short;
+    // Circbuffer<Position_data_short, 3> Position_buffer_short;
+    // Circbuffer<Position_data_short, 3> Position_buffer_short_test;
+
+    // for drone 14
     constexpr uint32_t Position_data_short_buffer_max_size = 1900U;
     Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 3> Filtered_position_buffer_short;
     Circbuffer<Position_data_short, 3> Position_buffer_short;
