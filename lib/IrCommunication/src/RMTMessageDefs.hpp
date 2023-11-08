@@ -282,13 +282,13 @@ namespace IR
 		/**
 		 * @brief RMT TX minimum trigger period in us
 		 */
-		constexpr uint32_t RMT_TX_trigger_period_min = 100;
+		constexpr uint32_t RMT_TX_trigger_period_min = 75;
 		// constexpr uint32_t RMT_TX_trigger_period_min = 1000;
 
 		/**
 		 * @brief RMT TX maximum trigger period in us
 		 */
-		constexpr uint32_t RMT_TX_trigger_period_max = 200;
+		constexpr uint32_t RMT_TX_trigger_period_max = 150;
 		// constexpr uint32_t RMT_TX_trigger_period_max = 2000;
 
 		/**

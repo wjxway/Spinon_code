@@ -17,9 +17,14 @@ namespace IR
         namespace
         {
             /**
-             * @brief if TX is enabled
+             * @brief if TX is initialized
              */
-            bool TX_inited=false;
+            bool TX_inited = false;
+
+            /**
+             * @brief whether or not to enable transmission
+             */
+            bool TX_on = false;
 
             /**
              * @brief trigger timer group for TX_ISR
@@ -213,9 +218,11 @@ namespace IR
             Scheduler_node *prio_level_end_ptr[TX_priority_max + 1] = {nullptr};
 
             /**
-             * @brief whether to enable reading/transmitting data in TX_ISR
+             * @brief whether data is being read/transmited
+             *
+             * @note false -> being used, true -> safe to use.
              */
-            bool TX_enable_flag = true;
+            bool TX_lock_flag = true;
 
             /**
              * @brief return the reference to the corresponding TX_data object, so
@@ -436,7 +443,7 @@ namespace IR
                 DEBUG_C(setbit(DEBUG_PIN_1));
 
                 // RMT TX only when data is not being modified.
-                if (TX_enable_flag)
+                if (TX_lock_flag && TX_on)
                 {
                     // let the corresponding task write data to pool maybe we don't
                     // need a buffer anyways. just let blah blah blah return a
@@ -484,9 +491,27 @@ namespace IR
             }
         } // anonymous namespace
 
-        bool TX_enabled()
+        bool TX_initialized()
         {
             return TX_inited;
+        }
+
+        bool TX_enabled()
+        {
+            return TX_on;
+        }
+
+        void TX_enable()
+        {
+            if (TX_inited)
+            {
+                TX_on = true;
+            }
+        }
+
+        void TX_disable()
+        {
+            TX_on = false;
         }
 
         void Init()
@@ -612,21 +637,22 @@ namespace IR
 
             DEBUG_C(Serial.println("Trigger_timer init successful!"));
 
-            TX_inited=true;
+            TX_inited = true;
+            TX_on = false;
         }
 
         void Remove_from_schedule_safe(const uint32_t type)
         {
-            TX_enable_flag = false;
+            TX_lock_flag = false;
             Remove_from_schedule(type);
-            TX_enable_flag = true;
+            TX_lock_flag = true;
         }
 
         void Add_to_schedule(const uint32_t type, const std::vector<uint16_t> &raw, const uint32_t priority1, const int32_t expiration_count, const uint32_t period)
         {
             // setup flag to skip the interrupt (interrupt still active, but
             // will not transmit any data)
-            TX_enable_flag = false;
+            TX_lock_flag = false;
             // if current task is in operation, remove it first.
             Remove_from_schedule(type);
 
@@ -641,7 +667,7 @@ namespace IR
             // add it back to the list
             Add_back_to_schedule(type);
             // reset flag to enable regular interrupt
-            TX_enable_flag = true;
+            TX_lock_flag = true;
         }
     } // namespace TX
 } // namespace IR

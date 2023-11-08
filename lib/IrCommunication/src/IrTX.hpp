@@ -21,25 +21,42 @@ namespace IR
          *        1. initialize TX RMT channels
          *        2. initialize TX ISR, timer and random number generator
          *        3. initialize scheduler and default TX task
-         * 
+         *
          * @note should execute this first before doing anything else! I don't
          * check for this, but you have to.
          */
         void Init();
 
         /**
+         * @brief Check if TX is initialized.
+         *
+         * @return bool initialized?
+         */
+        bool TX_initialized();
+
+        /**
          * @brief Check if TX is enabled.
-         * 
+         *
          * @return bool enabled?
          */
         bool TX_enabled();
+
+        /**
+         * @brief Enable TX
+         */
+        void TX_enable();
+
+        /**
+         * @brief Disable TX
+         */
+        void TX_disable();
 
         /**
          * @brief remove a task of certain type from scheduler (no longer
          * transmit)
          *
          * @param type msg_type of data
-         * 
+         *
          * @warning this function is thread safe, but not multi-core safe!
          */
         void Remove_from_schedule_safe(const uint32_t type);

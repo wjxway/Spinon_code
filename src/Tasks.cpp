@@ -259,18 +259,18 @@ namespace
         fixed_point<3U> rot_speed = 0.0F; // rotation speed in Hz
         uint32_t time = 0U;               // the time of data, which is the last measurement's time
     };
-    
-    // // for drone 13
-    // constexpr uint32_t Position_data_short_buffer_max_size = 3800U;
-    // Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 3> Filtered_position_buffer_short;
-    // Circbuffer<Position_data_short, 3> Position_buffer_short;
-    // Circbuffer<Position_data_short, 3> Position_buffer_short_test;
 
-    // for drone 14
-    constexpr uint32_t Position_data_short_buffer_max_size = 1900U;
+    // for drone 13
+    constexpr uint32_t Position_data_short_buffer_max_size = 3800U;
     Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 3> Filtered_position_buffer_short;
     Circbuffer<Position_data_short, 3> Position_buffer_short;
-    Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 3> Position_buffer_short_test;
+    Circbuffer<Position_data_short, 3> Position_buffer_short_test;
+
+    // // for drone 14
+    // constexpr uint32_t Position_data_short_buffer_max_size = 1900U;
+    // Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 3> Filtered_position_buffer_short;
+    // Circbuffer<Position_data_short, 3> Position_buffer_short;
+    // Circbuffer<Position_data_short, Position_data_short_buffer_max_size + 3> Position_buffer_short_test;
 
     struct Timing_data_short
     {
@@ -1259,10 +1259,17 @@ void Motor_control_task_opt(void *pvParameters)
         if (esp_timer_get_time() - last_TX_update_time > TX_update_interval)
         {
             last_TX_update_time = esp_timer_get_time();
-            if (IR::TX::TX_enabled())
+            if (IR::TX::TX_initialized())
             {
                 IR::TX::Add_to_schedule(4, {std::bit_cast<uint16_t>((int16_t)(filt_pos_0.x)), std::bit_cast<uint16_t>((int16_t)(filt_pos_0.y)), std::bit_cast<uint16_t>((int16_t)(filt_pos_0.z))}, 2);
             }
+        }
+
+        // turn on TX a while after launch to save energy
+        constexpr int64_t TX_on_time=15000000;
+        if (esp_timer_get_time() - Reach_target_speed_time > TX_on_time)
+        {
+            IR::TX::TX_enable();
         }
 
         // release brake when speed reached a certain threshold
