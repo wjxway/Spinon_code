@@ -70,7 +70,7 @@ void real_setup_core_0(void *pvParameters)
             0);
     }
 
-    // target_point[1]=(This_robot_ID == 13) ? 50.0F : -300.0F;
+    target_point[1]=(This_robot_ID == 13) ? 0.0F : -300.0F;
 
     DEBUG_C(Serial.println("Global parameters initialized!"));
     DEBUG_C(Serial.print("Robot #"));
