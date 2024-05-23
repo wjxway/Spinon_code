@@ -1,5 +1,5 @@
 # Spinon_code
-Code for Spinon. Please check https://github.com/wjxway/Spinon for more details.
+Code for Spinon. Please check https://github.com/wjxway/Spinon and Paper "A Single Motor Nano Aerial Vehicle with Novel Peer-to-Peer Communication and Sensing Mechanism" for more details.
 
 ## Warning
 This code base is compatible with ESP32 arduino release v2.0.6 and ESP-IDF v4.4.3
